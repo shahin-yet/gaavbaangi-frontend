@@ -13,7 +13,7 @@ document.documentElement.style.setProperty('--tg-theme-button-color', tg.themePa
 document.documentElement.style.setProperty('--tg-theme-button-text-color', tg.themeParams.button_text_color);
 
 // Backend API URL from environment variable or fallback
-const API_URL = process.env.API_URL || 'https://your-render-backend-url.onrender.com';
+const API_URL = process.env.API_URL || 'https://web-production-913d5.up.railway.app/';
 
 // Initialize the app
 async function initApp() {
