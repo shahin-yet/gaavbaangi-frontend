@@ -13,7 +13,7 @@ document.documentElement.style.setProperty('--tg-theme-button-color', tg.themePa
 document.documentElement.style.setProperty('--tg-theme-button-text-color', tg.themeParams.button_text_color);
 
 // Backend API URL from environment variable or fallback
-const API_URL = process.env.API_URL || 'https://web-production-913d5.up.railway.app/';
+const API_URL = process.env.API_URL || 'https://your-render-backend-url.onrender.com';
 
 // Initialize the app
 async function initApp() {
@@ -35,6 +35,90 @@ async function initApp() {
     } catch (error) {
         console.error('Error initializing app:', error);
     }
+}
+
+// Add MapLibre GL JS and KML support
+// Load MapLibre GL JS dynamically
+const maplibreScript = document.createElement('script');
+maplibreScript.src = 'https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js';
+maplibreScript.onload = () => initMap();
+document.head.appendChild(maplibreScript);
+
+// Load MapLibre GL CSS
+const maplibreCSS = document.createElement('link');
+maplibreCSS.rel = 'stylesheet';
+maplibreCSS.href = 'https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css';
+document.head.appendChild(maplibreCSS);
+
+// Load togeojson for KML parsing
+const togeojsonScript = document.createElement('script');
+togeojsonScript.src = 'https://unpkg.com/togeojson@0.16.0/dist/togeojson.umd.js';
+document.head.appendChild(togeojsonScript);
+
+function initMap() {
+    if (!window.maplibregl) {
+        setTimeout(initMap, 200); // Wait for script to load
+        return;
+    }
+    const map = new maplibregl.Map({
+        container: 'map',
+        style: `https://api.maptiler.com/maps/streets/style.json?key=8UlF6jTmzfAVZUz8WjbH`,
+        center: [51.389, 35.689], // Default: Tehran
+        zoom: 10
+    });
+    map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    window._map = map; // For debugging
+
+    // KML upload handler
+    document.getElementById('kml-upload').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const kmlText = event.target.result;
+            const parser = new DOMParser();
+            const kmlDom = parser.parseFromString(kmlText, 'text/xml');
+            // Wait for toGeoJSON to load
+            function tryAddKML() {
+                if (!window.toGeoJSON) {
+                    setTimeout(tryAddKML, 100);
+                    return;
+                }
+                const geojson = toGeoJSON.kml(kmlDom);
+                if (map.getSource('kml')) {
+                    map.removeLayer('kml');
+                    map.removeSource('kml');
+                }
+                map.addSource('kml', {
+                    type: 'geojson',
+                    data: geojson
+                });
+                map.addLayer({
+                    id: 'kml',
+                    type: 'line',
+                    source: 'kml',
+                    paint: {
+                        'line-color': '#ff6600',
+                        'line-width': 4
+                    }
+                });
+                // Fit map to KML bounds
+                const coords = geojson.features.flatMap(f => f.geometry.coordinates.flat(1));
+                if (coords.length > 0) {
+                    const lons = coords.map(c => c[0]);
+                    const lats = coords.map(c => c[1]);
+                    const bounds = [
+                        [Math.min(...lons), Math.min(...lats)],
+                        [Math.max(...lons), Math.max(...lats)]
+                    ];
+                    map.fitBounds(bounds, {padding: 40});
+                }
+                document.getElementById('map-info').textContent = 'KML track loaded!';
+            }
+            tryAddKML();
+        };
+        reader.readAsText(file);
+    });
 }
 
 // Call init when the app is ready
