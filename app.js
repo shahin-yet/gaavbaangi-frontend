@@ -60,14 +60,45 @@ function initMap() {
         setTimeout(initMap, 200); // Wait for script to load
         return;
     }
+    const mapStyles = {
+        'Terrain': `https://api.maptiler.com/maps/terrain/style.json?key=8UlF6jTmzfAVZUz8WjbH`,
+        'Satellite': `https://api.maptiler.com/maps/hybrid/style.json?key=8UlF6jTmzfAVZUz8WjbH`
+    };
+    let currentStyle = 'Terrain';
     const map = new maplibregl.Map({
         container: 'map',
-        style: `https://api.maptiler.com/maps/streets/style.json?key=8UlF6jTmzfAVZUz8WjbH`,
+        style: mapStyles[currentStyle],
         center: [51.389, 35.689], // Default: Tehran
         zoom: 10
     });
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
     window._map = map; // For debugging
+
+    // Add style switcher
+    const styleSwitcher = document.createElement('div');
+    styleSwitcher.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+    styleSwitcher.style.background = '#fff';
+    styleSwitcher.style.margin = '10px';
+    styleSwitcher.style.padding = '4px 8px';
+    styleSwitcher.style.borderRadius = '4px';
+    styleSwitcher.style.boxShadow = '0 1px 4px rgba(0,0,0,0.15)';
+    styleSwitcher.innerHTML = `
+        <button id="terrain-btn" style="margin-right:4px;">Terrain</button>
+        <button id="satellite-btn">Satellite</button>
+    `;
+    map.getContainer().appendChild(styleSwitcher);
+    document.getElementById('terrain-btn').onclick = () => {
+        if (currentStyle !== 'Terrain') {
+            map.setStyle(mapStyles['Terrain']);
+            currentStyle = 'Terrain';
+        }
+    };
+    document.getElementById('satellite-btn').onclick = () => {
+        if (currentStyle !== 'Satellite') {
+            map.setStyle(mapStyles['Satellite']);
+            currentStyle = 'Satellite';
+        }
+    };
 
     // KML upload handler
     document.getElementById('kml-upload').addEventListener('change', function(e) {
