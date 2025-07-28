@@ -6,11 +6,20 @@
   <title>Gaav Baangi Conservation Map</title>
   <link rel="stylesheet" href="styles.css">
   <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="styles.css?v=2">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
 <body>
-  <h1>Gaav Baangi Conservation Map</h1>
-  <div id="map"></div>
+  <header>
+    <h1>Gaav Baangi Conservation Map</h1>
+  </header>
+  <main>
+    <div id="map" role="region" aria-label="Conservation Map"></div>
+    <!--
+      If you add input fields in the future, use:
+      <label for="input-id">Label Text</label>
+      <input id="input-id" ...>
+    -->
+  </main>
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="app.js"></script>
