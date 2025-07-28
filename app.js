@@ -28,64 +28,26 @@ window.addEventListener('DOMContentLoaded', function () {
   };
   L.control.layers(baseMaps).addTo(map);
 
-  // Refuge polygon drawing logic
-  let drawing = false;
-  let polygonPoints = [];
-  let polygonLayer = null;
-  let markerLayers = [];
-
-  const drawBtn = document.getElementById('draw-refuge-btn');
-  const finishBtn = document.getElementById('finish-polygon-btn');
-  const nameInput = document.getElementById('refuge-name');
-
-  drawBtn.addEventListener('click', function () {
-    drawing = true;
-    polygonPoints = [];
-    if (polygonLayer) {
-      map.removeLayer(polygonLayer);
-      polygonLayer = null;
-    }
-    markerLayers.forEach(m => map.removeLayer(m));
-    markerLayers = [];
-    nameInput.value = '';
-    nameInput.style.display = 'inline-block';
-    finishBtn.style.display = 'inline-block';
-    drawBtn.disabled = true;
-    map.getContainer().style.cursor = 'crosshair';
-  });
-
-  map.on('click', function (e) {
-    if (!drawing) return;
-    const latlng = e.latlng;
-    polygonPoints.push([latlng.lat, latlng.lng]);
-    const marker = L.marker(latlng, { draggable: false });
-    marker.addTo(map);
-    markerLayers.push(marker);
-    if (polygonLayer) {
-      map.removeLayer(polygonLayer);
-    }
-    if (polygonPoints.length > 1) {
-      polygonLayer = L.polygon(polygonPoints, { color: '#4CAF50', fillOpacity: 0.3 });
-      polygonLayer.addTo(map);
+  // Add custom polygon draw control below the layer control
+  const PolygonDrawControl = L.Control.extend({
+    options: {
+      position: 'topleft' // same as layer control
+    },
+    onAdd: function(map) {
+      const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom polygon-draw-control');
+      container.title = 'Draw Refuge';
+      container.innerHTML = `
+        <svg width="26" height="26" viewBox="0 0 26 26" style="display:block;margin:2px;" xmlns="http://www.w3.org/2000/svg">
+          <polygon points="6,20 13,5 20,20" fill="#4CAF50" stroke="#333" stroke-width="2"/>
+        </svg>`;
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.on(container, 'click', function(e) {
+        // Drawing logic will go here
+        alert('Polygon draw button clicked!');
+      });
+      return container;
     }
   });
-
-  finishBtn.addEventListener('click', function () {
-    if (polygonPoints.length < 3) {
-      alert('A refuge must have at least 3 points.');
-      return;
-    }
-    const name = nameInput.value.trim() || 'Unnamed Refuge';
-    if (polygonLayer) {
-      polygonLayer.bindTooltip(name, { permanent: true, direction: 'center', className: 'refuge-label' }).openTooltip();
-    }
-    drawing = false;
-    drawBtn.disabled = false;
-    nameInput.style.display = 'none';
-    finishBtn.style.display = 'none';
-    map.getContainer().style.cursor = '';
-    // Optionally, clear marker pins after finishing
-    markerLayers.forEach(m => map.removeLayer(m));
-    markerLayers = [];
-  });
+  // Add after layer control (which is already added)
+  map.addControl(new PolygonDrawControl());
 }); 
