@@ -1,1 +1,79 @@
+:root {
+    --tg-theme-bg-color: #ffffff;
+    --tg-theme-text-color: #000000;
+    --tg-theme-hint-color: #999999;
+    --tg-theme-link-color: #2481cc;
+    --tg-theme-button-color: #2481cc;
+    --tg-theme-button-text-color: #ffffff;
+}
 
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: var(--tg-theme-bg-color);
+    color: var(--tg-theme-text-color);
+}
+
+#app {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+#content {
+    padding: 20px;
+    border-radius: 8px;
+    background-color: var(--tg-theme-bg-color);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+#map {
+  height: 80vh;
+  width: 100vw;
+  margin: 0 auto;
+  border: 2px solid #4CAF50;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+#kml-upload {
+    margin-bottom: 16px;
+}
+#map-info {
+    margin-top: 10px;
+    font-size: 0.95em;
+    color: var(--tg-theme-hint-color);
+}
+#controls {
+  margin-bottom: 10px;
+} 
+
+/* Improved style for custom polygon draw control to match Leaflet layer control */
+.polygon-draw-control {
+  margin-top: 4px; /* minimal space below the layer control */
+  cursor: pointer;
+  background: #fff;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  padding: 0;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+.polygon-draw-control:hover, .polygon-draw-control.active {
+  box-shadow: 0 2px 8px rgba(76,175,80,0.4);
+  border-color: #666;
+  background: #f4f4f4;
+}
+.polygon-draw-control svg {
+  display: block;
+  margin: 0 auto;
+} 
