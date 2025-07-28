@@ -49,5 +49,16 @@ window.addEventListener('DOMContentLoaded', function () {
     }
   });
   // Add after layer control (which is already added)
-  map.addControl(new PolygonDrawControl());
+  const drawControl = new PolygonDrawControl();
+  map.addControl(drawControl);
+
+  // --- Ensure draw control is below the layers control in the DOM ---
+  setTimeout(() => {
+    const containers = document.querySelectorAll('.leaflet-top.leaflet-left .leaflet-control');
+    const layersControl = document.querySelector('.leaflet-control-layers');
+    const drawButton = document.querySelector('.polygon-draw-control');
+    if (layersControl && drawButton && layersControl.nextSibling !== drawButton) {
+      layersControl.parentNode.insertBefore(drawButton, layersControl.nextSibling);
+    }
+  }, 0);
 }); 
