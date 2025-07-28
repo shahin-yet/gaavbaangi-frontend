@@ -18,7 +18,8 @@ window.addEventListener('DOMContentLoaded', function () {
     attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
   });
 
-  // Add default layer
+  // Do not add both layers to the map by default
+  // Only add one, the other will be available in the control
   satellite.addTo(map);
 
   // Layer control
