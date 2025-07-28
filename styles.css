@@ -54,7 +54,7 @@ h1 {
 
 /* Improved style for custom polygon draw control to match Leaflet layer control */
 .polygon-draw-control {
-  margin-top: 4px; /* minimal space below the layer control */
+  margin-top: 12px; /* Increased space below the layer control for better separation */
   cursor: pointer;
   background: #fff;
   box-shadow: 0 1px 5px rgba(0,0,0,0.65);
