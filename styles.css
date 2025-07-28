@@ -50,25 +50,25 @@ h1 {
 }
 #controls {
   margin-bottom: 10px;
-}
-#draw-refuge-btn, #finish-polygon-btn {
-  background-color: var(--tg-theme-button-color);
-  color: var(--tg-theme-button-text-color);
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  margin: 0 4px;
+} 
+
+/* Style for custom polygon draw control */
+.polygon-draw-control {
+  margin-top: 48px; /* space below the layer control */
   cursor: pointer;
-  font-size: 1em;
-}
-#draw-refuge-btn:hover, #finish-polygon-btn:hover {
-  background-color: #1a5a99;
-}
-#refuge-name {
-  padding: 7px 10px;
+  background: #fff;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.65);
   border-radius: 4px;
-  border: 1px solid #ccc;
-  font-size: 1em;
-  margin: 0 4px;
-  width: 160px;
+  border: 1px solid #bbb;
+  padding: 0;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.2s;
+}
+.polygon-draw-control:hover {
+  box-shadow: 0 2px 8px rgba(76,175,80,0.4);
+  border-color: #4CAF50;
 } 
