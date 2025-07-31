@@ -64,14 +64,30 @@ window.addEventListener('DOMContentLoaded', function () {
       
       // Show panel on mouse enter
       L.DomEvent.on(container, 'mouseenter', function(e) {
+        console.log('Mouse enter - showing panel');
         panel.style.display = 'block';
         button.classList.add('active');
+        // Add a small delay to ensure the panel is visible
+        setTimeout(() => {
+          if (panel.style.display === 'block') {
+            console.log('Panel should be visible now');
+          }
+        }, 10);
       });
       
       // Hide panel on mouse leave
       L.DomEvent.on(container, 'mouseleave', function(e) {
+        console.log('Mouse leave - hiding panel');
         panel.style.display = 'none';
         button.classList.remove('active');
+      });
+      
+      // Also add click handler as fallback
+      L.DomEvent.on(button, 'click', function(e) {
+        console.log('Button clicked - toggling panel');
+        const isVisible = panel.style.display !== 'none';
+        panel.style.display = isVisible ? 'none' : 'block';
+        button.classList.toggle('active', !isVisible);
       });
       
       // Handle option selection
