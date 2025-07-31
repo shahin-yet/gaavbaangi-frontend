@@ -79,11 +79,6 @@ h1 {
   background: #f4f4f4;
 }
 
-.drawing-button svg {
-  display: block;
-  margin: 0 auto;
-}
-
 /* Drawing panel styles (exactly like layer control panel) */
 .drawing-panel {
   position: absolute;
@@ -122,4 +117,4 @@ h1 {
   font-size: 12px;
   color: #333;
   margin: 0;
-} 
+}
