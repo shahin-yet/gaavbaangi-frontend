@@ -36,17 +36,14 @@ window.addEventListener('DOMContentLoaded', function () {
     },
     onAdd: function(map) {
       const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom drawing-control');
+      container.title = 'Drawing Tools';
       
-      // Create the main button with drawing icon
+      // Create the main button
       const button = L.DomUtil.create('div', 'drawing-button', container);
       button.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polygon points="3,6 5,6 5,20 19,20 19,10 9,10 9,6" fill="#666"/>
-          <line x1="9" y1="6" x2="9" y2="2"/>
-          <line x1="15" y1="6" x2="15" y2="2"/>
-          <line x1="3" y1="6" x2="21" y2="6"/>
-        </svg>
-      `;
+        <svg width="26" height="26" viewBox="0 0 26 26" style="display:block;margin:2px;" xmlns="http://www.w3.org/2000/svg">
+          <polygon points="6,20 13,5 20,20" fill="#4CAF50" stroke="#333" stroke-width="2"/>
+        </svg>`;
       
       // Create the dropdown panel
       const panel = L.DomUtil.create('div', 'drawing-panel', container);
@@ -67,18 +64,27 @@ window.addEventListener('DOMContentLoaded', function () {
       
       // Show panel on mouse enter
       L.DomEvent.on(container, 'mouseenter', function(e) {
+        console.log('Mouse enter - showing panel');
         panel.style.display = 'block';
         button.classList.add('active');
+        // Add a small delay to ensure the panel is visible
+        setTimeout(() => {
+          if (panel.style.display === 'block') {
+            console.log('Panel should be visible now');
+          }
+        }, 10);
       });
       
       // Hide panel on mouse leave
       L.DomEvent.on(container, 'mouseleave', function(e) {
+        console.log('Mouse leave - hiding panel');
         panel.style.display = 'none';
         button.classList.remove('active');
       });
       
       // Also add click handler as fallback
       L.DomEvent.on(button, 'click', function(e) {
+        console.log('Button clicked - toggling panel');
         const isVisible = panel.style.display !== 'none';
         panel.style.display = isVisible ? 'none' : 'block';
         button.classList.toggle('active', !isVisible);
