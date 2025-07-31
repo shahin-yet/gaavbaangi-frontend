@@ -47,7 +47,6 @@ window.addEventListener('DOMContentLoaded', function () {
           <line x1="3" y1="6" x2="21" y2="6"/>
         </svg>
       `;
-      button.title = 'Drawing Tools';
       
       // Create the dropdown panel
       const panel = L.DomUtil.create('div', 'drawing-panel', container);
@@ -63,13 +62,23 @@ window.addEventListener('DOMContentLoaded', function () {
         </div>
       `;
       
-      // Prevent map clicks from interfering
+      // Add event listeners for hover behavior (like layer control)
       L.DomEvent.disableClickPropagation(container);
-      L.DomEvent.disableScrollPropagation(container);
       
-      // Toggle panel on button click (like layer control)
+      // Show panel on mouse enter
+      L.DomEvent.on(container, 'mouseenter', function(e) {
+        panel.style.display = 'block';
+        button.classList.add('active');
+      });
+      
+      // Hide panel on mouse leave
+      L.DomEvent.on(container, 'mouseleave', function(e) {
+        panel.style.display = 'none';
+        button.classList.remove('active');
+      });
+      
+      // Also add click handler as fallback
       L.DomEvent.on(button, 'click', function(e) {
-        e.stopPropagation();
         const isVisible = panel.style.display !== 'none';
         panel.style.display = isVisible ? 'none' : 'block';
         button.classList.toggle('active', !isVisible);
@@ -77,7 +86,6 @@ window.addEventListener('DOMContentLoaded', function () {
       
       // Handle option selection
       L.DomEvent.on(panel, 'click', function(e) {
-        e.stopPropagation();
         const option = e.target.closest('.drawing-option');
         if (option) {
           const type = option.dataset.type;
@@ -94,18 +102,14 @@ window.addEventListener('DOMContentLoaded', function () {
             button.title = 'Drawing Refuge';
           }
           
+          // Panel will hide automatically on mouse leave
+          
           // Handle the drawing action
           handleDrawingAction(type);
         }
       });
       
-      // Close panel when clicking outside
-      L.DomEvent.on(document, 'click', function(e) {
-        if (!container.contains(e.target)) {
-          panel.style.display = 'none';
-          button.classList.remove('active');
-        }
-      });
+      // No need for click outside handler with hover behavior
       
       return container;
     }
