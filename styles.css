@@ -52,9 +52,13 @@ h1 {
   margin-bottom: 10px;
 } 
 
-/* Improved style for custom polygon draw control to match Leaflet layer control */
-.polygon-draw-control {
-  margin-top: 12px; /* Increased space below the layer control for better separation */
+/* Drawing control styles to match Leaflet layer control */
+.drawing-control {
+  margin-top: 12px; /* Space below the layer control */
+  position: relative;
+}
+
+.drawing-button {
   cursor: pointer;
   background: #fff;
   box-shadow: 0 1px 5px rgba(0,0,0,0.65);
@@ -68,12 +72,53 @@ h1 {
   justify-content: center;
   transition: box-shadow 0.2s, border-color 0.2s;
 }
-.polygon-draw-control:hover, .polygon-draw-control.active {
+
+.drawing-button:hover, .drawing-button.active {
   box-shadow: 0 2px 8px rgba(76,175,80,0.4);
   border-color: #666;
   background: #f4f4f4;
 }
-.polygon-draw-control svg {
+
+.drawing-button svg {
   display: block;
   margin: 0 auto;
+}
+
+/* Drawing panel styles (similar to layer control panel) */
+.drawing-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+  padding: 8px;
+  margin-top: 2px;
+  min-width: 120px;
+  z-index: 1000;
+}
+
+.drawing-option {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background-color 0.2s;
+}
+
+.drawing-option:hover {
+  background-color: #f0f0f0;
+}
+
+.drawing-option input[type="radio"] {
+  margin-right: 8px;
+}
+
+.drawing-option label {
+  cursor: pointer;
+  font-size: 12px;
+  color: #333;
+  margin: 0;
 } 
