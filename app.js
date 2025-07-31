@@ -36,14 +36,10 @@ window.addEventListener('DOMContentLoaded', function () {
     },
     onAdd: function(map) {
       const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom drawing-control');
-      container.title = 'Drawing Tools';
       
-      // Create the main button
+      // Create the main button (no icon, no label)
       const button = L.DomUtil.create('div', 'drawing-button', container);
-      button.innerHTML = `
-        <svg width="26" height="26" viewBox="0 0 26 26" style="display:block;margin:2px;" xmlns="http://www.w3.org/2000/svg">
-          <polygon points="6,20 13,5 20,20" fill="#4CAF50" stroke="#333" stroke-width="2"/>
-        </svg>`;
+      button.innerHTML = '';
       
       // Create the dropdown panel
       const panel = L.DomUtil.create('div', 'drawing-panel', container);
