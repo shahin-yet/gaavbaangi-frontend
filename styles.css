@@ -97,6 +97,10 @@ h1 {
   margin-top: 2px;
   min-width: 120px;
   z-index: 1000;
+  /* Make sure it's visible */
+  display: none;
+  /* Add some debugging styles */
+  border: 2px solid red;
 }
 
 .drawing-option {
