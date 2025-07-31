@@ -59,13 +59,19 @@ window.addEventListener('DOMContentLoaded', function () {
         </div>
       `;
       
-      // Add event listeners
+      // Add event listeners for hover behavior (like layer control)
       L.DomEvent.disableClickPropagation(container);
-      L.DomEvent.on(button, 'click', function(e) {
-        L.DomEvent.stopPropagation(e);
-        const isVisible = panel.style.display !== 'none';
-        panel.style.display = isVisible ? 'none' : 'block';
-        button.classList.toggle('active', !isVisible);
+      
+      // Show panel on mouse enter
+      L.DomEvent.on(container, 'mouseenter', function(e) {
+        panel.style.display = 'block';
+        button.classList.add('active');
+      });
+      
+      // Hide panel on mouse leave
+      L.DomEvent.on(container, 'mouseleave', function(e) {
+        panel.style.display = 'none';
+        button.classList.remove('active');
       });
       
       // Handle option selection
@@ -86,22 +92,14 @@ window.addEventListener('DOMContentLoaded', function () {
             button.title = 'Drawing Refuge';
           }
           
-          // Hide panel after selection
-          panel.style.display = 'none';
-          button.classList.remove('active');
+          // Panel will hide automatically on mouse leave
           
           // Handle the drawing action
           handleDrawingAction(type);
         }
       });
       
-      // Close panel when clicking outside
-      L.DomEvent.on(document, 'click', function(e) {
-        if (!container.contains(e.target)) {
-          panel.style.display = 'none';
-          button.classList.remove('active');
-        }
-      });
+      // No need for click outside handler with hover behavior
       
       return container;
     }
