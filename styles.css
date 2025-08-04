@@ -121,8 +121,8 @@ background: #f0f0f0;
 
 .drawing-panel {
 position: absolute;
-top: 100%;
-left: 0;
+top: 0;
+right: 0;
 background: #fff;
 border: 1px solid #ccc;
 border-radius: 4px;
