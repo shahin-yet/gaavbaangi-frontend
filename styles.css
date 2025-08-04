@@ -742,9 +742,10 @@ body {
   position: absolute;
   bottom: 100%;
   left: 0;
-  background: white;
+  background: #fff;
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  border: 1px solid #bbb;
   padding: 8px;
   margin-bottom: 8px;
   display: none;
@@ -763,16 +764,24 @@ body {
   padding: 8px 12px;
   border-radius: 6px;
   cursor: pointer;
-  transition: background-color 0.2s;
-  font-size: 14px;
-}
-
-.option-item:hover {
-  background: var(--gray-100);
+  transition: background-color 0.2s, color 0.2s;
+  font-size: 15px;
+  color: #222;
+  background: none;
 }
 
 .option-item i {
-  font-size: 14px;
-  width: 16px;
+  font-size: 16px;
+  width: 18px;
   text-align: center;
+  color: #222;
+}
+
+.option-item:hover {
+  background: #e0f0ff;
+  color: #0077cc;
+}
+
+.option-item:hover i {
+  color: #0077cc;
 }
