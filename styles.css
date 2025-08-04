@@ -62,7 +62,7 @@ border: 1px solid #ccc;
 
 .leaflet-control-layers-expanded {
 padding: 12px;
-min-width: 200px;
+min-width: 110px;
 }
 
 .leaflet-control-layers-list {
@@ -127,8 +127,8 @@ background: #fff;
 border: 1px solid #ccc;
 border-radius: 4px;
 box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-padding: 8px;
-min-width: 120px;
+padding: 12px;
+min-width: 110px;
 z-index: 1000;
 }
 
