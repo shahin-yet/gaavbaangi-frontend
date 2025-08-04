@@ -62,8 +62,10 @@ border: 1px solid #ccc;
 
 .leaflet-control-layers-expanded {
 padding: 12px;
-min-width: 140px;
-min-height: 80px;
+min-width: 140px !important;
+min-height: 80px !important;
+width: 140px !important;
+height: auto !important;
 }
 
 .leaflet-control-layers-list {
@@ -81,6 +83,7 @@ cursor: pointer;
 font-size: 13px;
 color: #333;
 line-height: 1.4;
+padding: 2px 0;
 }
 
 .leaflet-control-layers-base input[type="radio"],
@@ -130,8 +133,10 @@ border: 1px solid #ccc;
 border-radius: 4px;
 box-shadow: 0 1px 5px rgba(0,0,0,0.65);
 padding: 12px;
-min-width: 140px;
-min-height: 80px;
+min-width: 140px !important;
+min-height: 80px !important;
+width: 140px !important;
+height: auto !important;
 z-index: 1000;
 }
 
