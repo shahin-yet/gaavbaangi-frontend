@@ -1,9 +1,18 @@
 // Wait for the DOM to be fully loaded
 window.addEventListener('DOMContentLoaded', function () {
+  // Detect if running in Telegram Web App
+  const isTelegramWebApp = window.Telegram && window.Telegram.WebApp;
+  
+  // Apply Telegram-specific styling if in Telegram Web App
+  if (isTelegramWebApp) {
+    document.body.classList.add('telegram-webapp');
+  }
+  
   // Initialize the map
   const map = L.map('map', {
     center: [20.5937, 78.9629], // Centered on India as an example
     zoom: 5,
+    zoomControl: !isTelegramWebApp // Hide zoom controls in Telegram
   });
 
   // Terrain layer (OpenTopoMap)
