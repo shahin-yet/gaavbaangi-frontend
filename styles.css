@@ -61,14 +61,18 @@ border: 1px solid #ccc;
 }
 
 .leaflet-control-layers-expanded {
-padding: 12px;
-width: 140px !important;
-height: 80px !important;
-min-width: 140px !important;
-min-height: 80px !important;
-max-width: 140px !important;
-max-height: 80px !important;
+padding: 8px;
+width: 42.7px !important;
+height: 42.7px !important;
+min-width: 42.7px !important;
+min-height: 42.7px !important;
+max-width: 42.7px !important;
+max-height: 42.7px !important;
 overflow: hidden;
+display: flex;
+flex-direction: column;
+justify-content: center;
+align-items: center;
 }
 
 .leaflet-control-layers-list {
@@ -139,24 +143,30 @@ background: #fff;
 border: 1px solid #ccc;
 border-radius: 4px;
 box-shadow: 0 1px 5px rgba(0,0,0,0.65);
-padding: 12px;
-width: 140px !important;
-height: 80px !important;
-min-width: 140px !important;
-min-height: 80px !important;
-max-width: 140px !important;
-max-height: 80px !important;
+padding: 8px;
+width: 42.7px !important;
+height: 42.7px !important;
+min-width: 42.7px !important;
+min-height: 42.7px !important;
+max-width: 42.7px !important;
+max-height: 42.7px !important;
 overflow: hidden;
 z-index: 1000;
+display: flex;
+flex-direction: column;
+justify-content: center;
+align-items: center;
 }
 
 .drawing-option {
 display: flex;
 align-items: center;
-margin: 6px 0;
+justify-content: center;
+margin: 2px 0;
 cursor: pointer;
-padding: 2px 0;
+padding: 2px;
 width: 100%;
+height: 50%;
 }
 
 .drawing-option:hover {
@@ -165,19 +175,21 @@ border-radius: 2px;
 }
 
 .drawing-option input[type="radio"] {
-margin-right: 8px;
+margin-right: 4px;
+transform: scale(0.8);
 }
 
 .drawing-option label {
-font-size: 12px !important;
+font-size: 8px !important;
 font-weight: 500 !important;
 color: #333;
 cursor: pointer;
 margin: 0;
-line-height: 1.4;
+line-height: 1.2;
 text-transform: uppercase;
-letter-spacing: 0.5px;
+letter-spacing: 0.3px;
 width: 100%;
+text-align: center;
 }
 
 /* Remove icon button styles */
