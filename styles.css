@@ -722,3 +722,57 @@ body {
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   padding: 12px 18px;
 }
+
+.map-toolbar .control-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  position: relative;
+}
+
+.map-toolbar .control-btn i {
+  font-size: 16px;
+}
+
+.option-panel {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  padding: 8px;
+  margin-bottom: 8px;
+  display: none;
+  min-width: 120px;
+  z-index: 1001;
+}
+
+.option-panel.show {
+  display: block;
+}
+
+.option-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 14px;
+}
+
+.option-item:hover {
+  background: var(--gray-100);
+}
+
+.option-item i {
+  font-size: 14px;
+  width: 16px;
+  text-align: center;
+}
