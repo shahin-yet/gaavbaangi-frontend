@@ -62,10 +62,13 @@ border: 1px solid #ccc;
 
 .leaflet-control-layers-expanded {
 padding: 12px;
-min-width: 140px !important;
-min-height: 80px !important;
 width: 140px !important;
 height: 80px !important;
+min-width: 140px !important;
+min-height: 80px !important;
+max-width: 140px !important;
+max-height: 80px !important;
+overflow: hidden;
 }
 
 .leaflet-control-layers-list {
@@ -87,6 +90,7 @@ line-height: 1.4;
 padding: 2px 0;
 text-transform: uppercase;
 letter-spacing: 0.5px;
+width: 100%;
 }
 
 .leaflet-control-layers-base input[type="radio"],
@@ -136,10 +140,13 @@ border: 1px solid #ccc;
 border-radius: 4px;
 box-shadow: 0 1px 5px rgba(0,0,0,0.65);
 padding: 12px;
-min-width: 140px !important;
-min-height: 80px !important;
 width: 140px !important;
 height: 80px !important;
+min-width: 140px !important;
+min-height: 80px !important;
+max-width: 140px !important;
+max-height: 80px !important;
+overflow: hidden;
 z-index: 1000;
 }
 
@@ -149,6 +156,7 @@ align-items: center;
 margin: 6px 0;
 cursor: pointer;
 padding: 2px 0;
+width: 100%;
 }
 
 .drawing-option:hover {
@@ -169,6 +177,7 @@ margin: 0;
 line-height: 1.4;
 text-transform: uppercase;
 letter-spacing: 0.5px;
+width: 100%;
 }
 
 /* Remove icon button styles */
