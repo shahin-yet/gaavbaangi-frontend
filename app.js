@@ -21,12 +21,7 @@ window.addEventListener('DOMContentLoaded', function () {
   // Add satellite layer by default
   satellite.addTo(map);
 
-  // Layer control
-  const baseMaps = {
-    "Satellite": satellite,
-    "Terrain": terrain
-  };
-  L.control.layers(baseMaps).addTo(map);
+  // Layer control removed - using custom toolbar instead
 
   // Create option panels for toolbar buttons
   function createOptionPanel(buttonId, options) {
@@ -108,14 +103,6 @@ window.addEventListener('DOMContentLoaded', function () {
       text: 'Refuge Area',
       action: function() {
         alert('Refuge area drawing started. This feature will be implemented soon.');
-        document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
-      }
-    },
-    {
-      icon: 'fas fa-map-marker-alt',
-      text: 'Point Marker',
-      action: function() {
-        alert('Point marker mode activated. Click on map to add markers.');
         document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
       }
     }
