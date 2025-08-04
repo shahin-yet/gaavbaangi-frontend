@@ -13,55 +13,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-  <!-- Header -->
-  <header class="header">
-    <div class="header-content">
-      <div class="logo">
-        <i class="fas fa-map-marked-alt"></i>
-        <h1>Gaav Baangi Conservation</h1>
-      </div>
-      <nav class="nav-menu">
-        <button class="nav-btn active" data-section="map">
-          <i class="fas fa-map"></i>
-          <span>Map</span>
-        </button>
-        <button class="nav-btn" data-section="data">
-          <i class="fas fa-database"></i>
-          <span>Data</span>
-        </button>
-        <button class="nav-btn" data-section="about">
-          <i class="fas fa-info-circle"></i>
-          <span>About</span>
-        </button>
-      </nav>
-    </div>
-  </header>
-
   <!-- Main Content -->
   <main class="main-content">
     <!-- Map Section -->
     <section id="map-section" class="content-section active">
       <div class="map-container">
-        <div class="map-header">
-          <h2>Conservation Map</h2>
-          <p>Explore and manage conservation areas for Gaav Baangi</p>
-        </div>
         <div id="map"></div>
-        <div class="map-controls">
-          <div class="control-group">
-            <button class="control-btn" id="upload-btn">
-              <i class="fas fa-upload"></i>
-              <span>Upload KML</span>
-            </button>
-            <input type="file" id="kml-upload" accept=".kml" style="display: none;">
-          </div>
-          <div class="control-group">
-            <button class="control-btn" id="export-btn">
-              <i class="fas fa-download"></i>
-              <span>Export Data</span>
-            </button>
-          </div>
-        </div>
       </div>
     </section>
 
