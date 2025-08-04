@@ -146,4 +146,30 @@ window.addEventListener('DOMContentLoaded', function () {
   }
   const drawingControl = new DrawingControl();
   map.addControl(drawingControl);
+
+  let currentLayer = 'satellite';
+  document.getElementById('btn-layer').onclick = function() {
+    if (currentLayer === 'satellite') {
+      map.removeLayer(satellite);
+      terrain.addTo(map);
+      currentLayer = 'terrain';
+    } else {
+      map.removeLayer(terrain);
+      satellite.addTo(map);
+      currentLayer = 'satellite';
+    }
+  };
+
+  document.getElementById('btn-drawing').onclick = function() {
+    const drawingBtn = document.querySelector('.drawing-button');
+    if (drawingBtn) {
+      drawingBtn.classList.add('active');
+      const panel = drawingBtn.nextElementSibling;
+      if (panel) panel.style.display = 'block';
+    }
+  };
+
+  document.getElementById('btn-center').onclick = function() {
+    map.setView([20.5937, 78.9629], 5);
+  };
 }); 
