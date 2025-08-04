@@ -126,7 +126,7 @@ right: 0;
 background: #fff;
 border: 1px solid #ccc;
 border-radius: 4px;
-box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+box-shadow: 0 1px 5px rgba(0,0,0,0.65);
 padding: 12px;
 min-width: 110px;
 z-index: 1000;
@@ -135,7 +135,7 @@ z-index: 1000;
 .drawing-option {
 display: flex;
 align-items: center;
-padding: 4px 0;
+margin: 4px 0;
 cursor: pointer;
 }
 
