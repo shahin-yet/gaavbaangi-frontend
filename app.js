@@ -10,11 +10,13 @@ window.addEventListener('DOMContentLoaded', function () {
     return (hasInitData || hasUnsafeUser) && platformKnown;
   })();
   
-  // Apply Telegram-specific styling if in Telegram Web App
+  // Apply Telegram-specific styling and dot only in Telegram; remove dot in web
+  const centerDotEl = document.querySelector('.map-center-dot');
   if (isTelegramWebApp) {
     document.body.classList.add('telegram-webapp');
-    const centerDotEl = document.querySelector('.map-center-dot');
     if (centerDotEl) centerDotEl.style.display = 'block';
+  } else {
+    if (centerDotEl) centerDotEl.remove();
   }
   
   // Initialize the map
