@@ -198,4 +198,67 @@ window.addEventListener('DOMContentLoaded', function () {
   document.getElementById('btn-center').onclick = function() {
     map.setView([20.5937, 78.9629], 5);
   };
+
+  // Floating menu and side panel logic
+  const fabMenu = document.getElementById('fab-menu');
+  const sidePanel = document.getElementById('side-panel');
+  const sideClose = document.getElementById('side-close');
+  const menuOverlay = document.getElementById('menu-overlay');
+
+  function openSidePanel() {
+    sidePanel.classList.add('show');
+    menuOverlay.classList.add('show');
+    sidePanel.setAttribute('aria-hidden', 'false');
+    menuOverlay.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeSidePanel() {
+    sidePanel.classList.remove('show');
+    menuOverlay.classList.remove('show');
+    sidePanel.setAttribute('aria-hidden', 'true');
+    menuOverlay.setAttribute('aria-hidden', 'true');
+  }
+
+  if (fabMenu && sidePanel && sideClose && menuOverlay) {
+    fabMenu.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openSidePanel();
+    });
+    sideClose.addEventListener('click', function (e) {
+      e.stopPropagation();
+      closeSidePanel();
+    });
+    menuOverlay.addEventListener('click', closeSidePanel);
+  }
+
+  // Menu item actions
+  const menuActions = {
+    'about': () => {
+      alert('About: Coming soon.');
+      closeSidePanel();
+    },
+    'data': () => {
+      alert('Data: Coming soon.');
+      closeSidePanel();
+    },
+    'admin-map': () => {
+      // Already on this page; keep active state
+      document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
+      const item = document.querySelector('.menu-item[data-action="admin-map"]');
+      if (item) item.classList.add('active');
+      closeSidePanel();
+    },
+    'user-map': () => {
+      alert('User Map: Coming soon.');
+      closeSidePanel();
+    }
+  };
+
+  document.querySelectorAll('.menu-item').forEach(btn => {
+    btn.addEventListener('click', function () {
+      const action = this.getAttribute('data-action');
+      const handler = menuActions[action];
+      if (typeof handler === 'function') handler();
+    });
+  });
 }); 
