@@ -1,11 +1,20 @@
 // Wait for the DOM to be fully loaded
 window.addEventListener('DOMContentLoaded', function () {
-  // Detect if running in Telegram Web App
-  const isTelegramWebApp = window.Telegram && window.Telegram.WebApp;
+  // Detect if running in Telegram Web App (robust)
+  const search = new URLSearchParams(window.location.search);
+  const isTelegramWebApp = !!(
+    (window.Telegram && window.Telegram.WebApp) ||
+    /Telegram/i.test(navigator.userAgent) ||
+    search.has('tgWebApp') ||
+    search.has('tgWebAppPlatform') ||
+    typeof window.TelegramGameProxy !== 'undefined'
+  );
   
   // Apply Telegram-specific styling if in Telegram Web App
   if (isTelegramWebApp) {
     document.body.classList.add('telegram-webapp');
+    const centerDotEl = document.querySelector('.map-center-dot');
+    if (centerDotEl) centerDotEl.style.display = 'block';
   }
   
   // Initialize the map
