@@ -335,3 +335,25 @@ body {
   height: 100vh;
   width: 100vw;
 }
+
+/* Center selector dot (Telegram only) */
+.map-center-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  border-radius: 50%;
+  border: 2px solid #0a84ff;
+  background: rgba(10,132,255,0.2);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.9);
+  pointer-events: none;
+  display: none;
+  z-index: 1100;
+}
+
+.telegram-webapp .map-center-dot {
+  display: block;
+}
