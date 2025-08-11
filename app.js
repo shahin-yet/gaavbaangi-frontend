@@ -1,7 +1,14 @@
 // Wait for the DOM to be fully loaded
 window.addEventListener('DOMContentLoaded', function () {
-  // Detect if running in Telegram Web App (strict)
-  const isTelegramWebApp = !!(window.Telegram && window.Telegram.WebApp);
+  // Detect if running in Telegram Web App (strict, real session only)
+  const isTelegramWebApp = (() => {
+    if (!window.Telegram || !window.Telegram.WebApp) return false;
+    const wa = window.Telegram.WebApp;
+    const hasInitData = typeof wa.initData === 'string' && wa.initData.length > 0;
+    const hasUnsafeUser = wa.initDataUnsafe && (wa.initDataUnsafe.user || wa.initDataUnsafe.query_id);
+    const platformKnown = wa.platform && wa.platform !== 'unknown';
+    return (hasInitData || hasUnsafeUser) && platformKnown;
+  })();
   
   // Apply Telegram-specific styling if in Telegram Web App
   if (isTelegramWebApp) {
