@@ -27,6 +27,38 @@
           <button class="control-btn" id="btn-center" title="Center"><i class="fas fa-crosshairs"></i></button>
         </div>
         <div class="map-center-dot" aria-hidden="true"></div>
+
+        <!-- Floating Menu Button and Right Side Panel -->
+        <button id="fab-menu" class="fab-menu" aria-label="Open menu" title="Menu">
+          <i class="fas fa-bars"></i>
+        </button>
+        <div id="menu-overlay" class="menu-overlay" aria-hidden="true"></div>
+        <aside id="side-panel" class="side-panel" aria-hidden="true" aria-label="Side menu">
+          <div class="side-panel-header">
+            <span>Menu</span>
+            <button id="side-close" class="side-panel-close" aria-label="Close menu">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          <nav class="side-panel-content" role="menu">
+            <button class="menu-item" data-action="about" role="menuitem">
+              <i class="fas fa-circle-info"></i>
+              <span>About</span>
+            </button>
+            <button class="menu-item" data-action="data" role="menuitem">
+              <i class="fas fa-database"></i>
+              <span>Data</span>
+            </button>
+            <button class="menu-item active" data-action="admin-map" role="menuitem" aria-current="page">
+              <i class="fas fa-map"></i>
+              <span>Administrative Map</span>
+            </button>
+            <button class="menu-item" data-action="user-map" role="menuitem">
+              <i class="fas fa-user"></i>
+              <span>User Map</span>
+            </button>
+          </nav>
+        </aside>
       </div>
     </section>
   </main>
