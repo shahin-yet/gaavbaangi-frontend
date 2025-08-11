@@ -64,6 +64,44 @@ window.addEventListener('DOMContentLoaded', function () {
         };
       }
     };
+
+    // Apply double-tap/double-click actions at center (selector dot) instead of touch point
+    map.doubleClickZoom && map.doubleClickZoom.disable();
+
+    const applyCenterDoubleAction = () => {
+      // Default behavior: zoom in using map center
+      map.zoomIn(1);
+      const center = map.getCenter();
+      const pixel = map.latLngToContainerPoint(center);
+      // Dispatch a custom event in case the host app wants to consume it
+      window.dispatchEvent(new CustomEvent('map-center-doubletap', {
+        detail: { latlng: { lat: center.lat, lng: center.lng }, pixel }
+      }));
+    };
+
+    // Desktop-style double click (if Telegram web triggers it)
+    map.on('dblclick', function (ev) {
+      if (ev && ev.originalEvent) {
+        ev.originalEvent.preventDefault && ev.originalEvent.preventDefault();
+        ev.originalEvent.stopPropagation && ev.originalEvent.stopPropagation();
+      }
+      applyCenterDoubleAction();
+    });
+
+    // Mobile double-tap detection
+    let lastTapTime = 0;
+    map.getContainer().addEventListener('touchend', function (ev) {
+      const now = Date.now();
+      if (now - lastTapTime < 300) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        applyCenterDoubleAction();
+        lastTapTime = 0;
+      } else {
+        lastTapTime = now;
+        setTimeout(() => { if (Date.now() - lastTapTime >= 300) lastTapTime = 0; }, 350);
+      }
+    }, { passive: false });
   }
 
   // Layer control removed - using custom toolbar instead
