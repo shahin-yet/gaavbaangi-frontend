@@ -1,7 +1,7 @@
 // Wait for the DOM to be fully loaded
 window.addEventListener('DOMContentLoaded', function () {
   // Detect if running in Telegram Web App
-  const isTelegramWebApp = window.Telegram && window.Telegram.WebApp;
+  const isTelegramWebApp = !!(window.Telegram && window.Telegram.WebApp);
   
   // Apply Telegram-specific styling if in Telegram Web App
   if (isTelegramWebApp) {
@@ -14,6 +14,20 @@ window.addEventListener('DOMContentLoaded', function () {
     zoom: 5,
     zoomControl: !isTelegramWebApp // Hide zoom controls in Telegram
   });
+
+  // Extra fallback: ensure zoom control is removed in Telegram
+  if (isTelegramWebApp) {
+    const zoomCtrl = map.zoomControl || map._zoomControl;
+    if (zoomCtrl) {
+      map.removeControl(zoomCtrl);
+    }
+    // In case Leaflet adds it late or due to plugins, remove again after a tick
+    setTimeout(() => {
+      const z2 = map.zoomControl || map._zoomControl;
+      if (z2) map.removeControl(z2);
+      document.querySelectorAll('.leaflet-control-zoom').forEach(el => el.remove());
+    }, 0);
+  }
 
   // Terrain layer (OpenTopoMap)
   const terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
