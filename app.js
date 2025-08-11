@@ -1,13 +1,14 @@
 // Wait for the DOM to be fully loaded
 window.addEventListener('DOMContentLoaded', function () {
-  // Detect if running in Telegram Web App (strict, real session only)
+  // Detect if running in Telegram Web App (require real initData)
   const isTelegramWebApp = (() => {
-    if (!window.Telegram || !window.Telegram.WebApp) return false;
-    const wa = window.Telegram.WebApp;
-    const hasInitData = typeof wa.initData === 'string' && wa.initData.length > 0;
-    const hasUnsafeUser = wa.initDataUnsafe && (wa.initDataUnsafe.user || wa.initDataUnsafe.query_id);
-    const platformKnown = wa.platform && wa.platform !== 'unknown';
-    return (hasInitData || hasUnsafeUser) && platformKnown;
+    const wa = window.Telegram && window.Telegram.WebApp;
+    if (!wa) return false;
+    const initData = typeof wa.initData === 'string' ? wa.initData : '';
+    const unsafe = wa.initDataUnsafe || {};
+    const hasSignedData = initData.length > 10; // signed payload is always non-trivial
+    const hasIdentity = !!(unsafe.user?.id || unsafe.chat?.id || unsafe.query_id);
+    return hasSignedData && hasIdentity;
   })();
   
   // Apply Telegram-specific styling and dot only in Telegram; remove dot in web
