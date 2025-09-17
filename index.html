@@ -66,27 +66,10 @@
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    // Dynamic backend URL detection with simple override options
-    (function() {
-      try {
-        const params = new URLSearchParams(location.search);
-        const override = params.get('backend');
-        const paGuess = `https://${(location.hostname.includes('github.io') ? 'YOUR_USERNAME' : (location.hostname.split('.')[0] || 'YOUR_USERNAME'))}.pythonanywhere.com`;
-
-        // Priority: ?backend=... > window.BACKEND_BASE_URL preset > PythonAnywhere guess
-        const preset = window.BACKEND_BASE_URL;
-        const decided = override || preset || paGuess;
-        window.BACKEND_BASE_URL = decided.replace(/\/$/, '');
-      } catch (e) {
-        window.BACKEND_BASE_URL = window.BACKEND_BASE_URL || 'https://YOUR_USERNAME.pythonanywhere.com';
-      }
-
-      // Telegram WebApp configuration
-      if (window.Telegram && window.Telegram.WebApp) {
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
-      }
-    })();
+    // Dynamic backend URL connection
+  
+    window.BACKEND_BASE_URL = window.BACKEND_BASE_URL || 'https://shahinyet.pythonanywhere.com/';
+    
   </script>
   <script src="app.js"></script>
 </body>
