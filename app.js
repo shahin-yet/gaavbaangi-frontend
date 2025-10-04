@@ -406,7 +406,7 @@ window.addEventListener('DOMContentLoaded', function () {
   }
 
   async function saveRefugePolygon(geojson, name) {
-    const base = window.BACKEND_BASE_URL || 'https://YOUR_USERNAME.pythonanywhere.com';
+    const base = window.BACKEND_BASE_URL;
     const res = await fetch(`${base}/api/refuges`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -421,7 +421,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
   async function loadAndRenderRefuges() {
     try {
-      const base = window.BACKEND_BASE_URL || 'https://YOUR_USERNAME.pythonanywhere.com';
+      const base = window.BACKEND_BASE_URL;
       const res = await fetch(`${base}/api/refuges`);
       const data = await res.json();
       if (data && Array.isArray(data.refuges)) {
