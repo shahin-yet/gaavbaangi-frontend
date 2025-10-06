@@ -446,6 +446,29 @@ window.addEventListener('DOMContentLoaded', function () {
     const setFirstMarker = (latlng) => {
       if (state.firstMarker) return;
       state.firstMarker = L.circleMarker(latlng, { radius: 5, color: '#1e90ff', fillColor: '#1e90ff', fillOpacity: 0.9 }).addTo(refugeLayerGroup);
+      // Enable closing by interacting directly with the first vertex marker on web
+      if (state.mode === 'web') {
+        const finishIfReady = async () => {
+          if (state.vertices.length >= 3) {
+            await saveRefugePolygon(state.vertices, state.setStatus);
+            teardownDrawing();
+          } else {
+            state.setStatus && state.setStatus('Need at least 3 points', 'error');
+          }
+        };
+        state.firstMarker.on('dblclick', (ev) => {
+          if (ev && ev.originalEvent) {
+            ev.originalEvent.preventDefault && ev.originalEvent.preventDefault();
+            ev.originalEvent.stopPropagation && ev.originalEvent.stopPropagation();
+          }
+          finishIfReady();
+        });
+        state.firstMarker.on('mouseover', () => {
+          if (state.vertices.length >= 3) {
+            state.setStatus && state.setStatus('Double-click to finish', 'info');
+          }
+        });
+      }
     };
 
     if (state.mode === 'telegram') {
