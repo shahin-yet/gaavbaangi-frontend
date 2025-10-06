@@ -42,6 +42,44 @@ window.addEventListener('DOMContentLoaded', function () {
   // Add satellite layer by default
   satellite.addTo(map);
 
+  // -----------------------------
+  // Refuge rendering layer group
+  // -----------------------------
+  const refugeLayerGroup = L.layerGroup().addTo(map);
+
+  async function loadAndRenderRefuges() {
+    try {
+      const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges`);
+      const data = await res.json();
+      if (data && data.status === 'success' && Array.isArray(data.refuges)) {
+        refugeLayerGroup.clearLayers();
+        data.refuges.forEach(r => {
+          try {
+            if (r && r.polygon && r.polygon.type === 'Polygon') {
+              // GeoJSON coordinates are [lng, lat]; Leaflet expects [lat, lng]
+              const latlngs = (r.polygon.coordinates || []).map(ring => ring.map(([lng, lat]) => [lat, lng]));
+              if (latlngs.length) {
+                const polygon = L.polygon(latlngs, {
+                  color: '#1e90ff',
+                  weight: 2,
+                  fillColor: '#1e90ff',
+                  fillOpacity: 0.15
+                });
+                polygon.addTo(refugeLayerGroup).bindPopup(r.name || 'Refuge');
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to render refuge', e);
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to load refuges', e);
+    }
+  }
+  // initial fetch
+  loadAndRenderRefuges();
+
   // Telegram-only: center-dot selector model (select by moving map under the dot)
   if (isTelegramWebApp) {
     let selectedLatLng = map.getCenter();
@@ -72,11 +110,12 @@ window.addEventListener('DOMContentLoaded', function () {
     map.doubleClickZoom && map.doubleClickZoom.disable();
 
     const applyCenterDoubleAction = () => {
-      if (window.__suppressCenterDoubleAction) return;
-      // Default behavior: zoom in using map center
-      map.zoomIn(1);
       const center = map.getCenter();
       const pixel = map.latLngToContainerPoint(center);
+      // If not suppressed, perform default zoom. Always dispatch event.
+      if (!window.__suppressCenterDoubleAction) {
+        map.zoomIn(1);
+      }
       // Dispatch a custom event in case the host app wants to consume it
       window.dispatchEvent(new CustomEvent('map-center-doubletap', {
         detail: { latlng: { lat: center.lat, lng: center.lng }, pixel }
@@ -190,8 +229,8 @@ window.addEventListener('DOMContentLoaded', function () {
       icon: 'fas fa-shield-alt',
       text: 'Refuge',
       action: function() {
-        alert('Refuge drawing. This feature will be implemented soon.');
         document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
+        startRefugeDrawing();
       }
     }
   ]);
@@ -263,4 +302,198 @@ window.addEventListener('DOMContentLoaded', function () {
       if (typeof handler === 'function') handler();
     });
   });
-}); 
+  // -----------------------------
+  // Refuge drawing logic
+  // -----------------------------
+  let drawing = null; // state holder when active
+
+  function createDrawingHud(onCancel) {
+    let hud = document.querySelector('.drawing-hud');
+    if (hud) hud.remove();
+    hud = document.createElement('div');
+    hud.className = 'drawing-hud';
+    hud.innerHTML = `
+      <div class="hud-row">
+        <div class="hud-title">
+          <span>Drawing refuge</span>
+          <span class="badge">Edit</span>
+        </div>
+        <button class="hud-cancel" title="Cancel" aria-label="Cancel drawing">✕</button>
+      </div>
+      <div class="hud-actions">
+        <button class="hud-edit" disabled>Edit</button>
+      </div>
+    `;
+    document.body.appendChild(hud);
+    hud.querySelector('.hud-cancel').addEventListener('click', () => {
+      onCancel && onCancel();
+    });
+    return hud;
+  }
+
+  function teardownDrawing() {
+    if (!drawing) return;
+    map.getContainer().style.cursor = '';
+    // Restore double-click zoom on web if it was previously enabled
+    if (drawing.mode === 'web' && map.doubleClickZoom && drawing.prevDoubleClickZoomEnabled) {
+      try { map.doubleClickZoom.enable(); } catch (e) {}
+    }
+    // Stop suppressing center double action on Telegram
+    if (drawing.mode === 'telegram') {
+      window.__suppressCenterDoubleAction = false;
+    }
+    if (drawing.mouseHandlers) {
+      drawing.mouseHandlers.forEach(({ evt, fn }) => map.off(evt, fn));
+    }
+    if (drawing.domHandlers) {
+      drawing.domHandlers.forEach(({ el, evt, fn, opts }) => el.removeEventListener(evt, fn, opts || false));
+    }
+    if (drawing.polyline) refugeLayerGroup.removeLayer(drawing.polyline);
+    if (drawing.firstMarker) refugeLayerGroup.removeLayer(drawing.firstMarker);
+    if (drawing.tempGuide) refugeLayerGroup.removeLayer(drawing.tempGuide);
+    const hud = document.querySelector('.drawing-hud');
+    if (hud) hud.remove();
+    const dot = document.querySelector('.map-center-dot');
+    if (dot) dot.classList.remove('near-first');
+    drawing = null;
+  }
+
+  async function saveRefugePolygon(latlngs) {
+    // Ensure closed ring and convert to GeoJSON lon/lat
+    const ring = latlngs.map(ll => [ll.lng, ll.lat]);
+    if (ring.length >= 3) {
+      const first = ring[0];
+      const last = ring[ring.length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) ring.push(first);
+    }
+    const name = prompt('Name this refuge:');
+    if (!name) return;
+    try {
+      const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, polygon: { type: 'Polygon', coordinates: [ring] } })
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        await loadAndRenderRefuges();
+        alert('Refuge saved');
+      } else {
+        alert('Failed to save refuge');
+      }
+    } catch (e) {
+      alert('Error saving refuge');
+    }
+  }
+
+  function startRefugeDrawing() {
+    if (drawing) teardownDrawing();
+    const hud = createDrawingHud(() => teardownDrawing());
+
+    const state = {
+      mode: isTelegramWebApp ? 'telegram' : 'web',
+      vertices: [], // array of L.LatLng
+      polyline: L.polyline([], { color: '#ff5722', weight: 2 }).addTo(refugeLayerGroup),
+      firstMarker: null,
+      tempGuide: null,
+      mouseHandlers: [],
+      domHandlers: [],
+      prevDoubleClickZoomEnabled: false,
+      lastTouchTime: 0
+    };
+    drawing = state;
+
+    const updatePolyline = () => {
+      state.polyline.setLatLngs(state.vertices);
+      if (state.vertices.length > 0) {
+        if (!state.tempGuide) {
+          state.tempGuide = L.polyline([], { color: '#ff5722', dashArray: '4,6', weight: 2 }).addTo(refugeLayerGroup);
+        }
+      }
+    };
+
+    const setFirstMarker = (latlng) => {
+      if (state.firstMarker) return;
+      state.firstMarker = L.circleMarker(latlng, { radius: 5, color: '#1e90ff', fillColor: '#1e90ff', fillOpacity: 0.9 }).addTo(refugeLayerGroup);
+    };
+
+    if (state.mode === 'telegram') {
+      // Telegram: tapping anywhere adds center point; double tap closes
+      const container = map.getContainer();
+      const onTouchEnd = (ev) => {
+        // Double-tap is handled globally; single tap adds vertex at center
+        const now = Date.now();
+        if (now - state.lastTouchTime < 280) {
+          state.lastTouchTime = 0; // treat as double-tap; skip adding vertex
+          return;
+        }
+        state.lastTouchTime = now;
+        const latlng = map.getCenter();
+        state.vertices.push(latlng);
+        setFirstMarker(state.vertices[0]);
+        updatePolyline();
+      };
+      const onMove = () => {
+        if (state.tempGuide && state.vertices.length > 0) {
+          state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], map.getCenter()]);
+        }
+        // proximity check to first vertex for center-dot highlight
+        const dot = document.querySelector('.map-center-dot');
+        if (dot && state.vertices.length >= 2) {
+          const first = state.vertices[0];
+          const center = map.getCenter();
+          const d = center.distanceTo(first);
+          if (d < 20) dot.classList.add('near-first'); else dot.classList.remove('near-first');
+        }
+      };
+      const onCenterDouble = () => {
+        if (state.vertices.length >= 3) {
+          // close polygon
+          saveRefugePolygon(state.vertices);
+          teardownDrawing();
+        }
+      };
+      container.addEventListener('touchend', onTouchEnd, { passive: false });
+      state.domHandlers.push({ el: container, evt: 'touchend', fn: onTouchEnd, opts: { passive: false } });
+      map.on('move', onMove); state.mouseHandlers.push({ evt: 'move', fn: onMove });
+      window.addEventListener('map-center-doubletap', onCenterDouble);
+      state.domHandlers.push({ el: window, evt: 'map-center-doubletap', fn: onCenterDouble });
+      // Suppress default zooming effect on double-tap while drawing
+      window.__suppressCenterDoubleAction = true;
+    } else {
+      // Web: click to add vertex at mouse, move shows guide, double-click to close
+      map.getContainer().style.cursor = 'crosshair';
+      // Temporarily disable double-click zoom to use it for closing polygon
+      if (map.doubleClickZoom && typeof map.doubleClickZoom.enabled === 'function') {
+        try {
+          state.prevDoubleClickZoomEnabled = map.doubleClickZoom.enabled();
+          if (state.prevDoubleClickZoomEnabled) map.doubleClickZoom.disable();
+        } catch (e) { state.prevDoubleClickZoomEnabled = false; }
+      }
+      const onClick = (ev) => {
+        const latlng = ev.latlng;
+        state.vertices.push(latlng);
+        setFirstMarker(state.vertices[0]);
+        updatePolyline();
+      };
+      const onMouseMove = (ev) => {
+        if (state.tempGuide && state.vertices.length > 0) {
+          state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], ev.latlng]);
+        }
+      };
+      const onDblClick = () => {
+        if (state.vertices.length >= 3) {
+          saveRefugePolygon(state.vertices);
+          teardownDrawing();
+        }
+      };
+      map.on('click', onClick); state.mouseHandlers.push({ evt: 'click', fn: onClick });
+      map.on('mousemove', onMouseMove); state.mouseHandlers.push({ evt: 'mousemove', fn: onMouseMove });
+      map.on('dblclick', onDblClick); state.mouseHandlers.push({ evt: 'dblclick', fn: onDblClick });
+    }
+  }
+
+  // expose for other modules if needed
+  window.startRefugeDrawing = startRefugeDrawing;
+
+});
