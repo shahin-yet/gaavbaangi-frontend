@@ -532,15 +532,11 @@ body {
 .drawing-hud .hud-status.status-error { color: #b81e1e; }
 .drawing-hud .hud-status.status-success { color: #1b7f39; }
 
-/* Force crosshair on Leaflet map at all times (prevent hand/grab cursors) */
-.leaflet-container,
-.leaflet-container .leaflet-pane,
-.leaflet-container .leaflet-pane *,
-.leaflet-grab,
-.leaflet-interactive,
-.leaflet-dragging,
-.leaflet-dragging .leaflet-container,
-.leaflet-dragging .leaflet-grab,
-.leaflet-dragging .leaflet-interactive {
-  cursor: crosshair !important;
+/* Allow default Leaflet cursor behavior (hand/grab cursor for panning) */
+.leaflet-container {
+  cursor: grab;
+}
+
+.leaflet-dragging .leaflet-container {
+  cursor: grabbing;
 }
