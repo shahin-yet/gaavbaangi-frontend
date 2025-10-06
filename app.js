@@ -363,6 +363,26 @@ window.addEventListener('DOMContentLoaded', function () {
     drawing = null;
   }
 
+  function setDrawingCursor(cursorType) {
+    if (!drawing) return;
+    const container = map.getContainer();
+    switch (cursorType) {
+      case 'cross':
+        container.style.cursor = 'crosshair';
+        break;
+      case 'grab':
+        container.style.cursor = 'grab';
+        break;
+      case 'grabbing':
+        container.style.cursor = 'grabbing';
+        break;
+      case 'default':
+      default:
+        container.style.cursor = '';
+        break;
+    }
+  }
+
   async function saveRefugePolygon(latlngs, setStatus) {
     // Ensure closed ring and convert to GeoJSON lon/lat
     const ring = latlngs.map(ll => [ll.lng, ll.lat]);
@@ -429,6 +449,8 @@ window.addEventListener('DOMContentLoaded', function () {
 
     if (state.mode === 'telegram') {
       // Telegram: tapping anywhere adds center point; double tap closes
+      // Use crosshair cursor during drawing
+      setDrawingCursor('cross');
       const container = map.getContainer();
       state.touchStart = { x: 0, y: 0, t: 0 };
       state.touchMoved = false;
@@ -498,6 +520,8 @@ window.addEventListener('DOMContentLoaded', function () {
           const first = state.vertices[0];
           const d = center.distanceTo(first);
           if (d <= NEAR_FIRST_THRESHOLD_M) {
+            // Show grab cursor when double-tap is done and still holding
+            setDrawingCursor('grab');
             // close polygon
             await saveRefugePolygon(state.vertices, state.setStatus);
             teardownDrawing();
@@ -519,8 +543,8 @@ window.addEventListener('DOMContentLoaded', function () {
       window.__suppressCenterDoubleAction = true;
     } else {
       // Web: click to add vertex at mouse, move shows guide, double-click to close
-      // Use a cross mark cursor initially during drawing
-      map.getContainer().style.cursor = 'crosshair';
+      // Use crosshair cursor during drawing
+      setDrawingCursor('cross');
       // Temporarily disable double-click zoom to use it for closing polygon
       if (map.doubleClickZoom && typeof map.doubleClickZoom.enabled === 'function') {
         try {
@@ -533,10 +557,6 @@ window.addEventListener('DOMContentLoaded', function () {
         state.vertices.push(latlng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
-        // Change cursor to hand grab after first vertex is added
-        if (state.vertices.length === 1) {
-          map.getContainer().style.cursor = 'grab';
-        }
         state.setStatus && state.setStatus('Click to add vertex. Double-click to grab map.', 'info');
       };
       const onMouseMove = (ev) => {
@@ -546,11 +566,9 @@ window.addEventListener('DOMContentLoaded', function () {
       };
       const onDblClick = async () => {
         if (state.vertices.length >= 3) {
-          // Show grabbing cursor during double-click
-          map.getContainer().style.cursor = 'grabbing';
+          // Show grab cursor when double-click is done and still holding
+          setDrawingCursor('grab');
           await saveRefugePolygon(state.vertices, state.setStatus);
-          // Restore hand cursor for map panning after finishing
-          map.getContainer().style.cursor = 'grab';
           teardownDrawing();
         } else {
           state.setStatus && state.setStatus('Need at least 3 points', 'error');
