@@ -371,10 +371,9 @@ window.addEventListener('DOMContentLoaded', function () {
         container.style.cursor = 'crosshair';
         break;
       case 'grab':
-        container.style.cursor = 'grab';
-        break;
       case 'grabbing':
-        container.style.cursor = 'grabbing';
+        // Enforce crosshair even if asked for grab/grabbing
+        container.style.cursor = 'crosshair';
         break;
       case 'default':
       default:
@@ -522,8 +521,8 @@ window.addEventListener('DOMContentLoaded', function () {
           const first = state.vertices[0];
           const d = center.distanceTo(first);
           if (d <= NEAR_FIRST_THRESHOLD_M) {
-            // Show grab cursor when double-tap is done and still holding
-            setDrawingCursor('grab');
+            // Do not show hand; keep crosshair
+            setDrawingCursor('cross');
             // close polygon
             await saveRefugePolygon(state.vertices, state.setStatus);
             teardownDrawing();
@@ -591,7 +590,8 @@ window.addEventListener('DOMContentLoaded', function () {
         // Only show grab cursor if this is actually a double-click (within 300ms) AND we have enough vertices
         if (timeSinceLastClick < 300 && state.vertices.length >= 3) {
           isDoubleClickHolding = true;
-          setDrawingCursor('grab');
+          // Keep crosshair; no hand cursor at all
+          setDrawingCursor('cross');
         } else {
           // For single clicks, ensure cross cursor
           setDrawingCursor('cross');
