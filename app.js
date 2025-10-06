@@ -27,6 +27,31 @@ window.addEventListener('DOMContentLoaded', function () {
     zoomControl: !isTelegramWebApp // Hide zoom controls in Telegram
   });
 
+  // Enforce crosshair cursor at all times on the map, including while dragging
+  (function enforceCrosshairCursor() {
+    try {
+      const styleEl = document.createElement('style');
+      styleEl.textContent = `
+        .leaflet-container, .leaflet-container *,
+        .leaflet-grab, .leaflet-dragging .leaflet-grab,
+        .leaflet-dragging .leaflet-interactive,
+        .leaflet-dragging, html.leaflet-dragging, body.leaflet-dragging {
+          cursor: crosshair !important;
+        }
+      `;
+      document.head.appendChild(styleEl);
+      const container = map.getContainer();
+      const force = () => container.style.setProperty('cursor', 'crosshair', 'important');
+      // DOM events on container
+      ['mouseenter','mouseleave','mousedown','mouseup','mousemove'].forEach(evt => {
+        container.addEventListener(evt, force, { passive: true });
+      });
+      // Leaflet map events during pan
+      ['movestart','move','moveend'].forEach(evt => map.on(evt, force));
+      force();
+    } catch (_) { /* noop */ }
+  })();
+
   // Terrain layer (OpenTopoMap)
   const terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
     maxZoom: 17,
