@@ -20,9 +20,9 @@ window.addEventListener('DOMContentLoaded', function () {
   const isMobileUA = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent || '');
   const isMobile = isTelegramMobile || isCoarsePointer || isTouchCapable || isMobileUA;
   
-  // Apply center-dot only on Telegram Mobile; remove dot otherwise
+  // Apply center-dot and mobile UX on any mobile device; remove dot otherwise
   const centerDotEl = document.querySelector('.map-center-dot');
-  if (isTelegramMobile) {
+  if (isMobile) {
     document.body.classList.add('telegram-webapp');
     if (centerDotEl) centerDotEl.style.display = 'block';
   } else {
@@ -89,8 +89,8 @@ window.addEventListener('DOMContentLoaded', function () {
   // initial fetch
   loadAndRenderRefuges();
 
-  // Telegram Mobile: center-dot selector model (select by moving map under the dot)
-  if (isTelegramMobile) {
+  // Mobile: center-dot selector model (select by moving map under the dot)
+  if (isMobile) {
     let selectedLatLng = map.getCenter();
     const updateSelected = () => {
       selectedLatLng = map.getCenter();
@@ -321,7 +321,7 @@ window.addEventListener('DOMContentLoaded', function () {
     if (hud) hud.remove();
     hud = document.createElement('div');
     hud.className = 'drawing-hud';
-    const initialMsg = isTelegramWebApp
+    const initialMsg = isMobile
       ? 'Tap to add vertex. Double-tap near first point to finish.'
       : 'Click to add vertex. Double-click near first point to finish.';
     hud.innerHTML = `
@@ -427,7 +427,7 @@ window.addEventListener('DOMContentLoaded', function () {
     const hudApi = createDrawingHud(() => teardownDrawing());
 
     const state = {
-      mode: isTelegramMobile ? 'telegram' : 'web',
+      mode: isMobile ? 'telegram' : 'web',
       vertices: [], // array of L.LatLng
       polyline: L.polyline([], { color: '#ff5722', weight: 2 }).addTo(refugeLayerGroup),
       firstMarker: null,
