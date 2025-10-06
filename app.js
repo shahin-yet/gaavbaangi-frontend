@@ -27,9 +27,6 @@ window.addEventListener('DOMContentLoaded', function () {
     zoomControl: !isTelegramWebApp // Hide zoom controls in Telegram
   });
 
-  // Allow default Leaflet cursor behavior (hand/grab cursor)
-  // Removed crosshair enforcement to allow natural grab/grabbing cursors
-
   // Terrain layer (OpenTopoMap)
   const terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
     maxZoom: 17,
