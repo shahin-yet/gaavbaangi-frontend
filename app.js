@@ -427,7 +427,7 @@ window.addEventListener('DOMContentLoaded', function () {
     const hudApi = createDrawingHud(() => teardownDrawing());
 
     const state = {
-      mode: isTelegramWebApp ? 'telegram' : 'web',
+      mode: isTelegramMobile ? 'telegram' : 'web',
       vertices: [], // array of L.LatLng
       polyline: L.polyline([], { color: '#ff5722', weight: 2 }).addTo(refugeLayerGroup),
       firstMarker: null,
@@ -457,7 +457,7 @@ window.addEventListener('DOMContentLoaded', function () {
     const setFirstMarker = (latlng) => {
       if (state.firstMarker) return;
       state.firstMarker = L.circleMarker(latlng, { radius: 5, color: '#1e90ff', fillColor: '#1e90ff', fillOpacity: 0.9 }).addTo(refugeLayerGroup);
-      // Enable closing by interacting directly with the first vertex marker on web
+      // Enable closing by interacting directly with the first vertex marker
       if (state.mode === 'web') {
         const finishIfReady = async () => {
           if (state.vertices.length >= 3) {
@@ -474,9 +474,58 @@ window.addEventListener('DOMContentLoaded', function () {
           }
           finishIfReady();
         });
+        // Touch double-tap on marker for mobile web
+        let markerLastTouchTime = 0;
+        state.firstMarker.on('touchstart', () => {
+          if (state.vertices.length >= 3) {
+            state.setStatus && state.setStatus('Double-tap to finish', 'info');
+          }
+        });
+        state.firstMarker.on('touchend', async (ev) => {
+          const now = Date.now();
+          if (ev && ev.originalEvent) {
+            ev.originalEvent.preventDefault && ev.originalEvent.preventDefault();
+            ev.originalEvent.stopPropagation && ev.originalEvent.stopPropagation();
+          }
+          if (now - markerLastTouchTime < 280) {
+            markerLastTouchTime = 0;
+            await finishIfReady();
+          } else {
+            markerLastTouchTime = now;
+          }
+        });
         state.firstMarker.on('mouseover', () => {
           if (state.vertices.length >= 3) {
             state.setStatus && state.setStatus('Double-click to finish', 'info');
+          }
+        });
+      } else {
+        // Telegram mobile: allow double-tap directly on the marker to finish (ignore center proximity)
+        const finishIfReadyTg = async () => {
+          if (state.vertices.length >= 3) {
+            await saveRefugePolygon(state.vertices, state.setStatus);
+            teardownDrawing();
+          } else {
+            state.setStatus && state.setStatus('Need at least 3 points', 'error');
+          }
+        };
+        let markerLastTouchTimeTg = 0;
+        state.firstMarker.on('touchstart', () => {
+          if (state.vertices.length >= 3) {
+            state.setStatus && state.setStatus('Double-tap to finish', 'info');
+          }
+        });
+        state.firstMarker.on('touchend', async (ev) => {
+          const now = Date.now();
+          if (ev && ev.originalEvent) {
+            ev.originalEvent.preventDefault && ev.originalEvent.preventDefault();
+            ev.originalEvent.stopPropagation && ev.originalEvent.stopPropagation();
+          }
+          if (now - markerLastTouchTimeTg < 280) {
+            markerLastTouchTimeTg = 0;
+            await finishIfReadyTg();
+          } else {
+            markerLastTouchTimeTg = now;
           }
         });
       }
