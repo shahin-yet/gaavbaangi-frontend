@@ -312,6 +312,9 @@ window.addEventListener('DOMContentLoaded', function () {
     if (hud) hud.remove();
     hud = document.createElement('div');
     hud.className = 'drawing-hud';
+    const initialMsg = isTelegramWebApp
+      ? 'Tap to add vertex. Double-tap near first point to finish.'
+      : 'Click to add vertex. Double-click to grab map.';
     hud.innerHTML = `
       <div class="hud-row">
         <div class="hud-title">
@@ -319,7 +322,7 @@ window.addEventListener('DOMContentLoaded', function () {
         </div>
         <button class="hud-cancel" title="Cancel" aria-label="Cancel drawing">✕</button>
       </div>
-      <div class="hud-status status-info">Tap to add points. Double-tap near first point to finish.</div>
+      <div class="hud-status status-info">${initialMsg}</div>
     `;
     document.body.appendChild(hud);
     hud.querySelector('.hud-cancel').addEventListener('click', () => { onCancel && onCancel(); });
@@ -469,7 +472,7 @@ window.addEventListener('DOMContentLoaded', function () {
         state.vertices.push(latlng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
-        state.setStatus && state.setStatus('Tap to add points. Double-tap near first point to finish.', 'info');
+        state.setStatus && state.setStatus('Tap to add vertex. Double-tap near first point to finish.', 'info');
       };
       const onMove = () => {
         if (state.tempGuide && state.vertices.length > 0) {
@@ -483,7 +486,7 @@ window.addEventListener('DOMContentLoaded', function () {
           const d = center.distanceTo(first);
           if (d <= NEAR_FIRST_THRESHOLD_M) {
             dot.classList.add('near-first');
-            if (state.vertices.length >= 3) state.setStatus && state.setStatus('Double-tap to close', 'info');
+            if (state.vertices.length >= 3) state.setStatus && state.setStatus('Double-tap to finish', 'info');
           } else {
             dot.classList.remove('near-first');
           }
@@ -530,7 +533,7 @@ window.addEventListener('DOMContentLoaded', function () {
         state.vertices.push(latlng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
-        state.setStatus && state.setStatus('Click to add points. Double-click to finish.', 'info');
+        state.setStatus && state.setStatus('Click to add vertex. Double-click to grab map.', 'info');
       };
       const onMouseMove = (ev) => {
         if (state.tempGuide && state.vertices.length > 0) {
