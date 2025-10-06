@@ -108,14 +108,8 @@ window.addEventListener('DOMContentLoaded', function () {
       if (now - lastTapTime < 300) {
         ev.preventDefault();
         ev.stopPropagation();
-        // During refuge drawing, route double-tap to Leaflet dblclick so drawing logic runs
-        if (typeof refugeDrawingActive !== 'undefined' && refugeDrawingActive) {
-          window.__suppressCenterDoubleAction = true;
-          map.fire('dblclick');
-          setTimeout(() => { window.__suppressCenterDoubleAction = false; }, 250);
-        } else {
-          applyCenterDoubleAction();
-        }
+        // Route double-tap through center-double action; drawing mode will handle closure
+        applyCenterDoubleAction();
         lastTapTime = 0;
       } else {
         lastTapTime = now;
@@ -357,13 +351,20 @@ window.addEventListener('DOMContentLoaded', function () {
       }
     };
 
-    // Double click near first vertex closes the polygon (backup for center-dot/keyboard-only)
-    const isNearFirstVertex = () => {
+    // Proximity checks for closing near the first vertex
+    const isNearFirstVertexCenter = () => {
       if (refugeVertices.length < 3) return false;
       const first = refugeVertices[0];
       const c = getMapCenterLatLng();
       const distMeters = map.distance(L.latLng(first[0], first[1]), c);
-      return distMeters < 25; // threshold in meters
+      return distMeters < 50; // threshold in meters (wider for mobile)
+    };
+
+    const isNearFirstVertexLatLng = (latlng) => {
+      if (refugeVertices.length < 3 || !latlng) return false;
+      const first = refugeVertices[0];
+      const distMeters = map.distance(L.latLng(first[0], first[1]), latlng);
+      return distMeters < 50; // same threshold
     };
 
     const finalizePolygon = () => {
@@ -394,7 +395,9 @@ window.addEventListener('DOMContentLoaded', function () {
 
     const onDoubleClick = (e) => {
       e && e.originalEvent && (e.originalEvent.preventDefault && e.originalEvent.preventDefault());
-      if (isNearFirstVertex()) {
+      if (e && e.latlng && isNearFirstVertexLatLng(e.latlng)) {
+        finalizePolygon();
+      } else if (isNearFirstVertexCenter()) {
         finalizePolygon();
       } else {
         // Not near start: treat as adding a vertex and continue
@@ -402,11 +405,23 @@ window.addEventListener('DOMContentLoaded', function () {
       }
     };
 
+    // Center double-tap integration (Telegram/WebApp): close when center is near first vertex
+    let centerDoubleHandler = (evt) => {
+      if (!refugeDrawingActive) return;
+      if (isNearFirstVertexCenter()) {
+        finalizePolygon();
+      } else {
+        addVertexAtCenter();
+      }
+    };
+    window.addEventListener('map-center-doubletap', centerDoubleHandler);
+
     function stopRefugeDrawing() {
       refugeDrawingActive = false;
       map.off('click', onMapClick);
       map.off('move', onMapMove);
       map.off('dblclick', onDoubleClick);
+      window.removeEventListener('map-center-doubletap', centerDoubleHandler);
       // Keep the final polygon on map; clear transient state
       refugeVertices = [];
       if (refugePolyline) { map.removeLayer(refugePolyline); refugePolyline = null; }
