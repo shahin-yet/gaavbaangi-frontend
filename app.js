@@ -442,7 +442,7 @@ window.addEventListener('DOMContentLoaded', function () {
     };
     drawing = state;
 
-    const NEAR_FIRST_THRESHOLD_M = 40; // proximity to first point to allow close (Telegram center mode)
+    const NEAR_FIRST_THRESHOLD_PX_TG = 30; // pixel radius for proximity on Telegram mobile
     const NEAR_FIRST_THRESHOLD_PX = 24; // pixel radius for mouse proximity on web
 
     const updatePolyline = () => {
@@ -591,8 +591,11 @@ window.addEventListener('DOMContentLoaded', function () {
         if (dot && state.vertices.length >= 2) {
           const first = state.vertices[0];
           const center = map.getCenter();
-          const d = center.distanceTo(first);
-          if (d <= NEAR_FIRST_THRESHOLD_M) {
+          const pFirst = map.latLngToContainerPoint(first);
+          const pCenter = map.latLngToContainerPoint(center);
+          const dx = pCenter.x - pFirst.x;
+          const dy = pCenter.y - pFirst.y;
+          if ((dx * dx + dy * dy) <= (NEAR_FIRST_THRESHOLD_PX_TG * NEAR_FIRST_THRESHOLD_PX_TG)) {
             dot.classList.add('near-first');
             if (state.vertices.length >= 3) state.setStatus && state.setStatus('Double-tap to finish', 'info');
           } else {
@@ -604,8 +607,11 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.vertices.length >= 3) {
           const center = map.getCenter();
           const first = state.vertices[0];
-          const d = center.distanceTo(first);
-          if (d <= NEAR_FIRST_THRESHOLD_M) {
+          const pFirst = map.latLngToContainerPoint(first);
+          const pCenter = map.latLngToContainerPoint(center);
+          const dx = pCenter.x - pFirst.x;
+          const dy = pCenter.y - pFirst.y;
+          if ((dx * dx + dy * dy) <= (NEAR_FIRST_THRESHOLD_PX_TG * NEAR_FIRST_THRESHOLD_PX_TG)) {
             // Keep crosshair cursor
             setDrawingCursor('cross');
             // close polygon
