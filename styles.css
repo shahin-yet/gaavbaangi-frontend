@@ -532,11 +532,11 @@ body {
 .drawing-hud .hud-status.status-error { color: #b81e1e; }
 .drawing-hud .hud-status.status-success { color: #1b7f39; }
 
-/* Allow default Leaflet cursor behavior (hand/grab cursor for panning) */
+/* Use default cursor (arrow) on the map */
 .leaflet-container {
-  cursor: grab;
+  cursor: default;
 }
 
 .leaflet-dragging .leaflet-container {
-  cursor: grabbing;
+  cursor: default;
 }
