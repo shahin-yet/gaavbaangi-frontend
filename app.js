@@ -469,7 +469,7 @@ window.addEventListener('DOMContentLoaded', function () {
         state.vertices.push(latlng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
-        state.setStatus && state.setStatus(`Points: ${state.vertices.length}`, 'info');
+        state.setStatus && state.setStatus('Tap to add points. Double-tap near first point to finish.', 'info');
       };
       const onMove = () => {
         if (state.tempGuide && state.vertices.length > 0) {
@@ -529,7 +529,7 @@ window.addEventListener('DOMContentLoaded', function () {
         state.vertices.push(latlng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
-        state.setStatus && state.setStatus(`Points: ${state.vertices.length}`, 'info');
+        state.setStatus && state.setStatus('Click to add points. Double-click to finish.', 'info');
       };
       const onMouseMove = (ev) => {
         if (state.tempGuide && state.vertices.length > 0) {
