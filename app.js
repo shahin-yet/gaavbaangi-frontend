@@ -11,43 +11,18 @@ window.addEventListener('DOMContentLoaded', function () {
     return hasSignedData && hasIdentity;
   })();
 
-  // Block Telegram Desktop/Web Telegram from using the WebApp; allow only mobile Telegram
+  // Telegram environment and device detection
   const tgWa = window.Telegram && window.Telegram.WebApp;
   const tgPlatform = tgWa && typeof tgWa.platform === 'string' ? tgWa.platform.toLowerCase() : '';
-  const isTelegramDesktopOrWeb = !!tgWa && (
-    tgPlatform === 'tdesktop' || tgPlatform === 'macos' || tgPlatform === 'web' || tgPlatform === 'weba' || tgPlatform === 'universal'
-  );
-
-  const renderBlockingOverlay = (message) => {
-    const overlay = document.createElement('div');
-    overlay.style.position = 'fixed';
-    overlay.style.inset = '0';
-    overlay.style.background = '#ffffff';
-    overlay.style.zIndex = '99999';
-    overlay.style.display = 'flex';
-    overlay.style.alignItems = 'center';
-    overlay.style.justifyContent = 'center';
-    overlay.style.padding = '24px';
-    overlay.style.textAlign = 'center';
-    overlay.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
-    overlay.style.color = '#111';
-    overlay.innerHTML = `<div style="max-width:640px;">
-      <div style="font-size:20px; font-weight:600; margin-bottom:12px;">Unsupported platform</div>
-      <div style="font-size:16px; line-height:1.5;">${message}</div>
-    </div>`;
-    document.body.appendChild(overlay);
-  };
-
-  // Block any Telegram bot/WebApp context entirely
-  if (tgWa) {
-    renderBlockingOverlay('This app is not available inside Telegram. Please open it in a regular mobile or desktop browser (not via a bot).');
-    try { tgWa.close && tgWa.close(); } catch (e) {}
-    return; // stop initializing the app
-  }
+  const isTelegramMobile = !!tgWa && (tgPlatform === 'android' || tgPlatform === 'ios');
+  const isCoarsePointer = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || false;
+  const isTouchCapable = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+  const isMobileUA = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent || '');
+  const isMobile = isTelegramMobile || isCoarsePointer || isTouchCapable || isMobileUA;
   
-  // Apply Telegram-specific styling and dot only in Telegram; remove dot in web
+  // Apply center-dot only on Telegram Mobile; remove dot otherwise
   const centerDotEl = document.querySelector('.map-center-dot');
-  if (isTelegramWebApp) {
+  if (isTelegramMobile) {
     document.body.classList.add('telegram-webapp');
     if (centerDotEl) centerDotEl.style.display = 'block';
   } else {
@@ -58,7 +33,7 @@ window.addEventListener('DOMContentLoaded', function () {
   const map = L.map('map', {
     center: [20.5937, 78.9629], // Centered on India as an example
     zoom: 5,
-    zoomControl: !isTelegramWebApp // Hide zoom controls in Telegram
+    zoomControl: !isMobile // Hide zoom controls on mobile
   });
 
   // Terrain layer (OpenTopoMap)
@@ -114,8 +89,8 @@ window.addEventListener('DOMContentLoaded', function () {
   // initial fetch
   loadAndRenderRefuges();
 
-  // Telegram-only: center-dot selector model (select by moving map under the dot)
-  if (isTelegramWebApp) {
+  // Telegram Mobile: center-dot selector model (select by moving map under the dot)
+  if (isTelegramMobile) {
     let selectedLatLng = map.getCenter();
     const updateSelected = () => {
       selectedLatLng = map.getCenter();
@@ -461,6 +436,8 @@ window.addEventListener('DOMContentLoaded', function () {
       domHandlers: [],
       prevDoubleClickZoomEnabled: false,
       lastTouchTime: 0,
+      suppressNextDblClick: false,
+      isClosing: false,
       setStatus: hudApi.setStatus
     };
     drawing = state;
@@ -673,6 +650,10 @@ window.addEventListener('DOMContentLoaded', function () {
           // Return to cross cursor after releasing
           setDrawingCursor('cross');
           // Complete the polygon
+          if (state.isClosing) { isDoubleClickHolding = false; return; }
+          state.isClosing = true;
+          state.suppressNextDblClick = true;
+          setTimeout(() => { state.suppressNextDblClick = false; }, 350);
           saveRefugePolygon(state.vertices, state.setStatus).then(() => {
             teardownDrawing();
           });
@@ -684,9 +665,11 @@ window.addEventListener('DOMContentLoaded', function () {
       };
 
       const onDblClick = async (ev) => {
+        if (state.suppressNextDblClick || state.isClosing) return;
         // Handle double-click completion (fallback)
         if (state.vertices.length >= 3) {
           if (isNearFirst(ev && ev.latlng)) {
+            state.isClosing = true;
             await saveRefugePolygon(state.vertices, state.setStatus);
             teardownDrawing();
           } else {
