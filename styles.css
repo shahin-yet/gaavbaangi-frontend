@@ -124,15 +124,6 @@ body {
   padding: 0;
 }
 
-/* Use dynamic viewport height on modern mobile browsers to avoid URL bar overlap */
-@supports (height: 100dvh) {
-  .main-content,
-  .map-container,
-  #map {
-    height: 100dvh;
-  }
-}
-
 .map-controls {
   padding: var(--spacing-6);
   display: flex;
@@ -320,16 +311,13 @@ body {
 
 /* Telegram Web App Specific Styles */
 .telegram-webapp .map-toolbar {
-  bottom: calc(12px + env(safe-area-inset-bottom));
-  left: calc(12px + env(safe-area-inset-left));
-  right: calc(12px + env(safe-area-inset-right));
-  background: rgba(255,255,255,0.98);
-  padding: 10px 12px;
-  justify-content: space-between;
+  bottom: 16px; /* Adjust for Telegram's bottom bar */
+  left: 16px;
+  background: rgba(255,255,255,0.98); /* More opaque for better visibility */
 }
 
 .telegram-webapp .option-panel {
-  bottom: calc(110% + env(safe-area-inset-bottom));
+  bottom: 110%; /* Adjust position for Telegram */
 }
 
 /* Hide zoom controls in Telegram */
@@ -436,10 +424,6 @@ body {
   flex-direction: column;
 }
 
-.telegram-webapp .side-panel {
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
 .side-panel.show { transform: translateX(0); }
 
 .side-panel-header {
@@ -494,13 +478,7 @@ body {
 
 .menu-item.active i { color: var(--primary-dark); }
 
-/* Larger touch targets for bottom app bar on phones */
-.telegram-webapp .map-toolbar .control-btn {
-  width: 48px;
-  height: 48px;
-}
-
-.telegram-webapp .fab-menu { bottom: calc(16px + env(safe-area-inset-bottom)); right: calc(16px + env(safe-area-inset-right)); }
+.telegram-webapp .fab-menu { bottom: 16px; right: 16px; }
 
 /* Drawing HUD (top-right) */
 .drawing-hud {
