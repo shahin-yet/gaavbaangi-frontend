@@ -533,11 +533,10 @@ window.addEventListener('DOMContentLoaded', function () {
 
     if (state.mode === 'telegram') {
       // Telegram: tapping anywhere adds center point; double tap closes
-      // Use crosshair cursor during drawing
-      setDrawingCursor('cross');
-      // Ensure crosshair cursor appears
-      map.getContainer().style.cursor = 'crosshair';
+      // Use circular on-screen selector (hide OS cursor)
+      setDrawingCursor('default');
       const container = map.getContainer();
+      container.style.cursor = 'none';
       state.touchStart = { x: 0, y: 0, t: 0 };
       state.touchMoved = false;
       const TAP_MOVE_THRESHOLD_PX = 8;
@@ -612,8 +611,9 @@ window.addEventListener('DOMContentLoaded', function () {
           const dx = pCenter.x - pFirst.x;
           const dy = pCenter.y - pFirst.y;
           if ((dx * dx + dy * dy) <= (NEAR_FIRST_THRESHOLD_PX_TG * NEAR_FIRST_THRESHOLD_PX_TG)) {
-            // Keep crosshair cursor
-            setDrawingCursor('cross');
+            // Keep circular selector (no OS cursor)
+            setDrawingCursor('default');
+            container.style.cursor = 'none';
             // close polygon
             await saveRefugePolygon(state.vertices, state.setStatus);
             teardownDrawing();
