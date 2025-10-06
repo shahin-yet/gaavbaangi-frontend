@@ -431,7 +431,7 @@ window.addEventListener('DOMContentLoaded', function () {
     };
     drawing = state;
 
-    const NEAR_FIRST_THRESHOLD_M = 20; // proximity to first point to allow close (Telegram center mode)
+    const NEAR_FIRST_THRESHOLD_M = 40; // proximity to first point to allow close (Telegram center mode)
     const NEAR_FIRST_THRESHOLD_PX = 24; // pixel radius for mouse proximity on web
 
     const updatePolyline = () => {
@@ -590,7 +590,7 @@ window.addEventListener('DOMContentLoaded', function () {
       };
       const onClick = (ev) => {
         // Only process click if not in double-click holding mode
-        if (!isDoubleClickHolding) {
+        if (!isDoubleClickHolding && !suppressNextClick) {
           const latlng = ev.latlng;
           state.vertices.push(latlng);
           setFirstMarker(state.vertices[0]);
@@ -618,6 +618,9 @@ window.addEventListener('DOMContentLoaded', function () {
       
       let lastClickTime = 0;
       let isDoubleClickHolding = false;
+      let suppressNextClick = false; // prevent duplicate vertex from touch generating a synthetic click
+      let lastTouchTimeWeb = 0;
+      const container = map.getContainer();
 
       const onMouseDown = (ev) => {
         const now = Date.now();
@@ -659,11 +662,84 @@ window.addEventListener('DOMContentLoaded', function () {
           state.setStatus && state.setStatus('Need at least 3 points', 'error');
         }
       };
+
+      // Touch support on mobile browsers (outside Telegram)
+      const TAP_MOVE_THRESHOLD_PX_WEB = 8;
+      let touchStartPt = { x: 0, y: 0 };
+      let touchMovedWeb = false;
+      const getTouchInfo = (e) => {
+        const t = (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]) || null;
+        if (!t) return null;
+        const rect = container.getBoundingClientRect();
+        const x = t.clientX - rect.left;
+        const y = t.clientY - rect.top;
+        const latlng = map.containerPointToLatLng(L.point(x, y));
+        return { x, y, latlng };
+      };
+      const onTouchStartWeb = (ev) => {
+        const info = getTouchInfo(ev);
+        if (!info) return;
+        touchStartPt = { x: info.x, y: info.y };
+        touchMovedWeb = false;
+      };
+      const onTouchMoveWeb = (ev) => {
+        const info = getTouchInfo(ev);
+        if (!info) return;
+        const dx = info.x - touchStartPt.x;
+        const dy = info.y - touchStartPt.y;
+        if ((dx * dx + dy * dy) > (TAP_MOVE_THRESHOLD_PX_WEB * TAP_MOVE_THRESHOLD_PX_WEB)) {
+          touchMovedWeb = true;
+        }
+        if (state.tempGuide && state.vertices.length > 0) {
+          state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], info.latlng]);
+        }
+      };
+      const onTouchEndWeb = async (ev) => {
+        const now = Date.now();
+        const info = getTouchInfo(ev);
+        if (!info) return;
+        // Prevent the synthetic click Leaflet may emit
+        ev.preventDefault && ev.preventDefault();
+        ev.stopPropagation && ev.stopPropagation();
+        if (touchMovedWeb) return; // treat as pan/drag
+
+        if (now - lastTouchTimeWeb < 280) {
+          // Double-tap: attempt to finish if near first
+          lastTouchTimeWeb = 0;
+          if (state.vertices.length >= 3) {
+            if (isNearFirst(info.latlng)) {
+              await saveRefugePolygon(state.vertices, state.setStatus);
+              teardownDrawing();
+            } else {
+              state.setStatus && state.setStatus('Move near first point to close', 'error');
+            }
+          } else {
+            state.setStatus && state.setStatus('Need at least 3 points', 'error');
+          }
+        } else {
+          // Single tap: add vertex at touch point
+          lastTouchTimeWeb = now;
+          suppressNextClick = true;
+          setTimeout(() => { suppressNextClick = false; }, 350);
+          state.vertices.push(info.latlng);
+          setFirstMarker(state.vertices[0]);
+          updatePolyline();
+          setDrawingCursor('cross');
+          state.setStatus && state.setStatus('Tap to add vertex. Double-tap near first point to finish.', 'info');
+        }
+      };
       map.on('click', onClick); state.mouseHandlers.push({ evt: 'click', fn: onClick });
       map.on('mousemove', onMouseMove); state.mouseHandlers.push({ evt: 'mousemove', fn: onMouseMove });
       map.on('mousedown', onMouseDown); state.mouseHandlers.push({ evt: 'mousedown', fn: onMouseDown });
       map.on('mouseup', onMouseUp); state.mouseHandlers.push({ evt: 'mouseup', fn: onMouseUp });
       map.on('dblclick', onDblClick); state.mouseHandlers.push({ evt: 'dblclick', fn: onDblClick });
+      // Touch listeners on container for mobile web
+      container.addEventListener('touchstart', onTouchStartWeb, { passive: false });
+      state.domHandlers.push({ el: container, evt: 'touchstart', fn: onTouchStartWeb, opts: { passive: false } });
+      container.addEventListener('touchmove', onTouchMoveWeb, { passive: false });
+      state.domHandlers.push({ el: container, evt: 'touchmove', fn: onTouchMoveWeb, opts: { passive: false } });
+      container.addEventListener('touchend', onTouchEndWeb, { passive: false });
+      state.domHandlers.push({ el: container, evt: 'touchend', fn: onTouchEndWeb, opts: { passive: false } });
     }
   }
 
