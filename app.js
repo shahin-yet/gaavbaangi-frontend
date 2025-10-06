@@ -557,28 +557,38 @@ window.addEventListener('DOMContentLoaded', function () {
         state.vertices.push(latlng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
+        // Ensure cross cursor is shown after single click
+        setDrawingCursor('cross');
         state.setStatus && state.setStatus('Click to add vertex. Double-click to grab map.', 'info');
       };
       const onMouseMove = (ev) => {
+        // Always show cross cursor when moving mouse during drawing
+        if (!isDoubleClickHolding) {
+          setDrawingCursor('cross');
+        }
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], ev.latlng]);
         }
       };
       let doubleClickTimer = null;
       let isDoubleClickHolding = false;
+      let clickCount = 0;
 
       const onMouseDown = (ev) => {
+        clickCount++;
+        
         // Start a timer to detect if this becomes a double-click
         if (doubleClickTimer) {
           clearTimeout(doubleClickTimer);
           // This is the second click, so it's a double-click
-          if (state.vertices.length >= 3) {
+          if (state.vertices.length >= 3 && clickCount === 2) {
             isDoubleClickHolding = true;
             setDrawingCursor('grab');
           }
         } else {
           doubleClickTimer = setTimeout(() => {
             doubleClickTimer = null;
+            clickCount = 0; // Reset click count after timeout
           }, 300); // 300ms window for double-click detection
         }
       };
@@ -597,10 +607,11 @@ window.addEventListener('DOMContentLoaded', function () {
           clearTimeout(doubleClickTimer);
           doubleClickTimer = null;
         }
+        clickCount = 0; // Reset click count on mouse up
       };
 
       const onDblClick = async () => {
-        // Handle double-click completion
+        // Handle double-click completion (fallback)
         if (state.vertices.length >= 3) {
           await saveRefugePolygon(state.vertices, state.setStatus);
           teardownDrawing();
