@@ -395,9 +395,11 @@ window.addEventListener('DOMContentLoaded', function () {
 
     const onDoubleClick = (e) => {
       e && e.originalEvent && (e.originalEvent.preventDefault && e.originalEvent.preventDefault());
-      if (e && e.latlng && isNearFirstVertexLatLng(e.latlng)) {
+      // Check center proximity first (main UI paradigm with center dot)
+      if (isNearFirstVertexCenter()) {
         finalizePolygon();
-      } else if (isNearFirstVertexCenter()) {
+      } else if (e && e.latlng && isNearFirstVertexLatLng(e.latlng)) {
+        // Fallback: also check actual click location for direct marker clicks
         finalizePolygon();
       } else {
         // Not near start: treat as adding a vertex and continue
