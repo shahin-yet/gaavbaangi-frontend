@@ -509,16 +509,6 @@ body {
   gap: 8px;
 }
 
-.drawing-hud .hud-title .badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: #e8f2ff;
-  color: #1e5bb8;
-  font-size: 12px;
-  font-weight: 600;
-}
-
 .drawing-hud .hud-cancel {
   border: none;
   background: transparent;
@@ -532,18 +522,12 @@ body {
   background: var(--gray-100);
 }
 
-.drawing-hud .hud-actions {
+.drawing-hud .hud-status {
   margin-top: 8px;
-  display: flex;
-  gap: 8px;
+  font-size: 13px;
+  color: var(--gray-700);
 }
 
-.drawing-hud .hud-edit {
-  padding: 6px 10px;
-  font-size: 13px;
-  border-radius: 8px;
-  border: 1px dashed var(--gray-300);
-  background: #fafafa;
-  color: var(--gray-600);
-  cursor: not-allowed;
-}
+.drawing-hud .hud-status.status-info { color: #1e5bb8; }
+.drawing-hud .hud-status.status-error { color: #b81e1e; }
+.drawing-hud .hud-status.status-success { color: #1b7f39; }
