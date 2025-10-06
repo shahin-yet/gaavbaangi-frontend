@@ -580,10 +580,13 @@ window.addEventListener('DOMContentLoaded', function () {
         const now = Date.now();
         const timeSinceLastClick = now - lastClickTime;
         
-        // Check if this is a double-click (within 300ms of previous click)
+        // Only show grab cursor if this is actually a double-click (within 300ms) AND we have enough vertices
         if (timeSinceLastClick < 300 && state.vertices.length >= 3) {
           isDoubleClickHolding = true;
           setDrawingCursor('grab');
+        } else {
+          // For single clicks, ensure cross cursor
+          setDrawingCursor('cross');
         }
         
         lastClickTime = now;
@@ -598,6 +601,9 @@ window.addEventListener('DOMContentLoaded', function () {
             teardownDrawing();
           });
           isDoubleClickHolding = false;
+        } else {
+          // Ensure cross cursor is always shown for single clicks
+          setDrawingCursor('cross');
         }
       };
 
