@@ -27,30 +27,8 @@ window.addEventListener('DOMContentLoaded', function () {
     zoomControl: !isTelegramWebApp // Hide zoom controls in Telegram
   });
 
-  // Enforce crosshair cursor at all times on the map, including while dragging
-  (function enforceCrosshairCursor() {
-    try {
-      const styleEl = document.createElement('style');
-      styleEl.textContent = `
-        .leaflet-container, .leaflet-container *,
-        .leaflet-grab, .leaflet-dragging .leaflet-grab,
-        .leaflet-dragging .leaflet-interactive,
-        .leaflet-dragging, html.leaflet-dragging, body.leaflet-dragging {
-          cursor: crosshair !important;
-        }
-      `;
-      document.head.appendChild(styleEl);
-      const container = map.getContainer();
-      const force = () => container.style.setProperty('cursor', 'crosshair', 'important');
-      // DOM events on container
-      ['mouseenter','mouseleave','mousedown','mouseup','mousemove'].forEach(evt => {
-        container.addEventListener(evt, force, { passive: true });
-      });
-      // Leaflet map events during pan
-      ['movestart','move','moveend'].forEach(evt => map.on(evt, force));
-      force();
-    } catch (_) { /* noop */ }
-  })();
+  // Allow default Leaflet cursor behavior (hand/grab cursor)
+  // Removed crosshair enforcement to allow natural grab/grabbing cursors
 
   // Terrain layer (OpenTopoMap)
   const terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
@@ -396,9 +374,10 @@ window.addEventListener('DOMContentLoaded', function () {
         container.style.cursor = 'crosshair';
         break;
       case 'grab':
+        container.style.cursor = 'grab';
+        break;
       case 'grabbing':
-        // Enforce crosshair even if asked for grab/grabbing
-        container.style.cursor = 'crosshair';
+        container.style.cursor = 'grabbing';
         break;
       case 'default':
       default:
@@ -475,7 +454,7 @@ window.addEventListener('DOMContentLoaded', function () {
       // Telegram: tapping anywhere adds center point; double tap closes
       // Use crosshair cursor during drawing
       setDrawingCursor('cross');
-      // Ensure no hand cursor appears
+      // Ensure crosshair cursor appears
       map.getContainer().style.cursor = 'crosshair';
       const container = map.getContainer();
       state.touchStart = { x: 0, y: 0, t: 0 };
@@ -546,7 +525,7 @@ window.addEventListener('DOMContentLoaded', function () {
           const first = state.vertices[0];
           const d = center.distanceTo(first);
           if (d <= NEAR_FIRST_THRESHOLD_M) {
-            // Do not show hand; keep crosshair
+            // Keep crosshair cursor
             setDrawingCursor('cross');
             // close polygon
             await saveRefugePolygon(state.vertices, state.setStatus);
@@ -569,10 +548,8 @@ window.addEventListener('DOMContentLoaded', function () {
       window.__suppressCenterDoubleAction = true;
     } else {
       // Web: click to add vertex at mouse, move shows guide, double-click to close
-      // Use crosshair cursor during drawing
+      // Use crosshair cursor during drawing for precision
       setDrawingCursor('cross');
-      // Ensure no hand cursor appears
-      map.getContainer().style.cursor = 'crosshair';
       // Temporarily disable double-click zoom to use it for closing polygon
       if (map.doubleClickZoom && typeof map.doubleClickZoom.enabled === 'function') {
         try {
@@ -587,24 +564,19 @@ window.addEventListener('DOMContentLoaded', function () {
           state.vertices.push(latlng);
           setFirstMarker(state.vertices[0]);
           updatePolyline();
-          // Ensure cross cursor is shown after single click
           setDrawingCursor('cross');
-          // Explicitly set crosshair cursor to prevent hand cursor
-          map.getContainer().style.cursor = 'crosshair';
-          state.setStatus && state.setStatus('Click to add vertex. Double-click to grab map.', 'info');
+          state.setStatus && state.setStatus('Click to add vertex. Double-click to finish.', 'info');
         }
       };
       const onMouseMove = (ev) => {
-        // Always show cross cursor when moving mouse during drawing
         if (!isDoubleClickHolding) {
           setDrawingCursor('cross');
-          // Explicitly set crosshair cursor to prevent hand cursor
-          map.getContainer().style.cursor = 'crosshair';
         }
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], ev.latlng]);
         }
       };
+      
       let lastClickTime = 0;
       let isDoubleClickHolding = false;
 
@@ -612,14 +584,9 @@ window.addEventListener('DOMContentLoaded', function () {
         const now = Date.now();
         const timeSinceLastClick = now - lastClickTime;
         
-        // Only show grab cursor if this is actually a double-click (within 300ms) AND we have enough vertices
+        // Detect double-click
         if (timeSinceLastClick < 300 && state.vertices.length >= 3) {
           isDoubleClickHolding = true;
-          // Keep crosshair; no hand cursor at all
-          setDrawingCursor('cross');
-        } else {
-          // For single clicks, ensure cross cursor
-          setDrawingCursor('cross');
         }
         
         lastClickTime = now;
