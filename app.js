@@ -316,19 +316,21 @@ window.addEventListener('DOMContentLoaded', function () {
       <div class="hud-row">
         <div class="hud-title">
           <span>Drawing refuge</span>
-          <span class="badge">Edit</span>
         </div>
         <button class="hud-cancel" title="Cancel" aria-label="Cancel drawing">✕</button>
       </div>
-      <div class="hud-actions">
-        <button class="hud-edit" disabled>Edit</button>
-      </div>
+      <div class="hud-status status-info">Tap to add points. Double-tap near first point to finish.</div>
     `;
     document.body.appendChild(hud);
-    hud.querySelector('.hud-cancel').addEventListener('click', () => {
-      onCancel && onCancel();
-    });
-    return hud;
+    hud.querySelector('.hud-cancel').addEventListener('click', () => { onCancel && onCancel(); });
+    const statusEl = hud.querySelector('.hud-status');
+    const setStatus = (text, kind = 'info') => {
+      if (!statusEl) return;
+      statusEl.textContent = text;
+      statusEl.classList.remove('status-info', 'status-error', 'status-success');
+      statusEl.classList.add(`status-${kind}`);
+    };
+    return { hud, setStatus };
   }
 
   function teardownDrawing() {
@@ -358,7 +360,7 @@ window.addEventListener('DOMContentLoaded', function () {
     drawing = null;
   }
 
-  async function saveRefugePolygon(latlngs) {
+  async function saveRefugePolygon(latlngs, setStatus) {
     // Ensure closed ring and convert to GeoJSON lon/lat
     const ring = latlngs.map(ll => [ll.lng, ll.lat]);
     if (ring.length >= 3) {
@@ -366,9 +368,11 @@ window.addEventListener('DOMContentLoaded', function () {
       const last = ring[ring.length - 1];
       if (first[0] !== last[0] || first[1] !== last[1]) ring.push(first);
     }
+    setStatus && setStatus('Enter a name in the dialog…', 'info');
     const name = prompt('Name this refuge:');
-    if (!name) return;
+    if (!name) { setStatus && setStatus('Cancelled naming. Continue drawing or cancel.', 'error'); return; }
     try {
+      setStatus && setStatus('Saving…', 'info');
       const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -377,18 +381,18 @@ window.addEventListener('DOMContentLoaded', function () {
       const data = await res.json();
       if (data.status === 'success') {
         await loadAndRenderRefuges();
-        alert('Refuge saved');
+        setStatus && setStatus('Saved.', 'success');
       } else {
-        alert('Failed to save refuge');
+        setStatus && setStatus('Failed to save refuge.', 'error');
       }
     } catch (e) {
-      alert('Error saving refuge');
+      setStatus && setStatus('Error saving refuge.', 'error');
     }
   }
 
   function startRefugeDrawing() {
     if (drawing) teardownDrawing();
-    const hud = createDrawingHud(() => teardownDrawing());
+    const hudApi = createDrawingHud(() => teardownDrawing());
 
     const state = {
       mode: isTelegramWebApp ? 'telegram' : 'web',
@@ -399,9 +403,12 @@ window.addEventListener('DOMContentLoaded', function () {
       mouseHandlers: [],
       domHandlers: [],
       prevDoubleClickZoomEnabled: false,
-      lastTouchTime: 0
+      lastTouchTime: 0,
+      setStatus: hudApi.setStatus
     };
     drawing = state;
+
+    const NEAR_FIRST_THRESHOLD_M = 20; // proximity to first point to allow close
 
     const updatePolyline = () => {
       state.polyline.setLatLngs(state.vertices);
@@ -420,18 +427,49 @@ window.addEventListener('DOMContentLoaded', function () {
     if (state.mode === 'telegram') {
       // Telegram: tapping anywhere adds center point; double tap closes
       const container = map.getContainer();
+      state.touchStart = { x: 0, y: 0, t: 0 };
+      state.touchMoved = false;
+      const TAP_MOVE_THRESHOLD_PX = 8;
+
+      const getTouchPoint = (e) => {
+        const t = (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]) || null;
+        return t ? { x: t.clientX, y: t.clientY, t: Date.now() } : null;
+      };
+
+      const onTouchStart = (ev) => {
+        const p = getTouchPoint(ev);
+        if (!p) return;
+        state.touchStart = p;
+        state.touchMoved = false;
+      };
+
+      const onTouchMove = (ev) => {
+        const p = getTouchPoint(ev);
+        if (!p) return;
+        const dx = p.x - state.touchStart.x;
+        const dy = p.y - state.touchStart.y;
+        if ((dx * dx + dy * dy) > (TAP_MOVE_THRESHOLD_PX * TAP_MOVE_THRESHOLD_PX)) {
+          state.touchMoved = true; // treat as pan/drag
+        }
+      };
+
       const onTouchEnd = (ev) => {
-        // Double-tap is handled globally; single tap adds vertex at center
         const now = Date.now();
+        // If finger moved significantly, ignore as tap
+        if (state.touchMoved) return;
+        // Double-tap is handled globally; skip adding during double-tap window
         if (now - state.lastTouchTime < 280) {
-          state.lastTouchTime = 0; // treat as double-tap; skip adding vertex
+          state.lastTouchTime = 0;
           return;
         }
         state.lastTouchTime = now;
+        ev.preventDefault && ev.preventDefault();
+        ev.stopPropagation && ev.stopPropagation();
         const latlng = map.getCenter();
         state.vertices.push(latlng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
+        state.setStatus && state.setStatus(`Points: ${state.vertices.length}`, 'info');
       };
       const onMove = () => {
         if (state.tempGuide && state.vertices.length > 0) {
@@ -443,16 +481,32 @@ window.addEventListener('DOMContentLoaded', function () {
           const first = state.vertices[0];
           const center = map.getCenter();
           const d = center.distanceTo(first);
-          if (d < 20) dot.classList.add('near-first'); else dot.classList.remove('near-first');
+          if (d <= NEAR_FIRST_THRESHOLD_M) {
+            dot.classList.add('near-first');
+            if (state.vertices.length >= 3) state.setStatus && state.setStatus('Double-tap to close', 'info');
+          } else {
+            dot.classList.remove('near-first');
+          }
         }
       };
-      const onCenterDouble = () => {
+      const onCenterDouble = async () => {
         if (state.vertices.length >= 3) {
-          // close polygon
-          saveRefugePolygon(state.vertices);
-          teardownDrawing();
+          const center = map.getCenter();
+          const first = state.vertices[0];
+          const d = center.distanceTo(first);
+          if (d <= NEAR_FIRST_THRESHOLD_M) {
+            // close polygon
+            await saveRefugePolygon(state.vertices, state.setStatus);
+            teardownDrawing();
+          } else {
+            state.setStatus && state.setStatus('Move near first point to close', 'error');
+          }
         }
       };
+      container.addEventListener('touchstart', onTouchStart, { passive: false });
+      state.domHandlers.push({ el: container, evt: 'touchstart', fn: onTouchStart, opts: { passive: false } });
+      container.addEventListener('touchmove', onTouchMove, { passive: false });
+      state.domHandlers.push({ el: container, evt: 'touchmove', fn: onTouchMove, opts: { passive: false } });
       container.addEventListener('touchend', onTouchEnd, { passive: false });
       state.domHandlers.push({ el: container, evt: 'touchend', fn: onTouchEnd, opts: { passive: false } });
       map.on('move', onMove); state.mouseHandlers.push({ evt: 'move', fn: onMove });
@@ -475,16 +529,19 @@ window.addEventListener('DOMContentLoaded', function () {
         state.vertices.push(latlng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
+        state.setStatus && state.setStatus(`Points: ${state.vertices.length}`, 'info');
       };
       const onMouseMove = (ev) => {
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], ev.latlng]);
         }
       };
-      const onDblClick = () => {
+      const onDblClick = async () => {
         if (state.vertices.length >= 3) {
-          saveRefugePolygon(state.vertices);
+          await saveRefugePolygon(state.vertices, state.setStatus);
           teardownDrawing();
+        } else {
+          state.setStatus && state.setStatus('Need at least 3 points', 'error');
         }
       };
       map.on('click', onClick); state.mouseHandlers.push({ evt: 'click', fn: onClick });
