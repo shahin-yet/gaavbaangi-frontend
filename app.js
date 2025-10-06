@@ -564,10 +564,44 @@ window.addEventListener('DOMContentLoaded', function () {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], ev.latlng]);
         }
       };
+      let doubleClickTimer = null;
+      let isDoubleClickHolding = false;
+
+      const onMouseDown = (ev) => {
+        // Start a timer to detect if this becomes a double-click
+        if (doubleClickTimer) {
+          clearTimeout(doubleClickTimer);
+          // This is the second click, so it's a double-click
+          if (state.vertices.length >= 3) {
+            isDoubleClickHolding = true;
+            setDrawingCursor('grab');
+          }
+        } else {
+          doubleClickTimer = setTimeout(() => {
+            doubleClickTimer = null;
+          }, 300); // 300ms window for double-click detection
+        }
+      };
+
+      const onMouseUp = (ev) => {
+        if (isDoubleClickHolding) {
+          // Return to cross cursor after releasing
+          setDrawingCursor('cross');
+          // Complete the polygon
+          saveRefugePolygon(state.vertices, state.setStatus).then(() => {
+            teardownDrawing();
+          });
+          isDoubleClickHolding = false;
+        }
+        if (doubleClickTimer) {
+          clearTimeout(doubleClickTimer);
+          doubleClickTimer = null;
+        }
+      };
+
       const onDblClick = async () => {
+        // Handle double-click completion
         if (state.vertices.length >= 3) {
-          // Show grab cursor when double-click is done and still holding
-          setDrawingCursor('grab');
           await saveRefugePolygon(state.vertices, state.setStatus);
           teardownDrawing();
         } else {
@@ -576,6 +610,8 @@ window.addEventListener('DOMContentLoaded', function () {
       };
       map.on('click', onClick); state.mouseHandlers.push({ evt: 'click', fn: onClick });
       map.on('mousemove', onMouseMove); state.mouseHandlers.push({ evt: 'mousemove', fn: onMouseMove });
+      map.on('mousedown', onMouseDown); state.mouseHandlers.push({ evt: 'mousedown', fn: onMouseDown });
+      map.on('mouseup', onMouseUp); state.mouseHandlers.push({ evt: 'mouseup', fn: onMouseUp });
       map.on('dblclick', onDblClick); state.mouseHandlers.push({ evt: 'dblclick', fn: onDblClick });
     }
   }
