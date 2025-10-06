@@ -431,7 +431,8 @@ window.addEventListener('DOMContentLoaded', function () {
     };
     drawing = state;
 
-    const NEAR_FIRST_THRESHOLD_M = 20; // proximity to first point to allow close
+    const NEAR_FIRST_THRESHOLD_M = 20; // proximity to first point to allow close (Telegram center mode)
+    const NEAR_FIRST_THRESHOLD_PX = 24; // pixel radius for mouse proximity on web
 
     const updatePolyline = () => {
       state.polyline.setLatLngs(state.vertices);
@@ -556,7 +557,13 @@ window.addEventListener('DOMContentLoaded', function () {
       }
 
       const isNearFirst = (latlng) => {
-        return state.vertices.length >= 1 && latlng && latlng.distanceTo(state.vertices[0]) <= NEAR_FIRST_THRESHOLD_M;
+        if (!(state.vertices.length >= 1 && latlng)) return false;
+        // Use pixel distance for consistent UX across zoom levels
+        const pFirst = map.latLngToContainerPoint(state.vertices[0]);
+        const pCur = map.latLngToContainerPoint(latlng);
+        const dx = pCur.x - pFirst.x;
+        const dy = pCur.y - pFirst.y;
+        return (dx * dx + dy * dy) <= (NEAR_FIRST_THRESHOLD_PX * NEAR_FIRST_THRESHOLD_PX);
       };
       const onClick = (ev) => {
         // Only process click if not in double-click holding mode
@@ -575,6 +582,14 @@ window.addEventListener('DOMContentLoaded', function () {
         }
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], ev.latlng]);
+        }
+        // Provide proximity feedback
+        if (state.vertices.length >= 3) {
+          if (isNearFirst(ev.latlng)) {
+            state.setStatus && state.setStatus('Double-click to finish', 'info');
+          } else {
+            state.setStatus && state.setStatus('Move near first point to close', 'info');
+          }
         }
       };
       
