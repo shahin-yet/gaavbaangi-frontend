@@ -451,6 +451,8 @@ window.addEventListener('DOMContentLoaded', function () {
       // Telegram: tapping anywhere adds center point; double tap closes
       // Use crosshair cursor during drawing
       setDrawingCursor('cross');
+      // Ensure no hand cursor appears
+      map.getContainer().style.cursor = 'crosshair';
       const container = map.getContainer();
       state.touchStart = { x: 0, y: 0, t: 0 };
       state.touchMoved = false;
@@ -545,6 +547,8 @@ window.addEventListener('DOMContentLoaded', function () {
       // Web: click to add vertex at mouse, move shows guide, double-click to close
       // Use crosshair cursor during drawing
       setDrawingCursor('cross');
+      // Ensure no hand cursor appears
+      map.getContainer().style.cursor = 'crosshair';
       // Temporarily disable double-click zoom to use it for closing polygon
       if (map.doubleClickZoom && typeof map.doubleClickZoom.enabled === 'function') {
         try {
@@ -561,6 +565,8 @@ window.addEventListener('DOMContentLoaded', function () {
           updatePolyline();
           // Ensure cross cursor is shown after single click
           setDrawingCursor('cross');
+          // Explicitly set crosshair cursor to prevent hand cursor
+          map.getContainer().style.cursor = 'crosshair';
           state.setStatus && state.setStatus('Click to add vertex. Double-click to grab map.', 'info');
         }
       };
@@ -568,6 +574,8 @@ window.addEventListener('DOMContentLoaded', function () {
         // Always show cross cursor when moving mouse during drawing
         if (!isDoubleClickHolding) {
           setDrawingCursor('cross');
+          // Explicitly set crosshair cursor to prevent hand cursor
+          map.getContainer().style.cursor = 'crosshair';
         }
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], ev.latlng]);
