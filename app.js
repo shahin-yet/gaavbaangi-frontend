@@ -73,6 +73,15 @@ window.addEventListener('DOMContentLoaded', function () {
 
     const applyCenterDoubleAction = () => {
       if (window.__suppressCenterDoubleAction) return;
+      // If refuge drawing is active, defer to drawing's dblclick logic (no zoom)
+      if (typeof refugeDrawingActive !== 'undefined' && refugeDrawingActive) {
+        const center = map.getCenter();
+        const pixel = map.latLngToContainerPoint(center);
+        window.dispatchEvent(new CustomEvent('map-center-doubletap', {
+          detail: { latlng: { lat: center.lat, lng: center.lng }, pixel }
+        }));
+        return;
+      }
       // Default behavior: zoom in using map center
       map.zoomIn(1);
       const center = map.getCenter();
@@ -99,7 +108,14 @@ window.addEventListener('DOMContentLoaded', function () {
       if (now - lastTapTime < 300) {
         ev.preventDefault();
         ev.stopPropagation();
-        applyCenterDoubleAction();
+        // During refuge drawing, route double-tap to Leaflet dblclick so drawing logic runs
+        if (typeof refugeDrawingActive !== 'undefined' && refugeDrawingActive) {
+          window.__suppressCenterDoubleAction = true;
+          map.fire('dblclick');
+          setTimeout(() => { window.__suppressCenterDoubleAction = false; }, 250);
+        } else {
+          applyCenterDoubleAction();
+        }
         lastTapTime = 0;
       } else {
         lastTapTime = now;
