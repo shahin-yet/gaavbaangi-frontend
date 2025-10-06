@@ -553,13 +553,16 @@ window.addEventListener('DOMContentLoaded', function () {
         } catch (e) { state.prevDoubleClickZoomEnabled = false; }
       }
       const onClick = (ev) => {
-        const latlng = ev.latlng;
-        state.vertices.push(latlng);
-        setFirstMarker(state.vertices[0]);
-        updatePolyline();
-        // Ensure cross cursor is shown after single click
-        setDrawingCursor('cross');
-        state.setStatus && state.setStatus('Click to add vertex. Double-click to grab map.', 'info');
+        // Only process click if not in double-click holding mode
+        if (!isDoubleClickHolding) {
+          const latlng = ev.latlng;
+          state.vertices.push(latlng);
+          setFirstMarker(state.vertices[0]);
+          updatePolyline();
+          // Ensure cross cursor is shown after single click
+          setDrawingCursor('cross');
+          state.setStatus && state.setStatus('Click to add vertex. Double-click to grab map.', 'info');
+        }
       };
       const onMouseMove = (ev) => {
         // Always show cross cursor when moving mouse during drawing
@@ -570,27 +573,20 @@ window.addEventListener('DOMContentLoaded', function () {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], ev.latlng]);
         }
       };
-      let doubleClickTimer = null;
+      let lastClickTime = 0;
       let isDoubleClickHolding = false;
-      let clickCount = 0;
 
       const onMouseDown = (ev) => {
-        clickCount++;
+        const now = Date.now();
+        const timeSinceLastClick = now - lastClickTime;
         
-        // Start a timer to detect if this becomes a double-click
-        if (doubleClickTimer) {
-          clearTimeout(doubleClickTimer);
-          // This is the second click, so it's a double-click
-          if (state.vertices.length >= 3 && clickCount === 2) {
-            isDoubleClickHolding = true;
-            setDrawingCursor('grab');
-          }
-        } else {
-          doubleClickTimer = setTimeout(() => {
-            doubleClickTimer = null;
-            clickCount = 0; // Reset click count after timeout
-          }, 300); // 300ms window for double-click detection
+        // Check if this is a double-click (within 300ms of previous click)
+        if (timeSinceLastClick < 300 && state.vertices.length >= 3) {
+          isDoubleClickHolding = true;
+          setDrawingCursor('grab');
         }
+        
+        lastClickTime = now;
       };
 
       const onMouseUp = (ev) => {
@@ -603,11 +599,6 @@ window.addEventListener('DOMContentLoaded', function () {
           });
           isDoubleClickHolding = false;
         }
-        if (doubleClickTimer) {
-          clearTimeout(doubleClickTimer);
-          doubleClickTimer = null;
-        }
-        clickCount = 0; // Reset click count on mouse up
       };
 
       const onDblClick = async () => {
