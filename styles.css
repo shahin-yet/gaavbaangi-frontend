@@ -341,14 +341,14 @@ body {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 12px;
-  height: 12px;
-  margin-left: -6px;
-  margin-top: -6px;
+  width: 14px; 
+  height: 14px; 
+  margin-left: -7px;
+  margin-top: -7px; 
   border-radius: 50%;
-  border: 2px solid #0a84ff; /* simple thin outline */
-  background: transparent; /* no inner fill */
-  box-shadow: none; /* no extra ring */
+  border: 2px solid #f5eeee; 
+  background: transparent; 
+  box-shadow: none; 
   pointer-events: none;
   display: none;
   z-index: 1100;
