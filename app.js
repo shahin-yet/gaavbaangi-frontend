@@ -442,8 +442,8 @@ window.addEventListener('DOMContentLoaded', function () {
     };
     drawing = state;
 
-    const NEAR_FIRST_THRESHOLD_PX_TG = 30; // pixel radius for proximity on Telegram mobile
-    const NEAR_FIRST_THRESHOLD_PX = 24; // pixel radius for mouse proximity on web
+    const NEAR_FIRST_THRESHOLD_PX_TG = 8; // tighter proximity: require near-exact overlap on Telegram
+    const NEAR_FIRST_THRESHOLD_PX = 8; // tighter proximity: require near-exact overlap on web
 
     const updatePolyline = () => {
       state.polyline.setLatLngs(state.vertices);
@@ -657,6 +657,11 @@ window.addEventListener('DOMContentLoaded', function () {
       const onClick = (ev) => {
         // Only process click if not in double-click holding mode
         if (!isDoubleClickHolding && !suppressNextClick) {
+          // If near first vertex and polygon can be closed, do NOT add a new vertex.
+          if (state.vertices.length >= 3 && isNearFirst(ev.latlng)) {
+            state.setStatus && state.setStatus('Double-click to finish', 'info');
+            return;
+          }
           const latlng = ev.latlng;
           state.vertices.push(latlng);
           setFirstMarker(state.vertices[0]);
