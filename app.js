@@ -323,7 +323,7 @@ window.addEventListener('DOMContentLoaded', function () {
     hud.className = 'drawing-hud';
     const initialMsg = isMobile
       ? 'Tap to add vertex. Double-tap near first point to finish.'
-      : 'Click to add vertex. Double-click near first point to finish.';
+      : 'Click to add vertex. Click near first point to finish.';
     hud.innerHTML = `
       <div class="hud-row">
         <div class="hud-title">
@@ -467,6 +467,13 @@ window.addEventListener('DOMContentLoaded', function () {
             state.setStatus && state.setStatus('Need at least 3 points', 'error');
           }
         };
+        state.firstMarker.on('click', (ev) => {
+          if (ev && ev.originalEvent) {
+            ev.originalEvent.preventDefault && ev.originalEvent.preventDefault();
+            ev.originalEvent.stopPropagation && ev.originalEvent.stopPropagation();
+          }
+          finishIfReady();
+        });
         state.firstMarker.on('dblclick', (ev) => {
           if (ev && ev.originalEvent) {
             ev.originalEvent.preventDefault && ev.originalEvent.preventDefault();
@@ -496,7 +503,7 @@ window.addEventListener('DOMContentLoaded', function () {
         });
         state.firstMarker.on('mouseover', () => {
           if (state.vertices.length >= 3) {
-            state.setStatus && state.setStatus('Double-click to finish', 'info');
+            state.setStatus && state.setStatus('Click to finish', 'info');
           }
         });
       } else {
@@ -659,7 +666,11 @@ window.addEventListener('DOMContentLoaded', function () {
         if (!isDoubleClickHolding && !suppressNextClick) {
           // If near first vertex and polygon can be closed, do NOT add a new vertex.
           if (state.vertices.length >= 3 && isNearFirst(ev.latlng)) {
-            state.setStatus && state.setStatus('Double-click to finish', 'info');
+            if (state.isClosing) return;
+            state.isClosing = true;
+            saveRefugePolygon(state.vertices, state.setStatus).then(() => {
+              teardownDrawing();
+            });
             return;
           }
           const latlng = ev.latlng;
@@ -667,7 +678,7 @@ window.addEventListener('DOMContentLoaded', function () {
           setFirstMarker(state.vertices[0]);
           updatePolyline();
           setDrawingCursor('cross');
-          state.setStatus && state.setStatus('Click to add vertex. Double-click near first point to finish.', 'info');
+          state.setStatus && state.setStatus('Click to add vertex. Click near first point to finish.', 'info');
         }
       };
       const onMouseMove = (ev) => {
@@ -680,7 +691,7 @@ window.addEventListener('DOMContentLoaded', function () {
         // Provide proximity feedback
         if (state.vertices.length >= 3) {
           if (isNearFirst(ev.latlng)) {
-            state.setStatus && state.setStatus('Double-click to finish', 'info');
+            state.setStatus && state.setStatus('Click to finish', 'info');
           } else {
             state.setStatus && state.setStatus('Move near first point to close', 'info');
           }
