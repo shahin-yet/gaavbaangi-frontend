@@ -519,8 +519,8 @@ window.addEventListener('DOMContentLoaded', function () {
       window.__suppressCenterDoubleAction = true;
     } else {
       // Web: click to add vertex at mouse, move shows guide, double-click to close
-      // Use a plus-like cursor during drawing
-      map.getContainer().style.cursor = 'copy';
+      // Use a cross mark cursor initially during drawing
+      map.getContainer().style.cursor = 'crosshair';
       // Temporarily disable double-click zoom to use it for closing polygon
       if (map.doubleClickZoom && typeof map.doubleClickZoom.enabled === 'function') {
         try {
@@ -533,6 +533,10 @@ window.addEventListener('DOMContentLoaded', function () {
         state.vertices.push(latlng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
+        // Change cursor to hand grab after first vertex is added
+        if (state.vertices.length === 1) {
+          map.getContainer().style.cursor = 'grab';
+        }
         state.setStatus && state.setStatus('Click to add vertex. Double-click to grab map.', 'info');
       };
       const onMouseMove = (ev) => {
@@ -542,6 +546,8 @@ window.addEventListener('DOMContentLoaded', function () {
       };
       const onDblClick = async () => {
         if (state.vertices.length >= 3) {
+          // Show grabbing cursor during double-click
+          map.getContainer().style.cursor = 'grabbing';
           await saveRefugePolygon(state.vertices, state.setStatus);
           // Restore hand cursor for map panning after finishing
           map.getContainer().style.cursor = 'grab';
