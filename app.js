@@ -314,7 +314,7 @@ window.addEventListener('DOMContentLoaded', function () {
     hud.className = 'drawing-hud';
     const initialMsg = isTelegramWebApp
       ? 'Tap to add vertex. Double-tap near first point to finish.'
-      : 'Click to add vertex. Double-click to grab map.';
+      : 'Click to add vertex. Double-click near first point to finish.';
     hud.innerHTML = `
       <div class="hud-row">
         <div class="hud-title">
@@ -554,6 +554,10 @@ window.addEventListener('DOMContentLoaded', function () {
           if (state.prevDoubleClickZoomEnabled) map.doubleClickZoom.disable();
         } catch (e) { state.prevDoubleClickZoomEnabled = false; }
       }
+
+      const isNearFirst = (latlng) => {
+        return state.vertices.length >= 1 && latlng && latlng.distanceTo(state.vertices[0]) <= NEAR_FIRST_THRESHOLD_M;
+      };
       const onClick = (ev) => {
         // Only process click if not in double-click holding mode
         if (!isDoubleClickHolding) {
@@ -562,7 +566,7 @@ window.addEventListener('DOMContentLoaded', function () {
           setFirstMarker(state.vertices[0]);
           updatePolyline();
           setDrawingCursor('cross');
-          state.setStatus && state.setStatus('Click to add vertex. Double-click to finish.', 'info');
+          state.setStatus && state.setStatus('Click to add vertex. Double-click near first point to finish.', 'info');
         }
       };
       const onMouseMove = (ev) => {
@@ -582,7 +586,7 @@ window.addEventListener('DOMContentLoaded', function () {
         const timeSinceLastClick = now - lastClickTime;
         
         // Detect double-click
-        if (timeSinceLastClick < 300 && state.vertices.length >= 3) {
+        if (timeSinceLastClick < 300 && state.vertices.length >= 3 && isNearFirst(ev.latlng)) {
           isDoubleClickHolding = true;
         }
         
@@ -604,11 +608,15 @@ window.addEventListener('DOMContentLoaded', function () {
         }
       };
 
-      const onDblClick = async () => {
+      const onDblClick = async (ev) => {
         // Handle double-click completion (fallback)
         if (state.vertices.length >= 3) {
-          await saveRefugePolygon(state.vertices, state.setStatus);
-          teardownDrawing();
+          if (isNearFirst(ev && ev.latlng)) {
+            await saveRefugePolygon(state.vertices, state.setStatus);
+            teardownDrawing();
+          } else {
+            state.setStatus && state.setStatus('Move near first point to close', 'error');
+          }
         } else {
           state.setStatus && state.setStatus('Need at least 3 points', 'error');
         }
