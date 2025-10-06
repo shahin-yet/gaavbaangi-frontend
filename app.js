@@ -10,6 +10,40 @@ window.addEventListener('DOMContentLoaded', function () {
     const hasIdentity = !!(unsafe.user?.id || unsafe.chat?.id || unsafe.query_id);
     return hasSignedData && hasIdentity;
   })();
+
+  // Block Telegram Desktop/Web Telegram from using the WebApp; allow only mobile Telegram
+  const tgWa = window.Telegram && window.Telegram.WebApp;
+  const tgPlatform = tgWa && typeof tgWa.platform === 'string' ? tgWa.platform.toLowerCase() : '';
+  const isTelegramDesktopOrWeb = !!tgWa && (
+    tgPlatform === 'tdesktop' || tgPlatform === 'macos' || tgPlatform === 'web' || tgPlatform === 'weba' || tgPlatform === 'universal'
+  );
+
+  const renderBlockingOverlay = (message) => {
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.background = '#ffffff';
+    overlay.style.zIndex = '99999';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.style.padding = '24px';
+    overlay.style.textAlign = 'center';
+    overlay.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';
+    overlay.style.color = '#111';
+    overlay.innerHTML = `<div style="max-width:640px;">
+      <div style="font-size:20px; font-weight:600; margin-bottom:12px;">Unsupported platform</div>
+      <div style="font-size:16px; line-height:1.5;">${message}</div>
+    </div>`;
+    document.body.appendChild(overlay);
+  };
+
+  // Block any Telegram bot/WebApp context entirely
+  if (tgWa) {
+    renderBlockingOverlay('This app is not available inside Telegram. Please open it in a regular mobile or desktop browser (not via a bot).');
+    try { tgWa.close && tgWa.close(); } catch (e) {}
+    return; // stop initializing the app
+  }
   
   // Apply Telegram-specific styling and dot only in Telegram; remove dot in web
   const centerDotEl = document.querySelector('.map-center-dot');
