@@ -516,7 +516,8 @@ window.addEventListener('DOMContentLoaded', function () {
       window.__suppressCenterDoubleAction = true;
     } else {
       // Web: click to add vertex at mouse, move shows guide, double-click to close
-      map.getContainer().style.cursor = 'crosshair';
+      // Use a plus-like cursor during drawing
+      map.getContainer().style.cursor = 'copy';
       // Temporarily disable double-click zoom to use it for closing polygon
       if (map.doubleClickZoom && typeof map.doubleClickZoom.enabled === 'function') {
         try {
@@ -539,6 +540,8 @@ window.addEventListener('DOMContentLoaded', function () {
       const onDblClick = async () => {
         if (state.vertices.length >= 3) {
           await saveRefugePolygon(state.vertices, state.setStatus);
+          // Restore hand cursor for map panning after finishing
+          map.getContainer().style.cursor = 'grab';
           teardownDrawing();
         } else {
           state.setStatus && state.setStatus('Need at least 3 points', 'error');
