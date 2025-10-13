@@ -409,25 +409,37 @@ window.addEventListener('DOMContentLoaded', function () {
       if (first[0] !== last[0] || first[1] !== last[1]) ring.push(first);
     }
     setStatus && setStatus('Enter a name in the dialog…', 'info');
-    const name = prompt('Name this refuge:');
+    let name = prompt('Name this refuge:');
     if (!name) { setStatus && setStatus('Cancelled naming. Continue drawing or cancel.', 'error'); return; }
-    try {
-      setStatus && setStatus('Saving…', 'info');
-      const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, polygon: { type: 'Polygon', coordinates: [ring] } })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data && data.status === 'success') {
-        await loadAndRenderRefuges();
-        setStatus && setStatus('Saved.', 'success');
-      } else {
-        const msg = (data && data.message) || `Failed to save refuge (${res.status})`;
+    while (true) {
+      try {
+        setStatus && setStatus('Saving…', 'info');
+        const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, polygon: { type: 'Polygon', coordinates: [ring] } })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && data.status === 'success') {
+          await loadAndRenderRefuges();
+          setStatus && setStatus('Saved.', 'success');
+          break;
+        }
+        const serverMsg = (data && data.message) || '';
+        const isDuplicate = res.status === 409 || /already exists/i.test(serverMsg);
+        if (isDuplicate) {
+          const newName = prompt('That name is already in use. Enter a different name:', name);
+          if (!newName) { setStatus && setStatus('Cancelled naming. Continue drawing or cancel.', 'error'); break; }
+          name = newName;
+          continue; // retry
+        }
+        const msg = serverMsg || `Failed to save refuge (${res.status})`;
         setStatus && setStatus(msg, 'error');
+        break;
+      } catch (e) {
+        setStatus && setStatus('Error saving refuge.', 'error');
+        break;
       }
-    } catch (e) {
-      setStatus && setStatus('Error saving refuge.', 'error');
     }
   }
 
