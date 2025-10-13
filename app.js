@@ -362,6 +362,10 @@ window.addEventListener('DOMContentLoaded', function () {
     if (drawing.domHandlers) {
       drawing.domHandlers.forEach(({ el, evt, fn, opts }) => el.removeEventListener(evt, fn, opts || false));
     }
+    // Clear any pending single-click acceptance timer (web mode)
+    if (drawing.singleClickTimer) {
+      try { clearTimeout(drawing.singleClickTimer); } catch (e) {}
+    }
     if (drawing.polyline) refugeLayerGroup.removeLayer(drawing.polyline);
     if (drawing.firstMarker) refugeLayerGroup.removeLayer(drawing.firstMarker);
     if (drawing.tempGuide) refugeLayerGroup.removeLayer(drawing.tempGuide);
@@ -655,20 +659,22 @@ window.addEventListener('DOMContentLoaded', function () {
         return (dx * dx + dy * dy) <= (NEAR_FIRST_THRESHOLD_PX * NEAR_FIRST_THRESHOLD_PX);
       };
       const onClick = (ev) => {
-        // Only process click if not in double-click holding mode
-        if (!isDoubleClickHolding && !suppressNextClick) {
-          // If near first vertex and polygon can be closed, do NOT add a new vertex.
-          if (state.vertices.length >= 3 && isNearFirst(ev.latlng)) {
-            state.setStatus && state.setStatus('Double-click to finish', 'info');
-            return;
-          }
-          const latlng = ev.latlng;
-          state.vertices.push(latlng);
-          setFirstMarker(state.vertices[0]);
-          updatePolyline();
-          setDrawingCursor('cross');
-          state.setStatus && state.setStatus('Click to add vertex. Double-click near first point to finish.', 'info');
+        // Only process click if not in double-click holding mode and not suppressed
+        if (isDoubleClickHolding || suppressNextClick) return;
+        // If near first vertex and polygon can be closed, do NOT add a new vertex.
+        if (state.vertices.length >= 3 && isNearFirst(ev.latlng)) {
+          state.setStatus && state.setStatus('Double-click to finish', 'info');
+          return;
         }
+        const latlng = ev.latlng;
+        // Defer accepting this click briefly to avoid double-click adding an extra vertex
+        clearSingleClickTimer();
+        singleClickTimer = setTimeout(() => {
+          addVertexAt(latlng);
+          singleClickTimer = null;
+          state.singleClickTimer = null;
+        }, 190);
+        state.singleClickTimer = singleClickTimer;
       };
       const onMouseMove = (ev) => {
         if (!isDoubleClickHolding) {
@@ -692,6 +698,19 @@ window.addEventListener('DOMContentLoaded', function () {
       let suppressNextClick = false; // prevent duplicate vertex from touch generating a synthetic click
       let lastTouchTimeWeb = 0;
       const container = map.getContainer();
+      // Timer to confirm single-clicks that are not part of a double-click
+      let singleClickTimer = null;
+      const clearSingleClickTimer = () => {
+        if (singleClickTimer) { try { clearTimeout(singleClickTimer); } catch (e) {} singleClickTimer = null; }
+        if (state.singleClickTimer) { try { clearTimeout(state.singleClickTimer); } catch (e) {} state.singleClickTimer = null; }
+      };
+      const addVertexAt = (latlng) => {
+        state.vertices.push(latlng);
+        setFirstMarker(state.vertices[0]);
+        updatePolyline();
+        setDrawingCursor('cross');
+        state.setStatus && state.setStatus('Click to add vertex. Double-click near first point to finish.', 'info');
+      };
 
       const onMouseDown = (ev) => {
         const now = Date.now();
@@ -700,6 +719,10 @@ window.addEventListener('DOMContentLoaded', function () {
         // Detect double-click
         if (timeSinceLastClick < 300 && state.vertices.length >= 3 && isNearFirst(ev.latlng)) {
           isDoubleClickHolding = true;
+        }
+        // Any quick second press should cancel a pending single-click acceptance
+        if (timeSinceLastClick < 300) {
+          clearSingleClickTimer();
         }
         
         lastClickTime = now;
@@ -725,6 +748,8 @@ window.addEventListener('DOMContentLoaded', function () {
       };
 
       const onDblClick = async (ev) => {
+        // Cancel any pending single-click acceptance
+        clearSingleClickTimer();
         if (state.suppressNextDblClick || state.isClosing) return;
         // Handle double-click completion (fallback)
         if (state.vertices.length >= 3) {
