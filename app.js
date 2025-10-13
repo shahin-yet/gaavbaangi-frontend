@@ -410,7 +410,7 @@ window.addEventListener('DOMContentLoaded', function () {
     }
     setStatus && setStatus('Enter a name in the dialog…', 'info');
     let name = prompt('Name this refuge:');
-    if (!name) { setStatus && setStatus('Cancelled naming. Continue drawing or cancel.', 'error'); return; }
+    if (!name) { setStatus && setStatus('Cancelled naming. Continue drawing or cancel.', 'error'); return false; }
     while (true) {
       try {
         setStatus && setStatus('Saving…', 'info');
@@ -423,22 +423,22 @@ window.addEventListener('DOMContentLoaded', function () {
         if (res.ok && data && data.status === 'success') {
           await loadAndRenderRefuges();
           setStatus && setStatus('Saved.', 'success');
-          break;
+          return true;
         }
         const serverMsg = (data && data.message) || '';
         const isDuplicate = res.status === 409 || /already exists/i.test(serverMsg);
         if (isDuplicate) {
           const newName = prompt('That name is already in use. Enter a different name:', name);
-          if (!newName) { setStatus && setStatus('Cancelled naming. Continue drawing or cancel.', 'error'); break; }
+          if (!newName) { setStatus && setStatus('Cancelled naming. Continue drawing or cancel.', 'error'); return false; }
           name = newName;
           continue; // retry
         }
         const msg = serverMsg || `Failed to save refuge (${res.status})`;
         setStatus && setStatus(msg, 'error');
-        break;
+        return false;
       } catch (e) {
         setStatus && setStatus('Error saving refuge.', 'error');
-        break;
+        return false;
       }
     }
   }
@@ -482,8 +482,8 @@ window.addEventListener('DOMContentLoaded', function () {
       if (state.mode === 'web') {
         const finishIfReady = async () => {
           if (state.vertices.length >= 3) {
-            await saveRefugePolygon(state.vertices, state.setStatus);
-            teardownDrawing();
+            const ok = await saveRefugePolygon(state.vertices, state.setStatus);
+            if (ok) teardownDrawing();
           } else {
             state.setStatus && state.setStatus('Need at least 3 points', 'error');
           }
@@ -524,8 +524,8 @@ window.addEventListener('DOMContentLoaded', function () {
         // Telegram mobile: allow double-tap directly on the marker to finish (ignore center proximity)
         const finishIfReadyTg = async () => {
           if (state.vertices.length >= 3) {
-            await saveRefugePolygon(state.vertices, state.setStatus);
-            teardownDrawing();
+            const ok = await saveRefugePolygon(state.vertices, state.setStatus);
+            if (ok) teardownDrawing();
           } else {
             state.setStatus && state.setStatus('Need at least 3 points', 'error');
           }
@@ -644,8 +644,8 @@ window.addEventListener('DOMContentLoaded', function () {
                 updatePolyline();
               }
             }
-            await saveRefugePolygon(state.vertices, state.setStatus);
-            teardownDrawing();
+            const ok = await saveRefugePolygon(state.vertices, state.setStatus);
+            if (ok) teardownDrawing();
           } else {
             state.setStatus && state.setStatus('Move near first point to close', 'error');
           }
@@ -762,8 +762,8 @@ window.addEventListener('DOMContentLoaded', function () {
               updatePolyline();
             }
           }
-          saveRefugePolygon(state.vertices, state.setStatus).then(() => {
-            teardownDrawing();
+          saveRefugePolygon(state.vertices, state.setStatus).then((ok) => {
+            if (ok) teardownDrawing();
           });
           isDoubleClickHolding = false;
         } else {
@@ -787,8 +787,8 @@ window.addEventListener('DOMContentLoaded', function () {
               }
             }
             state.isClosing = true;
-            await saveRefugePolygon(state.vertices, state.setStatus);
-            teardownDrawing();
+            const ok = await saveRefugePolygon(state.vertices, state.setStatus);
+            if (ok) teardownDrawing();
           } else {
             state.setStatus && state.setStatus('Move near first point to close', 'error');
           }
@@ -850,8 +850,8 @@ window.addEventListener('DOMContentLoaded', function () {
                   updatePolyline();
                 }
               }
-              await saveRefugePolygon(state.vertices, state.setStatus);
-              teardownDrawing();
+              const ok = await saveRefugePolygon(state.vertices, state.setStatus);
+              if (ok) teardownDrawing();
             } else {
               state.setStatus && state.setStatus('Move near first point to close', 'error');
             }
