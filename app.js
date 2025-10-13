@@ -362,10 +362,7 @@ window.addEventListener('DOMContentLoaded', function () {
     if (drawing.domHandlers) {
       drawing.domHandlers.forEach(({ el, evt, fn, opts }) => el.removeEventListener(evt, fn, opts || false));
     }
-    // Clear any pending single-click acceptance timer (web mode)
-    if (drawing.singleClickTimer) {
-      try { clearTimeout(drawing.singleClickTimer); } catch (e) {}
-    }
+    // No deferred timers to clear anymore
     if (drawing.polyline) refugeLayerGroup.removeLayer(drawing.polyline);
     if (drawing.firstMarker) refugeLayerGroup.removeLayer(drawing.firstMarker);
     if (drawing.tempGuide) refugeLayerGroup.removeLayer(drawing.tempGuide);
@@ -571,19 +568,19 @@ window.addEventListener('DOMContentLoaded', function () {
         const now = Date.now();
         // If finger moved significantly, ignore as tap
         if (state.touchMoved) return;
-        // Double-tap is handled globally; skip adding during double-tap window
-        if (now - state.lastTouchTime < 280) {
-          state.lastTouchTime = 0;
-          return;
-        }
+        // Double-tap is handled globally; skip adding
+        if (now - state.lastTouchTime < 280) { state.lastTouchTime = 0; return; }
         state.lastTouchTime = now;
         ev.preventDefault && ev.preventDefault();
         ev.stopPropagation && ev.stopPropagation();
-        const latlng = map.getCenter();
-        state.vertices.push(latlng);
+        // Immediate add (no defer)
+        const centerLatLng = map.getCenter();
+        state.vertices.push(centerLatLng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
         state.setStatus && state.setStatus('Tap to add vertex. Double-tap near first point to finish.', 'info');
+        state.lastVertexAddedAt = Date.now();
+        state.lastVertexAddedBy = 'tap';
       };
       const onMove = () => {
         if (state.tempGuide && state.vertices.length > 0) {
@@ -615,10 +612,18 @@ window.addEventListener('DOMContentLoaded', function () {
           const dx = pCenter.x - pFirst.x;
           const dy = pCenter.y - pFirst.y;
           if ((dx * dx + dy * dy) <= (NEAR_FIRST_THRESHOLD_PX_TG * NEAR_FIRST_THRESHOLD_PX_TG)) {
+            // No deferred tap to cancel
             // Keep circular selector (no OS cursor)
             setDrawingCursor('default');
             container.style.cursor = 'none';
             // close polygon
+            // If a vertex was just added moments ago as part of a double-tap sequence, remove it
+            if (state.lastVertexAddedBy === 'tap' && (Date.now() - (state.lastVertexAddedAt || 0)) <= 600) {
+              if (state.vertices.length > 0) {
+                state.vertices.pop();
+                updatePolyline();
+              }
+            }
             await saveRefugePolygon(state.vertices, state.setStatus);
             teardownDrawing();
           } else {
@@ -667,14 +672,8 @@ window.addEventListener('DOMContentLoaded', function () {
           return;
         }
         const latlng = ev.latlng;
-        // Defer accepting this click briefly to avoid double-click adding an extra vertex
-        clearSingleClickTimer();
-        singleClickTimer = setTimeout(() => {
-          addVertexAt(latlng);
-          singleClickTimer = null;
-          state.singleClickTimer = null;
-        }, 460);
-        state.singleClickTimer = singleClickTimer;
+        // Immediate add (no defer)
+        addVertexAt(latlng);
       };
       const onMouseMove = (ev) => {
         if (!isDoubleClickHolding) {
@@ -698,18 +697,17 @@ window.addEventListener('DOMContentLoaded', function () {
       let suppressNextClick = false; // prevent duplicate vertex from touch generating a synthetic click
       let lastTouchTimeWeb = 0;
       const container = map.getContainer();
-      // Timer to confirm single-clicks that are not part of a double-click
-      let singleClickTimer = null;
-      const clearSingleClickTimer = () => {
-        if (singleClickTimer) { try { clearTimeout(singleClickTimer); } catch (e) {} singleClickTimer = null; }
-        if (state.singleClickTimer) { try { clearTimeout(state.singleClickTimer); } catch (e) {} state.singleClickTimer = null; }
-      };
-      const addVertexAt = (latlng) => {
+      // No deferred single-click timer anymore
+      const clearSingleClickTimer = () => {};
+      const addVertexAt = (latlng, source = 'click') => {
         state.vertices.push(latlng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
         setDrawingCursor('cross');
         state.setStatus && state.setStatus('Click to add vertex. Double-click near first point to finish.', 'info');
+        state.lastVertexAddedAt = Date.now();
+        state.lastVertexAddedBy = source;
+        state.pendingVertexLatLng = null;
       };
 
       const onMouseDown = (ev) => {
@@ -721,7 +719,7 @@ window.addEventListener('DOMContentLoaded', function () {
           isDoubleClickHolding = true;
         }
         // Any quick second press should cancel a pending single-click acceptance
-        if (timeSinceLastClick < 300) {
+        if (timeSinceLastClick < 500) {
           clearSingleClickTimer();
         }
         
@@ -737,6 +735,13 @@ window.addEventListener('DOMContentLoaded', function () {
           state.isClosing = true;
           state.suppressNextDblClick = true;
           setTimeout(() => { state.suppressNextDblClick = false; }, 350);
+          // If a vertex was just added moments ago as part of a double-click sequence, remove it
+          if (state.lastVertexAddedBy === 'click' && (Date.now() - (state.lastVertexAddedAt || 0)) <= 600) {
+            if (state.vertices.length > 0) {
+              state.vertices.pop();
+              updatePolyline();
+            }
+          }
           saveRefugePolygon(state.vertices, state.setStatus).then(() => {
             teardownDrawing();
           });
@@ -754,6 +759,13 @@ window.addEventListener('DOMContentLoaded', function () {
         // Handle double-click completion (fallback)
         if (state.vertices.length >= 3) {
           if (isNearFirst(ev && ev.latlng)) {
+            // If a vertex was just added moments ago as part of a double-click sequence, remove it
+            if (state.lastVertexAddedBy === 'click' && (Date.now() - (state.lastVertexAddedAt || 0)) <= 600) {
+              if (state.vertices.length > 0) {
+                state.vertices.pop();
+                updatePolyline();
+              }
+            }
             state.isClosing = true;
             await saveRefugePolygon(state.vertices, state.setStatus);
             teardownDrawing();
@@ -808,8 +820,16 @@ window.addEventListener('DOMContentLoaded', function () {
         if (now - lastTouchTimeWeb < 280) {
           // Double-tap: attempt to finish if near first
           lastTouchTimeWeb = 0;
+          // No deferred tap to cancel
           if (state.vertices.length >= 3) {
             if (isNearFirst(info.latlng)) {
+              // If a vertex was just added moments ago as part of a double-tap sequence, remove it
+              if (state.lastVertexAddedBy === 'tap' && (Date.now() - (state.lastVertexAddedAt || 0)) <= 600) {
+                if (state.vertices.length > 0) {
+                  state.vertices.pop();
+                  updatePolyline();
+                }
+              }
               await saveRefugePolygon(state.vertices, state.setStatus);
               teardownDrawing();
             } else {
@@ -823,11 +843,15 @@ window.addEventListener('DOMContentLoaded', function () {
           lastTouchTimeWeb = now;
           suppressNextClick = true;
           setTimeout(() => { suppressNextClick = false; }, 350);
-          state.vertices.push(info.latlng);
+          // Immediate add (no defer)
+          const latlngToAdd = info.latlng;
+          state.vertices.push(latlngToAdd);
           setFirstMarker(state.vertices[0]);
           updatePolyline();
           setDrawingCursor('cross');
           state.setStatus && state.setStatus('Tap to add vertex. Double-tap near first point to finish.', 'info');
+          state.lastVertexAddedAt = Date.now();
+          state.lastVertexAddedBy = 'tap';
         }
       };
       map.on('click', onClick); state.mouseHandlers.push({ evt: 'click', fn: onClick });
