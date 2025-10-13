@@ -673,7 +673,7 @@ window.addEventListener('DOMContentLoaded', function () {
           addVertexAt(latlng);
           singleClickTimer = null;
           state.singleClickTimer = null;
-        }, 190);
+        }, 460);
         state.singleClickTimer = singleClickTimer;
       };
       const onMouseMove = (ev) => {
