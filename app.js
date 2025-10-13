@@ -64,10 +64,11 @@ window.addEventListener('DOMContentLoaded', function () {
         refugeLayerGroup.clearLayers();
         data.refuges.forEach(r => {
           try {
-            if (r && r.polygon && r.polygon.type === 'Polygon') {
-              // GeoJSON coordinates are [lng, lat]; Leaflet expects [lat, lng]
-              const latlngs = (r.polygon.coordinates || []).map(ring => ring.map(([lng, lat]) => [lat, lng]));
-              if (latlngs.length) {
+            if (r && r.polygon && (r.polygon.type === 'Polygon' || r.polygon.type === 'MultiPolygon')) {
+              const geom = r.polygon;
+              const drawPolygon = (polyCoords) => {
+                const latlngs = (polyCoords || []).map(ring => ring.map(([lng, lat]) => [lat, lng]));
+                if (!latlngs.length) return;
                 const polygon = L.polygon(latlngs, {
                   color: '#1e90ff',
                   weight: 2,
@@ -75,6 +76,12 @@ window.addEventListener('DOMContentLoaded', function () {
                   fillOpacity: 0.15
                 });
                 polygon.addTo(refugeLayerGroup).bindPopup(r.name || 'Refuge');
+              };
+              if (geom.type === 'Polygon') {
+                drawPolygon(geom.coordinates || []);
+              } else {
+                // MultiPolygon: iterate each polygon's rings
+                (geom.coordinates || []).forEach(poly => drawPolygon(poly));
               }
             }
           } catch (e) {
@@ -411,12 +418,13 @@ window.addEventListener('DOMContentLoaded', function () {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, polygon: { type: 'Polygon', coordinates: [ring] } })
       });
-      const data = await res.json();
-      if (data.status === 'success') {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data && data.status === 'success') {
         await loadAndRenderRefuges();
         setStatus && setStatus('Saved.', 'success');
       } else {
-        setStatus && setStatus('Failed to save refuge.', 'error');
+        const msg = (data && data.message) || `Failed to save refuge (${res.status})`;
+        setStatus && setStatus(msg, 'error');
       }
     } catch (e) {
       setStatus && setStatus('Error saving refuge.', 'error');
