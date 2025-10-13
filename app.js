@@ -453,6 +453,7 @@ window.addEventListener('DOMContentLoaded', function () {
       polyline: L.polyline([], { color: '#ff5722', weight: 2 }).addTo(refugeLayerGroup),
       firstMarker: null,
       tempGuide: null,
+      closedPreview: null,
       mouseHandlers: [],
       domHandlers: [],
       prevDoubleClickZoomEnabled: false,
@@ -475,6 +476,26 @@ window.addEventListener('DOMContentLoaded', function () {
       }
     };
 
+    const showClosedPreview = () => {
+      if (state.closedPreview || state.vertices.length < 3) return;
+      try {
+        // Remove drawing aids
+        if (state.tempGuide) { refugeLayerGroup.removeLayer(state.tempGuide); state.tempGuide = null; }
+        if (state.polyline) { refugeLayerGroup.removeLayer(state.polyline); }
+        if (state.firstMarker) { refugeLayerGroup.removeLayer(state.firstMarker); state.firstMarker = null; }
+        // Create a filled polygon preview from current vertices
+        state.closedPreview = L.polygon(state.vertices, {
+          color: '#1e90ff',
+          weight: 2,
+          fillColor: '#1e90ff',
+          fillOpacity: 0.15
+        }).addTo(refugeLayerGroup);
+        setDrawingCursor('default');
+      } catch (e) {
+        // keep fallback to line if preview fails
+      }
+    };
+
     const setFirstMarker = (latlng) => {
       if (state.firstMarker) return;
       state.firstMarker = L.circleMarker(latlng, { radius: 5, color: '#1e90ff', fillColor: '#1e90ff', fillOpacity: 0.9 }).addTo(refugeLayerGroup);
@@ -482,6 +503,7 @@ window.addEventListener('DOMContentLoaded', function () {
       if (state.mode === 'web') {
         const finishIfReady = async () => {
           if (state.vertices.length >= 3) {
+            showClosedPreview();
             const ok = await saveRefugePolygon(state.vertices, state.setStatus);
             if (ok) teardownDrawing();
           } else {
@@ -524,6 +546,7 @@ window.addEventListener('DOMContentLoaded', function () {
         // Telegram mobile: allow double-tap directly on the marker to finish (ignore center proximity)
         const finishIfReadyTg = async () => {
           if (state.vertices.length >= 3) {
+            showClosedPreview();
             const ok = await saveRefugePolygon(state.vertices, state.setStatus);
             if (ok) teardownDrawing();
           } else {
@@ -644,6 +667,7 @@ window.addEventListener('DOMContentLoaded', function () {
                 updatePolyline();
               }
             }
+            showClosedPreview();
             const ok = await saveRefugePolygon(state.vertices, state.setStatus);
             if (ok) teardownDrawing();
           } else {
@@ -762,6 +786,7 @@ window.addEventListener('DOMContentLoaded', function () {
               updatePolyline();
             }
           }
+          showClosedPreview();
           saveRefugePolygon(state.vertices, state.setStatus).then((ok) => {
             if (ok) teardownDrawing();
           });
@@ -787,6 +812,7 @@ window.addEventListener('DOMContentLoaded', function () {
               }
             }
             state.isClosing = true;
+            showClosedPreview();
             const ok = await saveRefugePolygon(state.vertices, state.setStatus);
             if (ok) teardownDrawing();
           } else {
@@ -850,6 +876,7 @@ window.addEventListener('DOMContentLoaded', function () {
                   updatePolyline();
                 }
               }
+              showClosedPreview();
               const ok = await saveRefugePolygon(state.vertices, state.setStatus);
               if (ok) teardownDrawing();
             } else {
