@@ -384,8 +384,16 @@ window.addEventListener('DOMContentLoaded', function () {
     const okButton = hud.querySelector('.hud-ok');
     const getName = () => (nameInput && typeof nameInput.value === 'string' ? nameInput.value.trim() : '');
     const focusName = () => { try { nameInput && nameInput.focus(); nameInput && nameInput.select && nameInput.select(); } catch (e) {} };
-    const showNameBar = () => { if (controlsEl) controlsEl.style.display = ''; };
-    const hideNameBar = () => { if (controlsEl) controlsEl.style.display = 'none'; };
+    const showNameBar = () => {
+      if (controlsEl) controlsEl.style.display = '';
+      // Hide status line while name entry is visible
+      if (statusEl) statusEl.style.display = 'none';
+    };
+    const hideNameBar = () => {
+      if (controlsEl) controlsEl.style.display = 'none';
+      // Restore status line when name entry is hidden
+      if (statusEl) statusEl.style.display = '';
+    };
     const onNameEnter = (cb) => {
       if (!nameInput) return;
       const handler = (e) => {
@@ -508,17 +516,27 @@ window.addEventListener('DOMContentLoaded', function () {
       firstMarker: null,
       tempGuide: null,
       closedPreview: null,
+      nameBarVisible: false,
       mouseHandlers: [],
       domHandlers: [],
       prevDoubleClickZoomEnabled: false,
       lastTouchTime: 0,
       suppressNextDblClick: false,
       isClosing: false,
-      setStatus: hudApi.setStatus,
+      setStatus: (text, kind = 'info') => {
+        // While closed or name bar visible, only allow the neutral 'take a name' message
+        const msg = String(text || '');
+        const isTakeName = msg.toLowerCase() === 'take a name';
+        if (state.closedPreview || state.nameBarVisible) {
+          if (isTakeName) { hudApi.setStatus('take a name', 'info'); }
+          return;
+        }
+        hudApi.setStatus(text, kind);
+      },
       getName: hudApi.getName,
       focusName: hudApi.focusName,
-      showNameBar: hudApi.showNameBar,
-      hideNameBar: hudApi.hideNameBar
+      showNameBar: () => { state.nameBarVisible = true; hudApi.showNameBar && hudApi.showNameBar(); },
+      hideNameBar: () => { state.nameBarVisible = false; hudApi.hideNameBar && hudApi.hideNameBar(); }
     };
     drawing = state;
     // Dynamic announcement helpers
@@ -544,15 +562,15 @@ window.addEventListener('DOMContentLoaded', function () {
       }
       const name = state.getName ? state.getName() : '';
       if (!name) {
-        // Do not spam announcements after closure; still allow name entry UI
+        // Always keep the name bar visible; show neutral prompt without extra announcements
+        state.showNameBar && state.showNameBar();
         if (!state.closedPreview) {
-          state.showNameBar && state.showNameBar();
-          state.setStatus && state.setStatus('Enter a name to save.', 'error');
-          state.focusName && state.focusName();
+          state.setStatus && state.setStatus('take a name', 'info');
         } else {
-          state.showNameBar && state.showNameBar();
-          state.focusName && state.focusName();
+          // When closed, keep the same 'take a name' message without adding new ones
+          state.setStatus && state.setStatus('take a name', 'info');
         }
+        state.focusName && state.focusName();
         return;
       }
       const ok = await saveRefugePolygon(state.vertices, name, state.setStatus);
@@ -598,6 +616,10 @@ window.addEventListener('DOMContentLoaded', function () {
           fillOpacity: 0.15
         }).addTo(refugeLayerGroup);
         setDrawingCursor('default');
+        // After closing, prompt for name and suppress other helper announcements
+        state.showNameBar && state.showNameBar();
+        state.setStatus && state.setStatus('take a name', 'info');
+        state.focusName && state.focusName();
       } catch (e) {
         // keep fallback to line if preview fails
       }
