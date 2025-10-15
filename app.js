@@ -397,18 +397,7 @@ window.addEventListener('DOMContentLoaded', function () {
       nameInput.addEventListener('keydown', handler);
     };
     const onOkClick = (cb) => { if (okButton) okButton.addEventListener('click', () => cb && cb()); };
-    const setNamePlaceholder = (text) => { if (nameInput && typeof text === 'string') nameInput.placeholder = text; };
-    const setOkBusy = (busy) => {
-      if (!okButton) return;
-      if (busy) {
-        okButton.disabled = true;
-        okButton.textContent = 'Saving…';
-      } else {
-        okButton.disabled = false;
-        okButton.textContent = 'OK';
-      }
-    };
-    return { hud, setStatus, getName, focusName, onNameEnter, onOkClick, showNameBar, hideNameBar, setNamePlaceholder, setOkBusy };
+    return { hud, setStatus, getName, focusName, onNameEnter, onOkClick, showNameBar, hideNameBar };
   }
 
   function teardownDrawing() {
@@ -519,27 +508,17 @@ window.addEventListener('DOMContentLoaded', function () {
       firstMarker: null,
       tempGuide: null,
       closedPreview: null,
-      nameBarVisible: false,
       mouseHandlers: [],
       domHandlers: [],
       prevDoubleClickZoomEnabled: false,
       lastTouchTime: 0,
       suppressNextDblClick: false,
       isClosing: false,
-      setStatus: (text, kind = 'info') => {
-        // Allow dynamic announcements during drawing. When naming or closed, prefer 'take a name'.
-        const msg = String(text || '');
-        const isTakeName = msg.toLowerCase() === 'take a name';
-        if (state.closedPreview || state.nameBarVisible) {
-          hudApi.setStatus(isTakeName ? 'take a name' : 'take a name', 'info');
-          return;
-        }
-        hudApi.setStatus(text, kind);
-      },
+      setStatus: hudApi.setStatus,
       getName: hudApi.getName,
       focusName: hudApi.focusName,
-      showNameBar: () => { state.nameBarVisible = true; hudApi.showNameBar && hudApi.showNameBar(); },
-      hideNameBar: () => { state.nameBarVisible = false; hudApi.hideNameBar && hudApi.hideNameBar(); }
+      showNameBar: hudApi.showNameBar,
+      hideNameBar: hudApi.hideNameBar
     };
     drawing = state;
     // Dynamic announcement helpers
@@ -553,10 +532,7 @@ window.addEventListener('DOMContentLoaded', function () {
     showClickToAdd();
     const attemptSave = async () => {
       if (state.vertices.length < 3) {
-        // Block announcements after closure
-        if (!state.closedPreview) {
-          state.setStatus && state.setStatus('Need at least 3 points', 'error');
-        }
+        state.setStatus && state.setStatus('Need at least 3 points', 'error');
         return;
       }
       // Detach the drawing line immediately upon closing intent
@@ -565,16 +541,12 @@ window.addEventListener('DOMContentLoaded', function () {
       }
       const name = state.getName ? state.getName() : '';
       if (!name) {
-        // Keep the name bar visible; set placeholder; allow status to read 'take a name'
         state.showNameBar && state.showNameBar();
-        hudApi.setNamePlaceholder && hudApi.setNamePlaceholder('take a name');
-        state.setStatus && state.setStatus('take a name', 'info');
+        state.setStatus && state.setStatus('Enter a name to save.', 'error');
         state.focusName && state.focusName();
         return;
       }
-      hudApi.setOkBusy && hudApi.setOkBusy(true);
       const ok = await saveRefugePolygon(state.vertices, name, state.setStatus);
-      hudApi.setOkBusy && hudApi.setOkBusy(false);
       if (ok) teardownDrawing();
     };
 
@@ -617,11 +589,6 @@ window.addEventListener('DOMContentLoaded', function () {
           fillOpacity: 0.15
         }).addTo(refugeLayerGroup);
         setDrawingCursor('default');
-        // After closing, prompt for name via placeholder; keep status available if needed
-        state.showNameBar && state.showNameBar();
-        hudApi.setNamePlaceholder && hudApi.setNamePlaceholder('take a name');
-        state.setStatus && state.setStatus('take a name', 'info');
-        state.focusName && state.focusName();
       } catch (e) {
         // keep fallback to line if preview fails
       }
@@ -723,7 +690,6 @@ window.addEventListener('DOMContentLoaded', function () {
       };
 
       const onTouchEnd = (ev) => {
-        if (state.closedPreview) return; // block drawing when closed
         const now = Date.now();
         // If finger moved significantly, ignore as tap
         if (state.touchMoved) return;
@@ -739,12 +705,15 @@ window.addEventListener('DOMContentLoaded', function () {
         state.vertices.push(centerLatLng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
-        // Suppress helper messages
+        if (state.vertices.length >= 1) {
+          showClickToAdd(); // moving after first vertex
+        } else {
+          showClickToAdd(); // still before first vertex
+        }
         state.lastVertexAddedAt = Date.now();
         state.lastVertexAddedBy = 'tap';
       };
       const onMove = () => {
-        if (state.closedPreview) return; // block drawing when closed
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], map.getCenter()]);
         }
@@ -824,7 +793,6 @@ window.addEventListener('DOMContentLoaded', function () {
         return (dx * dx + dy * dy) <= (NEAR_FIRST_THRESHOLD_PX * NEAR_FIRST_THRESHOLD_PX);
       };
       const onClick = (ev) => {
-        if (state.closedPreview) return; // block drawing when closed
         // Only process click if not in double-click holding mode and not suppressed
         if (isDoubleClickHolding || suppressNextClick) return;
         // If preview is shown, prevent further vertex additions
@@ -838,7 +806,6 @@ window.addEventListener('DOMContentLoaded', function () {
         addVertexAt(latlng);
       };
       const onMouseMove = (ev) => {
-        if (state.closedPreview) return; // block drawing when closed
         if (!isDoubleClickHolding) {
           setDrawingCursor('cross');
         }
@@ -847,30 +814,28 @@ window.addEventListener('DOMContentLoaded', function () {
         }
         // Track last mouse latlng for idle proximity evaluation
         state.lastMouseLatLng = ev.latlng;
-        // Dynamic announcements:
-        // - Dragging (mouse moving): show "click to add vertex" while moving
+        // Before first vertex: keep static "click to add vertex"
         if (state.vertices.length === 0) {
           showClickToAdd();
         } else {
-          // After first vertex: moving => prompt to click to add
+          // After first vertex: moving => "click to add vertex"
           showClickToAdd();
         }
-        // Idle timer to switch to other prompts when cursor stops
         if (state.idleTimer) { try { clearTimeout(state.idleTimer); } catch (e) {} }
         state.idleTimer = setTimeout(() => {
           if (!drawing || drawing !== state) return;
-          // If no vertices yet, stay on click-to-add
+          // Idle: before first vertex stay on click message
           if (state.vertices.length === 0) {
             showClickToAdd();
             return;
           }
-          // If enough vertices and near first, prompt to close; else show drag-to-draw
+          // If enough vertices and near first, prompt to close; else show drag message
           if (state.vertices.length >= 3 && state.lastMouseLatLng && isNearFirst(state.lastMouseLatLng)) {
             showDoubleToClose();
           } else {
             showDragToDraw();
           }
-        }, 420);
+        }, 450);
       };
       
       let lastClickTime = 0;
@@ -881,20 +846,21 @@ window.addEventListener('DOMContentLoaded', function () {
       // No deferred single-click timer anymore
       const clearSingleClickTimer = () => {};
       const addVertexAt = (latlng, source = 'click') => {
-        if (state.closedPreview) return; // block drawing when closed
         state.vertices.push(latlng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
         setDrawingCursor('cross');
-        // After first vertex added, show drag-to-draw on idle; moving shows click-to-add handled in onMouseMove
-        showDragToDraw();
+        if (state.vertices.length >= 1) {
+          showDragToDraw();
+        } else {
+          showClickToAdd();
+        }
         state.lastVertexAddedAt = Date.now();
         state.lastVertexAddedBy = source;
         state.pendingVertexLatLng = null;
       };
 
       const onMouseDown = (ev) => {
-        if (state.closedPreview) return; // block drawing when closed
         const now = Date.now();
         const timeSinceLastClick = now - lastClickTime;
         
@@ -911,7 +877,6 @@ window.addEventListener('DOMContentLoaded', function () {
       };
 
       const onMouseUp = (ev) => {
-        if (state.closedPreview) return; // block drawing when closed
         if (isDoubleClickHolding) {
           // Return to cross cursor after releasing
           setDrawingCursor('cross');
@@ -938,7 +903,6 @@ window.addEventListener('DOMContentLoaded', function () {
       };
 
       const onDblClick = async (ev) => {
-        if (state.closedPreview) return; // block drawing when closed
         // Cancel any pending single-click acceptance
         clearSingleClickTimer();
         if (state.suppressNextDblClick || state.isClosing) return;
@@ -976,14 +940,12 @@ window.addEventListener('DOMContentLoaded', function () {
         return { x, y, latlng };
       };
       const onTouchStartWeb = (ev) => {
-        if (state.closedPreview) return; // block drawing when closed
         const info = getTouchInfo(ev);
         if (!info) return;
         touchStartPt = { x: info.x, y: info.y };
         touchMovedWeb = false;
       };
       const onTouchMoveWeb = (ev) => {
-        if (state.closedPreview) return; // block drawing when closed
         const info = getTouchInfo(ev);
         if (!info) return;
         const dx = info.x - touchStartPt.x;
@@ -997,7 +959,6 @@ window.addEventListener('DOMContentLoaded', function () {
         // No dynamic messages during move
       };
       const onTouchEndWeb = async (ev) => {
-        if (state.closedPreview) return; // block drawing when closed
         const now = Date.now();
         const info = getTouchInfo(ev);
         if (!info) return;
@@ -1038,7 +999,11 @@ window.addEventListener('DOMContentLoaded', function () {
           setFirstMarker(state.vertices[0]);
           updatePolyline();
           setDrawingCursor('cross');
-          // Suppress helper messages
+          if (state.vertices.length >= 1) {
+            showDragToDraw();
+          } else {
+            showClickToAdd();
+          }
           state.lastVertexAddedAt = Date.now();
           state.lastVertexAddedBy = 'tap';
         }
