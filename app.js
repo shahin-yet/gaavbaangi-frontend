@@ -466,7 +466,7 @@ window.addEventListener('DOMContentLoaded', function () {
       if (first[0] !== last[0] || first[1] !== last[1]) ring.push(first);
     }
     if (!name || !name.trim()) {
-      setStatus && setStatus('Enter a name in the bar to save.', 'error');
+      setStatus && setStatus('Enter a name in the bar to save.', 'info');
       return false;
     }
     try {
@@ -514,6 +514,7 @@ window.addEventListener('DOMContentLoaded', function () {
       lastTouchTime: 0,
       suppressNextDblClick: false,
       isClosing: false,
+      helpersMuted: false, // when true, helper announcements are suppressed
       setStatus: hudApi.setStatus,
       getName: hudApi.getName,
       focusName: hudApi.focusName,
@@ -525,12 +526,15 @@ window.addEventListener('DOMContentLoaded', function () {
     const ANNOUNCE_CLICK_TO_ADD = 'click to add vertex';
     const ANNOUNCE_DRAG_TO_DRAW = 'drag to draw line';
     const ANNOUNCE_DOUBLE_TO_CLOSE = 'double click to close area';
-    const showClickToAdd = () => state.setStatus && state.setStatus(ANNOUNCE_CLICK_TO_ADD, 'info');
-    const showDragToDraw = () => state.setStatus && state.setStatus(ANNOUNCE_DRAG_TO_DRAW, 'info');
-    const showDoubleToClose = () => state.setStatus && state.setStatus(ANNOUNCE_DOUBLE_TO_CLOSE, 'info');
+    const showClickToAdd = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(ANNOUNCE_CLICK_TO_ADD, 'info'); };
+    const showDragToDraw = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(ANNOUNCE_DRAG_TO_DRAW, 'info'); };
+    const showDoubleToClose = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(ANNOUNCE_DOUBLE_TO_CLOSE, 'info'); };
     // Show initial message on start
     showClickToAdd();
     const attemptSave = async () => {
+      // From the moment we ask for a name or attempt to save, freeze helper texts
+      state.helpersMuted = true;
+      if (state.idleTimer) { try { clearTimeout(state.idleTimer); } catch (e) {} }
       if (state.vertices.length < 3) {
         state.setStatus && state.setStatus('Need at least 3 points', 'error');
         return;
@@ -542,7 +546,7 @@ window.addEventListener('DOMContentLoaded', function () {
       const name = state.getName ? state.getName() : '';
       if (!name) {
         state.showNameBar && state.showNameBar();
-        state.setStatus && state.setStatus('Enter a name to save.', 'error');
+        state.setStatus && state.setStatus('Enter a name to save.', 'info');
         state.focusName && state.focusName();
         return;
       }
