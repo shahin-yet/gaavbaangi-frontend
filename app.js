@@ -384,16 +384,8 @@ window.addEventListener('DOMContentLoaded', function () {
     const okButton = hud.querySelector('.hud-ok');
     const getName = () => (nameInput && typeof nameInput.value === 'string' ? nameInput.value.trim() : '');
     const focusName = () => { try { nameInput && nameInput.focus(); nameInput && nameInput.select && nameInput.select(); } catch (e) {} };
-    const showNameBar = () => {
-      if (controlsEl) controlsEl.style.display = '';
-      // Hide status line while name entry is visible
-      if (statusEl) statusEl.style.display = 'none';
-    };
-    const hideNameBar = () => {
-      if (controlsEl) controlsEl.style.display = 'none';
-      // Restore status line when name entry is hidden
-      if (statusEl) statusEl.style.display = '';
-    };
+    const showNameBar = () => { if (controlsEl) controlsEl.style.display = ''; };
+    const hideNameBar = () => { if (controlsEl) controlsEl.style.display = 'none'; };
     const onNameEnter = (cb) => {
       if (!nameInput) return;
       const handler = (e) => {
@@ -405,7 +397,18 @@ window.addEventListener('DOMContentLoaded', function () {
       nameInput.addEventListener('keydown', handler);
     };
     const onOkClick = (cb) => { if (okButton) okButton.addEventListener('click', () => cb && cb()); };
-    return { hud, setStatus, getName, focusName, onNameEnter, onOkClick, showNameBar, hideNameBar };
+    const setNamePlaceholder = (text) => { if (nameInput && typeof text === 'string') nameInput.placeholder = text; };
+    const setOkBusy = (busy) => {
+      if (!okButton) return;
+      if (busy) {
+        okButton.disabled = true;
+        okButton.textContent = 'Saving…';
+      } else {
+        okButton.disabled = false;
+        okButton.textContent = 'OK';
+      }
+    };
+    return { hud, setStatus, getName, focusName, onNameEnter, onOkClick, showNameBar, hideNameBar, setNamePlaceholder, setOkBusy };
   }
 
   function teardownDrawing() {
@@ -524,11 +527,11 @@ window.addEventListener('DOMContentLoaded', function () {
       suppressNextDblClick: false,
       isClosing: false,
       setStatus: (text, kind = 'info') => {
-        // While closed or name bar visible, only allow the neutral 'take a name' message
+        // Allow dynamic announcements during drawing. When naming or closed, prefer 'take a name'.
         const msg = String(text || '');
         const isTakeName = msg.toLowerCase() === 'take a name';
         if (state.closedPreview || state.nameBarVisible) {
-          if (isTakeName) { hudApi.setStatus('take a name', 'info'); }
+          hudApi.setStatus(isTakeName ? 'take a name' : 'take a name', 'info');
           return;
         }
         hudApi.setStatus(text, kind);
@@ -562,18 +565,16 @@ window.addEventListener('DOMContentLoaded', function () {
       }
       const name = state.getName ? state.getName() : '';
       if (!name) {
-        // Always keep the name bar visible; show neutral prompt without extra announcements
+        // Keep the name bar visible; set placeholder; allow status to read 'take a name'
         state.showNameBar && state.showNameBar();
-        if (!state.closedPreview) {
-          state.setStatus && state.setStatus('take a name', 'info');
-        } else {
-          // When closed, keep the same 'take a name' message without adding new ones
-          state.setStatus && state.setStatus('take a name', 'info');
-        }
+        hudApi.setNamePlaceholder && hudApi.setNamePlaceholder('take a name');
+        state.setStatus && state.setStatus('take a name', 'info');
         state.focusName && state.focusName();
         return;
       }
+      hudApi.setOkBusy && hudApi.setOkBusy(true);
       const ok = await saveRefugePolygon(state.vertices, name, state.setStatus);
+      hudApi.setOkBusy && hudApi.setOkBusy(false);
       if (ok) teardownDrawing();
     };
 
@@ -616,8 +617,9 @@ window.addEventListener('DOMContentLoaded', function () {
           fillOpacity: 0.15
         }).addTo(refugeLayerGroup);
         setDrawingCursor('default');
-        // After closing, prompt for name and suppress other helper announcements
+        // After closing, prompt for name via placeholder; keep status available if needed
         state.showNameBar && state.showNameBar();
+        hudApi.setNamePlaceholder && hudApi.setNamePlaceholder('take a name');
         state.setStatus && state.setStatus('take a name', 'info');
         state.focusName && state.focusName();
       } catch (e) {
@@ -845,8 +847,30 @@ window.addEventListener('DOMContentLoaded', function () {
         }
         // Track last mouse latlng for idle proximity evaluation
         state.lastMouseLatLng = ev.latlng;
-        // Suppress helper announcements and idle timers
+        // Dynamic announcements:
+        // - Dragging (mouse moving): show "click to add vertex" while moving
+        if (state.vertices.length === 0) {
+          showClickToAdd();
+        } else {
+          // After first vertex: moving => prompt to click to add
+          showClickToAdd();
+        }
+        // Idle timer to switch to other prompts when cursor stops
         if (state.idleTimer) { try { clearTimeout(state.idleTimer); } catch (e) {} }
+        state.idleTimer = setTimeout(() => {
+          if (!drawing || drawing !== state) return;
+          // If no vertices yet, stay on click-to-add
+          if (state.vertices.length === 0) {
+            showClickToAdd();
+            return;
+          }
+          // If enough vertices and near first, prompt to close; else show drag-to-draw
+          if (state.vertices.length >= 3 && state.lastMouseLatLng && isNearFirst(state.lastMouseLatLng)) {
+            showDoubleToClose();
+          } else {
+            showDragToDraw();
+          }
+        }, 420);
       };
       
       let lastClickTime = 0;
@@ -862,7 +886,8 @@ window.addEventListener('DOMContentLoaded', function () {
         setFirstMarker(state.vertices[0]);
         updatePolyline();
         setDrawingCursor('cross');
-        // Suppress helper messages
+        // After first vertex added, show drag-to-draw on idle; moving shows click-to-add handled in onMouseMove
+        showDragToDraw();
         state.lastVertexAddedAt = Date.now();
         state.lastVertexAddedBy = source;
         state.pendingVertexLatLng = null;
