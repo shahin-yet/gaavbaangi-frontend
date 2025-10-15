@@ -490,10 +490,8 @@ window.addEventListener('DOMContentLoaded', function () {
     // Dynamic announcement helpers
     const ANNOUNCE_CLICK_TO_ADD = 'click to add vertex';
     const ANNOUNCE_DRAG_TO_DRAW = 'drag to draw line';
-    const ANNOUNCE_DOUBLE_TO_CLOSE = 'double click to close area';
     const showClickToAdd = () => state.setStatus && state.setStatus(ANNOUNCE_CLICK_TO_ADD, 'info');
     const showDragToDraw = () => state.setStatus && state.setStatus(ANNOUNCE_DRAG_TO_DRAW, 'info');
-    const showDoubleToClose = () => state.setStatus && state.setStatus(ANNOUNCE_DOUBLE_TO_CLOSE, 'info');
     // Show initial message on start
     showClickToAdd();
     const attemptSave = async () => {
@@ -661,10 +659,10 @@ window.addEventListener('DOMContentLoaded', function () {
         state.vertices.push(centerLatLng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
-        if (state.vertices.length >= 3) {
-          showDoubleToClose();
+        if (state.vertices.length >= 1) {
+          showClickToAdd(); // moving after first vertex
         } else {
-          showClickToAdd();
+          showClickToAdd(); // still before first vertex
         }
         state.lastVertexAddedAt = Date.now();
         state.lastVertexAddedBy = 'tap';
@@ -766,16 +764,16 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], ev.latlng]);
         }
-        if (state.vertices.length >= 3) {
-          showDoubleToClose();
+        if (state.vertices.length >= 1) {
+          showClickToAdd();
         } else {
           showDragToDraw();
         }
         if (state.idleTimer) { try { clearTimeout(state.idleTimer); } catch (e) {} }
         state.idleTimer = setTimeout(() => {
           if (!drawing || drawing !== state) return;
-          if (state.vertices.length >= 3) {
-            showDoubleToClose();
+          if (state.vertices.length >= 1) {
+            showDragToDraw(); // idle after movement
           } else {
             showClickToAdd();
           }
@@ -794,8 +792,8 @@ window.addEventListener('DOMContentLoaded', function () {
         setFirstMarker(state.vertices[0]);
         updatePolyline();
         setDrawingCursor('cross');
-        if (state.vertices.length >= 3) {
-          showDoubleToClose();
+        if (state.vertices.length >= 1) {
+          showDragToDraw();
         } else {
           showClickToAdd();
         }
@@ -936,8 +934,8 @@ window.addEventListener('DOMContentLoaded', function () {
           setFirstMarker(state.vertices[0]);
           updatePolyline();
           setDrawingCursor('cross');
-          if (state.vertices.length >= 3) {
-            showDoubleToClose();
+          if (state.vertices.length >= 1) {
+            showDragToDraw();
           } else {
             showClickToAdd();
           }
