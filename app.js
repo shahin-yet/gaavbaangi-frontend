@@ -231,16 +231,8 @@ window.addEventListener('DOMContentLoaded', function () {
     }
   ]);
 
-  // Drawing button options
+  // Drawing button options (route announce removed)
   createOptionPanel('btn-drawing', [
-    {
-      icon: 'fas fa-route',
-      text: 'Route',
-      action: function() {
-        alert('Route drawing started. This feature will be implemented soon.');
-        document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
-      }
-    },
     {
       icon: 'fas fa-shield-alt',
       text: 'Refuge',
@@ -377,6 +369,10 @@ window.addEventListener('DOMContentLoaded', function () {
   function teardownDrawing() {
     if (!drawing) return;
     map.getContainer().style.cursor = '';
+    // Clear any idle timers used for dynamic announcements
+    if (drawing.idleTimer) {
+      try { clearTimeout(drawing.idleTimer); } catch (e) {}
+    }
     // Restore double-click zoom on web if it was previously enabled
     if (drawing.mode === 'web' && map.doubleClickZoom && drawing.prevDoubleClickZoomEnabled) {
       try { map.doubleClickZoom.enable(); } catch (e) {}
@@ -491,12 +487,15 @@ window.addEventListener('DOMContentLoaded', function () {
       hideNameBar: hudApi.hideNameBar
     };
     drawing = state;
-    // Fixed copy per requirements
-    const MSG_INITIAL = 'click to add vertex';
-    const MSG_AFTER_FIRST = 'drag to draw, click to add vertex';
-    const MSG_READY_CLOSE_LINE1 = 'drag to draw, click to add vertex';
-    const MSG_READY_CLOSE_LINE2 = 'near first point double click to close area';
-    const setTwoLine = () => state.setStatus && state.setStatus(`${MSG_READY_CLOSE_LINE1}\n${MSG_READY_CLOSE_LINE2}`, 'info');
+    // Dynamic announcement helpers
+    const ANNOUNCE_CLICK_TO_ADD = 'click to add vertex';
+    const ANNOUNCE_DRAG_TO_DRAW = 'drag to draw line';
+    const ANNOUNCE_DOUBLE_TO_CLOSE = 'double click to close area';
+    const showClickToAdd = () => state.setStatus && state.setStatus(ANNOUNCE_CLICK_TO_ADD, 'info');
+    const showDragToDraw = () => state.setStatus && state.setStatus(ANNOUNCE_DRAG_TO_DRAW, 'info');
+    const showDoubleToClose = () => state.setStatus && state.setStatus(ANNOUNCE_DOUBLE_TO_CLOSE, 'info');
+    // Show initial message on start
+    showClickToAdd();
     const attemptSave = async () => {
       if (state.vertices.length < 3) {
         state.setStatus && state.setStatus('Need at least 3 points', 'error');
@@ -662,12 +661,10 @@ window.addEventListener('DOMContentLoaded', function () {
         state.vertices.push(centerLatLng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
-        if (state.vertices.length === 1) {
-          state.setStatus && state.setStatus(MSG_AFTER_FIRST, 'info');
-        } else if (state.vertices.length >= 3) {
-          setTwoLine();
+        if (state.vertices.length >= 3) {
+          showDoubleToClose();
         } else {
-          state.setStatus && state.setStatus(MSG_INITIAL, 'info');
+          showClickToAdd();
         }
         state.lastVertexAddedAt = Date.now();
         state.lastVertexAddedBy = 'tap';
@@ -716,8 +713,6 @@ window.addEventListener('DOMContentLoaded', function () {
               }
             }
             await attemptSave();
-          } else {
-            state.setStatus && state.setStatus('Move near first point to close', 'error');
           }
         }
       };
@@ -758,7 +753,6 @@ window.addEventListener('DOMContentLoaded', function () {
         if (isDoubleClickHolding || suppressNextClick) return;
         // If near first vertex and polygon can be closed, do NOT add a new vertex.
         if (state.vertices.length >= 3 && isNearFirst(ev.latlng)) {
-            state.setStatus && state.setStatus(msgNearFirst(), 'info');
           return;
         }
         const latlng = ev.latlng;
@@ -772,8 +766,20 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], ev.latlng]);
         }
-        // Provide proximity feedback
-        // No dynamic messages during move
+        if (state.vertices.length >= 3) {
+          showDoubleToClose();
+        } else {
+          showDragToDraw();
+        }
+        if (state.idleTimer) { try { clearTimeout(state.idleTimer); } catch (e) {} }
+        state.idleTimer = setTimeout(() => {
+          if (!drawing || drawing !== state) return;
+          if (state.vertices.length >= 3) {
+            showDoubleToClose();
+          } else {
+            showClickToAdd();
+          }
+        }, 450);
       };
       
       let lastClickTime = 0;
@@ -788,12 +794,10 @@ window.addEventListener('DOMContentLoaded', function () {
         setFirstMarker(state.vertices[0]);
         updatePolyline();
         setDrawingCursor('cross');
-        if (state.vertices.length === 1) {
-          state.setStatus && state.setStatus(MSG_AFTER_FIRST, 'info');
-        } else if (state.vertices.length >= 3) {
-          setTwoLine();
+        if (state.vertices.length >= 3) {
+          showDoubleToClose();
         } else {
-          state.setStatus && state.setStatus(MSG_INITIAL, 'info');
+          showClickToAdd();
         }
         state.lastVertexAddedAt = Date.now();
         state.lastVertexAddedBy = source;
@@ -856,8 +860,6 @@ window.addEventListener('DOMContentLoaded', function () {
             }
             state.isClosing = true;
             await attemptSave();
-          } else {
-            state.setStatus && state.setStatus(msgMoveNearFirstErr(), 'error');
           }
         } else {
           state.setStatus && state.setStatus('Need at least 3 points', 'error');
@@ -919,11 +921,9 @@ window.addEventListener('DOMContentLoaded', function () {
                 }
               }
               await attemptSave();
-          } else {
-            state.setStatus && state.setStatus(msgMoveNearFirstErr(), 'error');
             }
           } else {
-            state.setStatus && state.setStatus('Need at least 3 points', 'error');
+            // No announcements
           }
         } else {
           // Single tap: add vertex at touch point
@@ -936,12 +936,10 @@ window.addEventListener('DOMContentLoaded', function () {
           setFirstMarker(state.vertices[0]);
           updatePolyline();
           setDrawingCursor('cross');
-          if (state.vertices.length === 1) {
-            state.setStatus && state.setStatus(msgAddVertexFirst(), 'info');
-          } else if (state.vertices.length >= 3) {
-            state.setStatus && state.setStatus(msgReadyToClose(), 'info');
+          if (state.vertices.length >= 3) {
+            showDoubleToClose();
           } else {
-            state.setStatus && state.setStatus(msgAddVertex(), 'info');
+            showClickToAdd();
           }
           state.lastVertexAddedAt = Date.now();
           state.lastVertexAddedBy = 'tap';
