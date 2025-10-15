@@ -252,8 +252,16 @@ window.addEventListener('DOMContentLoaded', function () {
     }
   ]);
 
-  // Drawing button options (route announce removed)
+  // Drawing button options
   createOptionPanel('btn-drawing', [
+    {
+      icon: 'fas fa-route',
+      text: 'Path',
+      action: function() {
+        document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
+        alert('Path drawing: coming soon.');
+      }
+    },
     {
       icon: 'fas fa-shield-alt',
       text: 'Refuge',
@@ -349,13 +357,13 @@ window.addEventListener('DOMContentLoaded', function () {
         </div>
         <button class="hud-cancel" title="Cancel" aria-label="Cancel drawing">✕</button>
       </div>
+      <div class="hud-status status-info">${initialMsg}</div>
       <div class="hud-controls" style="display:none;">
         <input class="hud-name" type="text" placeholder="Refuge name" aria-label="Refuge name" />
         <div class="hud-actions">
           <button class="hud-ok" type="button" aria-label="Confirm name">OK</button>
         </div>
       </div>
-      <div class="hud-status status-info">${initialMsg}</div>
     `;
     document.body.appendChild(hud);
     hud.querySelector('.hud-cancel').addEventListener('click', () => { onCancel && onCancel(); });
