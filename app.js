@@ -338,7 +338,7 @@ window.addEventListener('DOMContentLoaded', function () {
         </div>
         <button class="hud-cancel" title="Cancel" aria-label="Cancel drawing">✕</button>
       </div>
-      <div class="hud-controls">
+      <div class="hud-controls" style="display:none;">
         <input class="hud-name" type="text" placeholder="Refuge name" aria-label="Refuge name" />
       </div>
       <div class="hud-status status-info">${initialMsg}</div>
@@ -346,6 +346,7 @@ window.addEventListener('DOMContentLoaded', function () {
     document.body.appendChild(hud);
     hud.querySelector('.hud-cancel').addEventListener('click', () => { onCancel && onCancel(); });
     const statusEl = hud.querySelector('.hud-status');
+    const controlsEl = hud.querySelector('.hud-controls');
     const setStatus = (text, kind = 'info') => {
       if (!statusEl) return;
       statusEl.textContent = text;
@@ -355,6 +356,8 @@ window.addEventListener('DOMContentLoaded', function () {
     const nameInput = hud.querySelector('.hud-name');
     const getName = () => (nameInput && typeof nameInput.value === 'string' ? nameInput.value.trim() : '');
     const focusName = () => { try { nameInput && nameInput.focus(); nameInput && nameInput.select && nameInput.select(); } catch (e) {} };
+    const showNameBar = () => { if (controlsEl) controlsEl.style.display = ''; };
+    const hideNameBar = () => { if (controlsEl) controlsEl.style.display = 'none'; };
     const onNameEnter = (cb) => {
       if (!nameInput) return;
       const handler = (e) => {
@@ -365,7 +368,7 @@ window.addEventListener('DOMContentLoaded', function () {
       };
       nameInput.addEventListener('keydown', handler);
     };
-    return { hud, setStatus, getName, focusName, onNameEnter };
+    return { hud, setStatus, getName, focusName, onNameEnter, showNameBar, hideNameBar };
   }
 
   function teardownDrawing() {
@@ -419,6 +422,11 @@ window.addEventListener('DOMContentLoaded', function () {
   async function saveRefugePolygon(latlngs, name, setStatus) {
     // Ensure closed ring and convert to GeoJSON lon/lat
     const ring = latlngs.map(ll => [ll.lng, ll.lat]);
+    // Block saving with fewer than 3 vertices (no area with two angles)
+    if (ring.length < 3) {
+      setStatus && setStatus('Need at least 3 points', 'error');
+      return false;
+    }
     if (ring.length >= 3) {
       const first = ring[0];
       const last = ring[ring.length - 1];
@@ -475,9 +483,21 @@ window.addEventListener('DOMContentLoaded', function () {
       isClosing: false,
       setStatus: hudApi.setStatus,
       getName: hudApi.getName,
-      focusName: hudApi.focusName
+      focusName: hudApi.focusName,
+      showNameBar: hudApi.showNameBar,
+      hideNameBar: hudApi.hideNameBar
     };
     drawing = state;
+    // Message helpers for consistent wording across web/Telegram
+    const actionWord = () => (state.mode === 'telegram' ? 'tap' : 'click');
+    const doubleWord = () => (state.mode === 'telegram' ? 'Double-tap' : 'Double-click');
+    const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+    const msgAddVertexFirst = () => `Drag to draw a line, then ${actionWord()} to add the next vertex.`;
+    const msgAddVertex = () => `${capitalize(actionWord())} to add a vertex.`;
+    const msgDrawAndAdd = () => `Drag to draw lines and ${actionWord()} to add vertices.`;
+    const msgReadyToClose = () => `${msgDrawAndAdd()} ${doubleWord()} near the first vertex to close the area.`;
+    const msgNearFirst = () => `${doubleWord()} near the first vertex to close the area.`;
+    const msgMoveNearFirstErr = () => 'Move near the first vertex to close the area.';
     const attemptSave = async () => {
       if (state.vertices.length < 3) {
         state.setStatus && state.setStatus('Need at least 3 points', 'error');
@@ -485,7 +505,8 @@ window.addEventListener('DOMContentLoaded', function () {
       }
       const name = state.getName ? state.getName() : '';
       if (!name) {
-        state.setStatus && state.setStatus('Enter a name in the bar to save.', 'error');
+        state.showNameBar && state.showNameBar();
+        state.setStatus && state.setStatus('Enter a name to save.', 'error');
         state.focusName && state.focusName();
         return;
       }
@@ -556,7 +577,7 @@ window.addEventListener('DOMContentLoaded', function () {
         let markerLastTouchTime = 0;
         state.firstMarker.on('touchstart', () => {
           if (state.vertices.length >= 3) {
-            state.setStatus && state.setStatus('Double-tap near the first vertex to close the area.', 'info');
+            state.setStatus && state.setStatus(msgNearFirst(), 'info');
           }
         });
         state.firstMarker.on('touchend', async (ev) => {
@@ -574,7 +595,7 @@ window.addEventListener('DOMContentLoaded', function () {
         });
         state.firstMarker.on('mouseover', () => {
           if (state.vertices.length >= 3) {
-            state.setStatus && state.setStatus('Double-click near the first vertex to close the area.', 'info');
+            state.setStatus && state.setStatus(msgNearFirst(), 'info');
           }
         });
       } else {
@@ -589,7 +610,7 @@ window.addEventListener('DOMContentLoaded', function () {
         let markerLastTouchTimeTg = 0;
         state.firstMarker.on('touchstart', () => {
           if (state.vertices.length >= 3) {
-            state.setStatus && state.setStatus('Double-tap near the first vertex to close the area.', 'info');
+            state.setStatus && state.setStatus(msgNearFirst(), 'info');
           }
         });
         state.firstMarker.on('touchend', async (ev) => {
@@ -655,11 +676,11 @@ window.addEventListener('DOMContentLoaded', function () {
         setFirstMarker(state.vertices[0]);
         updatePolyline();
         if (state.vertices.length === 1) {
-          state.setStatus && state.setStatus('Drag to draw a line, then tap to add the next vertex.', 'info');
+          state.setStatus && state.setStatus(msgAddVertexFirst(), 'info');
         } else if (state.vertices.length >= 3) {
-          state.setStatus && state.setStatus('Drag to draw lines and tap to add vertices. Double-tap near the first vertex to close the area.', 'info');
+          state.setStatus && state.setStatus(msgReadyToClose(), 'info');
         } else {
-          state.setStatus && state.setStatus('Tap to add a vertex.', 'info');
+          state.setStatus && state.setStatus(msgAddVertex(), 'info');
         }
         state.lastVertexAddedAt = Date.now();
         state.lastVertexAddedBy = 'tap';
@@ -670,7 +691,7 @@ window.addEventListener('DOMContentLoaded', function () {
         }
         // proximity check to first vertex for center-dot highlight
         const dot = document.querySelector('.map-center-dot');
-        if (dot && state.vertices.length >= 2) {
+        if (dot && state.vertices.length >= 3) {
           const first = state.vertices[0];
           const center = map.getCenter();
           const pFirst = map.latLngToContainerPoint(first);
@@ -679,11 +700,13 @@ window.addEventListener('DOMContentLoaded', function () {
           const dy = pCenter.y - pFirst.y;
           if ((dx * dx + dy * dy) <= (NEAR_FIRST_THRESHOLD_PX_TG * NEAR_FIRST_THRESHOLD_PX_TG)) {
             dot.classList.add('near-first');
-            if (state.vertices.length >= 3) state.setStatus && state.setStatus('Double-tap near the first vertex to close the area.', 'info');
+            state.setStatus && state.setStatus(msgNearFirst(), 'info');
           } else {
             dot.classList.remove('near-first');
-            if (state.vertices.length >= 3) state.setStatus && state.setStatus('Drag to draw lines and tap to add vertices.', 'info');
+            state.setStatus && state.setStatus(msgDrawAndAdd(), 'info');
           }
+        } else if (dot) {
+          dot.classList.remove('near-first');
         }
       };
       const onCenterDouble = async () => {
@@ -750,7 +773,7 @@ window.addEventListener('DOMContentLoaded', function () {
         if (isDoubleClickHolding || suppressNextClick) return;
         // If near first vertex and polygon can be closed, do NOT add a new vertex.
         if (state.vertices.length >= 3 && isNearFirst(ev.latlng)) {
-            state.setStatus && state.setStatus('Double-click near the first vertex to close the area.', 'info');
+            state.setStatus && state.setStatus(msgNearFirst(), 'info');
           return;
         }
         const latlng = ev.latlng;
@@ -767,9 +790,9 @@ window.addEventListener('DOMContentLoaded', function () {
         // Provide proximity feedback
         if (state.vertices.length >= 3) {
           if (isNearFirst(ev.latlng)) {
-            state.setStatus && state.setStatus('Double-click near the first vertex to close the area.', 'info');
+            state.setStatus && state.setStatus(msgNearFirst(), 'info');
           } else {
-            state.setStatus && state.setStatus('Drag to draw lines and click to add vertices.', 'info');
+            state.setStatus && state.setStatus(msgDrawAndAdd(), 'info');
           }
         }
       };
@@ -787,11 +810,11 @@ window.addEventListener('DOMContentLoaded', function () {
         updatePolyline();
         setDrawingCursor('cross');
         if (state.vertices.length === 1) {
-          state.setStatus && state.setStatus('Drag to draw a line, then click to add the next vertex.', 'info');
+          state.setStatus && state.setStatus(msgAddVertexFirst(), 'info');
         } else if (state.vertices.length >= 3) {
-          state.setStatus && state.setStatus('Drag to draw lines and click to add vertices. Double-click near the first vertex to close the area.', 'info');
+          state.setStatus && state.setStatus(msgReadyToClose(), 'info');
         } else {
-          state.setStatus && state.setStatus('Click to add a vertex.', 'info');
+          state.setStatus && state.setStatus(msgAddVertex(), 'info');
         }
         state.lastVertexAddedAt = Date.now();
         state.lastVertexAddedBy = source;
@@ -855,7 +878,7 @@ window.addEventListener('DOMContentLoaded', function () {
             state.isClosing = true;
             await attemptSave();
           } else {
-            state.setStatus && state.setStatus('Move near the first vertex to close the area.', 'error');
+            state.setStatus && state.setStatus(msgMoveNearFirstErr(), 'error');
           }
         } else {
           state.setStatus && state.setStatus('Need at least 3 points', 'error');
@@ -894,9 +917,9 @@ window.addEventListener('DOMContentLoaded', function () {
         }
         if (state.vertices.length >= 3) {
           if (isNearFirst(info.latlng)) {
-            state.setStatus && state.setStatus('Double-tap near the first vertex to close the area.', 'info');
+            state.setStatus && state.setStatus(msgNearFirst(), 'info');
           } else {
-            state.setStatus && state.setStatus('Drag to draw lines and tap to add vertices.', 'info');
+            state.setStatus && state.setStatus(msgDrawAndAdd(), 'info');
           }
         }
       };
@@ -923,8 +946,8 @@ window.addEventListener('DOMContentLoaded', function () {
                 }
               }
               await attemptSave();
-            } else {
-              state.setStatus && state.setStatus('Move near the first vertex to close the area.', 'error');
+          } else {
+            state.setStatus && state.setStatus(msgMoveNearFirstErr(), 'error');
             }
           } else {
             state.setStatus && state.setStatus('Need at least 3 points', 'error');
@@ -941,11 +964,11 @@ window.addEventListener('DOMContentLoaded', function () {
           updatePolyline();
           setDrawingCursor('cross');
           if (state.vertices.length === 1) {
-            state.setStatus && state.setStatus('Drag to draw a line, then tap to add the next vertex.', 'info');
+            state.setStatus && state.setStatus(msgAddVertexFirst(), 'info');
           } else if (state.vertices.length >= 3) {
-            state.setStatus && state.setStatus('Drag to draw lines and tap to add vertices. Double-tap near the first vertex to close the area.', 'info');
+            state.setStatus && state.setStatus(msgReadyToClose(), 'info');
           } else {
-            state.setStatus && state.setStatus('Tap to add a vertex.', 'info');
+            state.setStatus && state.setStatus(msgAddVertex(), 'info');
           }
           state.lastVertexAddedAt = Date.now();
           state.lastVertexAddedBy = 'tap';
