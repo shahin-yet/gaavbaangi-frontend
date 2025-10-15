@@ -328,9 +328,7 @@ window.addEventListener('DOMContentLoaded', function () {
     if (hud) hud.remove();
     hud = document.createElement('div');
     hud.className = 'drawing-hud';
-    const initialMsg = isMobile
-      ? 'Tap to add a vertex.'
-      : 'Click to add a vertex.';
+    const initialMsg = 'click to add vertex';
     hud.innerHTML = `
       <div class="hud-row">
         <div class="hud-title">
@@ -349,7 +347,12 @@ window.addEventListener('DOMContentLoaded', function () {
     const controlsEl = hud.querySelector('.hud-controls');
     const setStatus = (text, kind = 'info') => {
       if (!statusEl) return;
-      statusEl.textContent = text;
+      const safe = (text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br>');
+      statusEl.innerHTML = safe;
       statusEl.classList.remove('status-info', 'status-error', 'status-success');
       statusEl.classList.add(`status-${kind}`);
     };
@@ -488,16 +491,12 @@ window.addEventListener('DOMContentLoaded', function () {
       hideNameBar: hudApi.hideNameBar
     };
     drawing = state;
-    // Message helpers for consistent wording across web/Telegram
-    const actionWord = () => (state.mode === 'telegram' ? 'tap' : 'click');
-    const doubleWord = () => (state.mode === 'telegram' ? 'Double-tap' : 'Double-click');
-    const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-    const msgAddVertexFirst = () => `Drag to draw a line, then ${actionWord()} to add the next vertex.`;
-    const msgAddVertex = () => `${capitalize(actionWord())} to add a vertex.`;
-    const msgDrawAndAdd = () => `Drag to draw lines and ${actionWord()} to add vertices.`;
-    const msgReadyToClose = () => `${msgDrawAndAdd()} ${doubleWord()} near the first vertex to close the area.`;
-    const msgNearFirst = () => `${doubleWord()} near the first vertex to close the area.`;
-    const msgMoveNearFirstErr = () => 'Move near the first vertex to close the area.';
+    // Fixed copy per requirements
+    const MSG_INITIAL = 'click to add vertex';
+    const MSG_AFTER_FIRST = 'drag to draw, click to add vertex';
+    const MSG_READY_CLOSE_LINE1 = 'drag to draw, click to add vertex';
+    const MSG_READY_CLOSE_LINE2 = 'near first point double click to close area';
+    const setTwoLine = () => state.setStatus && state.setStatus(`${MSG_READY_CLOSE_LINE1}\n${MSG_READY_CLOSE_LINE2}`, 'info');
     const attemptSave = async () => {
       if (state.vertices.length < 3) {
         state.setStatus && state.setStatus('Need at least 3 points', 'error');
@@ -575,11 +574,7 @@ window.addEventListener('DOMContentLoaded', function () {
         });
         // Touch double-tap on marker for mobile web
         let markerLastTouchTime = 0;
-        state.firstMarker.on('touchstart', () => {
-          if (state.vertices.length >= 3) {
-            state.setStatus && state.setStatus(msgNearFirst(), 'info');
-          }
-        });
+        // No extra messaging on marker hover/touchstart
         state.firstMarker.on('touchend', async (ev) => {
           const now = Date.now();
           if (ev && ev.originalEvent) {
@@ -593,11 +588,7 @@ window.addEventListener('DOMContentLoaded', function () {
             markerLastTouchTime = now;
           }
         });
-        state.firstMarker.on('mouseover', () => {
-          if (state.vertices.length >= 3) {
-            state.setStatus && state.setStatus(msgNearFirst(), 'info');
-          }
-        });
+        // No extra messaging on marker hover
       } else {
         // Telegram mobile: allow double-tap directly on the marker to finish (ignore center proximity)
         const finishIfReadyTg = async () => {
@@ -608,11 +599,7 @@ window.addEventListener('DOMContentLoaded', function () {
           }
         };
         let markerLastTouchTimeTg = 0;
-        state.firstMarker.on('touchstart', () => {
-          if (state.vertices.length >= 3) {
-            state.setStatus && state.setStatus(msgNearFirst(), 'info');
-          }
-        });
+        // No extra messaging on marker touchstart (telegram)
         state.firstMarker.on('touchend', async (ev) => {
           const now = Date.now();
           if (ev && ev.originalEvent) {
@@ -676,11 +663,11 @@ window.addEventListener('DOMContentLoaded', function () {
         setFirstMarker(state.vertices[0]);
         updatePolyline();
         if (state.vertices.length === 1) {
-          state.setStatus && state.setStatus(msgAddVertexFirst(), 'info');
+          state.setStatus && state.setStatus(MSG_AFTER_FIRST, 'info');
         } else if (state.vertices.length >= 3) {
-          state.setStatus && state.setStatus(msgReadyToClose(), 'info');
+          setTwoLine();
         } else {
-          state.setStatus && state.setStatus(msgAddVertex(), 'info');
+          state.setStatus && state.setStatus(MSG_INITIAL, 'info');
         }
         state.lastVertexAddedAt = Date.now();
         state.lastVertexAddedBy = 'tap';
@@ -689,7 +676,7 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], map.getCenter()]);
         }
-        // proximity check to first vertex for center-dot highlight
+        // Only maintain the near-first visual indicator; no status changes here
         const dot = document.querySelector('.map-center-dot');
         if (dot && state.vertices.length >= 3) {
           const first = state.vertices[0];
@@ -700,10 +687,8 @@ window.addEventListener('DOMContentLoaded', function () {
           const dy = pCenter.y - pFirst.y;
           if ((dx * dx + dy * dy) <= (NEAR_FIRST_THRESHOLD_PX_TG * NEAR_FIRST_THRESHOLD_PX_TG)) {
             dot.classList.add('near-first');
-            state.setStatus && state.setStatus(msgNearFirst(), 'info');
           } else {
             dot.classList.remove('near-first');
-            state.setStatus && state.setStatus(msgDrawAndAdd(), 'info');
           }
         } else if (dot) {
           dot.classList.remove('near-first');
@@ -788,13 +773,7 @@ window.addEventListener('DOMContentLoaded', function () {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], ev.latlng]);
         }
         // Provide proximity feedback
-        if (state.vertices.length >= 3) {
-          if (isNearFirst(ev.latlng)) {
-            state.setStatus && state.setStatus(msgNearFirst(), 'info');
-          } else {
-            state.setStatus && state.setStatus(msgDrawAndAdd(), 'info');
-          }
-        }
+        // No dynamic messages during move
       };
       
       let lastClickTime = 0;
@@ -810,11 +789,11 @@ window.addEventListener('DOMContentLoaded', function () {
         updatePolyline();
         setDrawingCursor('cross');
         if (state.vertices.length === 1) {
-          state.setStatus && state.setStatus(msgAddVertexFirst(), 'info');
+          state.setStatus && state.setStatus(MSG_AFTER_FIRST, 'info');
         } else if (state.vertices.length >= 3) {
-          state.setStatus && state.setStatus(msgReadyToClose(), 'info');
+          setTwoLine();
         } else {
-          state.setStatus && state.setStatus(msgAddVertex(), 'info');
+          state.setStatus && state.setStatus(MSG_INITIAL, 'info');
         }
         state.lastVertexAddedAt = Date.now();
         state.lastVertexAddedBy = source;
@@ -915,13 +894,7 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], info.latlng]);
         }
-        if (state.vertices.length >= 3) {
-          if (isNearFirst(info.latlng)) {
-            state.setStatus && state.setStatus(msgNearFirst(), 'info');
-          } else {
-            state.setStatus && state.setStatus(msgDrawAndAdd(), 'info');
-          }
-        }
+        // No dynamic messages during move
       };
       const onTouchEndWeb = async (ev) => {
         const now = Date.now();
