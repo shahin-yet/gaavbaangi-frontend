@@ -529,28 +529,10 @@ body {
 .drawing-hud .hud-status.status-success { color: #1b7f39; }
 
 /* HUD controls layout */
-.drawing-hud .hud-controls-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.drawing-hud .hud-name {
-  flex: 1;
-}
-
-.drawing-hud .hud-ok {
-  border: 1px solid var(--gray-300);
-  background: var(--primary, #1b7f39);
-  color: #fff;
-  padding: 6px 10px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.drawing-hud .hud-ok:hover {
-  filter: brightness(0.95);
-}
+.drawing-hud .hud-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+.drawing-hud .hud-name { width: 100%; }
+.drawing-hud .hud-ok { border: 1px solid var(--gray-300); background: var(--primary, #1b7f39); color: #fff; padding: 10px 16px; border-radius: 10px; cursor: pointer; font-size: 14px; }
+.drawing-hud .hud-ok:hover { filter: brightness(0.95); }
 
 /* Use default cursor (arrow) on the map */
 .leaflet-container {
