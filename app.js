@@ -329,7 +329,10 @@ window.addEventListener('DOMContentLoaded', function () {
         <button class="hud-cancel" title="Cancel" aria-label="Cancel drawing">✕</button>
       </div>
       <div class="hud-controls" style="display:none;">
-        <input class="hud-name" type="text" placeholder="Refuge name" aria-label="Refuge name" />
+        <div class="hud-controls-row">
+          <input class="hud-name" type="text" placeholder="Refuge name" aria-label="Refuge name" />
+          <button class="hud-ok" type="button" aria-label="Confirm name">OK</button>
+        </div>
       </div>
       <div class="hud-status status-info">${initialMsg}</div>
     `;
@@ -349,6 +352,7 @@ window.addEventListener('DOMContentLoaded', function () {
       statusEl.classList.add(`status-${kind}`);
     };
     const nameInput = hud.querySelector('.hud-name');
+    const okButton = hud.querySelector('.hud-ok');
     const getName = () => (nameInput && typeof nameInput.value === 'string' ? nameInput.value.trim() : '');
     const focusName = () => { try { nameInput && nameInput.focus(); nameInput && nameInput.select && nameInput.select(); } catch (e) {} };
     const showNameBar = () => { if (controlsEl) controlsEl.style.display = ''; };
@@ -363,7 +367,8 @@ window.addEventListener('DOMContentLoaded', function () {
       };
       nameInput.addEventListener('keydown', handler);
     };
-    return { hud, setStatus, getName, focusName, onNameEnter, showNameBar, hideNameBar };
+    const onOkClick = (cb) => { if (okButton) okButton.addEventListener('click', () => cb && cb()); };
+    return { hud, setStatus, getName, focusName, onNameEnter, onOkClick, showNameBar, hideNameBar };
   }
 
   function teardownDrawing() {
@@ -490,8 +495,10 @@ window.addEventListener('DOMContentLoaded', function () {
     // Dynamic announcement helpers
     const ANNOUNCE_CLICK_TO_ADD = 'click to add vertex';
     const ANNOUNCE_DRAG_TO_DRAW = 'drag to draw line';
+    const ANNOUNCE_DOUBLE_TO_CLOSE = 'double click to close area';
     const showClickToAdd = () => state.setStatus && state.setStatus(ANNOUNCE_CLICK_TO_ADD, 'info');
     const showDragToDraw = () => state.setStatus && state.setStatus(ANNOUNCE_DRAG_TO_DRAW, 'info');
+    const showDoubleToClose = () => state.setStatus && state.setStatus(ANNOUNCE_DOUBLE_TO_CLOSE, 'info');
     // Show initial message on start
     showClickToAdd();
     const attemptSave = async () => {
@@ -512,6 +519,11 @@ window.addEventListener('DOMContentLoaded', function () {
     };
 
     hudApi.onNameEnter && hudApi.onNameEnter(() => {
+      if (state.vertices.length >= 3) {
+        attemptSave();
+      }
+    });
+    hudApi.onOkClick && hudApi.onOkClick(() => {
       if (state.vertices.length >= 3) {
         attemptSave();
       }
@@ -764,6 +776,8 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], ev.latlng]);
         }
+        // Track last mouse latlng for idle proximity evaluation
+        state.lastMouseLatLng = ev.latlng;
         // Before first vertex: keep static "click to add vertex"
         if (state.vertices.length === 0) {
           showClickToAdd();
@@ -774,9 +788,14 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.idleTimer) { try { clearTimeout(state.idleTimer); } catch (e) {} }
         state.idleTimer = setTimeout(() => {
           if (!drawing || drawing !== state) return;
-          // Idle: before first vertex stay on click message; after first vertex switch to drag message
+          // Idle: before first vertex stay on click message
           if (state.vertices.length === 0) {
             showClickToAdd();
+            return;
+          }
+          // If enough vertices and near first, prompt to close; else show drag message
+          if (state.vertices.length >= 3 && state.lastMouseLatLng && isNearFirst(state.lastMouseLatLng)) {
+            showDoubleToClose();
           } else {
             showDragToDraw();
           }
