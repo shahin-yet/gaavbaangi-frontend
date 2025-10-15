@@ -764,18 +764,21 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], ev.latlng]);
         }
-        if (state.vertices.length >= 1) {
+        // Before first vertex: keep static "click to add vertex"
+        if (state.vertices.length === 0) {
           showClickToAdd();
         } else {
-          showDragToDraw();
+          // After first vertex: moving => "click to add vertex"
+          showClickToAdd();
         }
         if (state.idleTimer) { try { clearTimeout(state.idleTimer); } catch (e) {} }
         state.idleTimer = setTimeout(() => {
           if (!drawing || drawing !== state) return;
-          if (state.vertices.length >= 1) {
-            showDragToDraw(); // idle after movement
-          } else {
+          // Idle: before first vertex stay on click message; after first vertex switch to drag message
+          if (state.vertices.length === 0) {
             showClickToAdd();
+          } else {
+            showDragToDraw();
           }
         }, 450);
       };
