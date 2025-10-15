@@ -66,6 +66,8 @@
   --transition-fast: 150ms ease-in-out;
   --transition-normal: 250ms ease-in-out;
   --transition-slow: 350ms ease-in-out;
+  /* Dynamic viewport height for mobile: set via JS to avoid 100vh bugs */
+  --app-height: 100vh;
 }
 
 /* Base Styles */
@@ -87,7 +89,7 @@ body {
 /* Main Content - Full Screen */
 .main-content {
   width: 100vw;
-  height: 100vh;
+  height: var(--app-height);
   margin: 0;
   padding: 0;
   position: relative;
@@ -106,7 +108,7 @@ body {
 /* Map Section - Full Screen */
 .map-container {
   width: 100vw;
-  height: 100vh;
+  height: var(--app-height);
   background: var(--white);
   border-radius: 0;
   box-shadow: none;
@@ -118,7 +120,7 @@ body {
 
 #map {
   width: 100vw;
-  height: 100vh;
+  height: var(--app-height);
   border: none;
   margin: 0;
   padding: 0;
@@ -227,7 +229,7 @@ body {
 
 @media (max-width: 480px) {
   #map {
-    height: 100vh;
+    height: var(--app-height);
     width: 100vw;
   }
 }
@@ -326,15 +328,9 @@ body {
 }
 
 /* Adjust map container for Telegram */
-.telegram-webapp .map-container {
-  height: 100vh;
-  width: 100vw;
-}
+.telegram-webapp .map-container { height: var(--app-height); width: 100vw; }
 
-.telegram-webapp #map {
-  height: 100vh;
-  width: 100vw;
-}
+.telegram-webapp #map { height: var(--app-height); width: 100vw; }
 
 /* Center selector dot (Telegram only) */
 .map-center-dot {
@@ -531,6 +527,30 @@ body {
 .drawing-hud .hud-status.status-info { color: #1e5bb8; }
 .drawing-hud .hud-status.status-error { color: #b81e1e; }
 .drawing-hud .hud-status.status-success { color: #1b7f39; }
+
+/* HUD controls layout */
+.drawing-hud .hud-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drawing-hud .hud-name {
+  flex: 1;
+}
+
+.drawing-hud .hud-ok {
+  border: 1px solid var(--gray-300);
+  background: var(--primary, #1b7f39);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.drawing-hud .hud-ok:hover {
+  filter: brightness(0.95);
+}
 
 /* Use default cursor (arrow) on the map */
 .leaflet-container {
