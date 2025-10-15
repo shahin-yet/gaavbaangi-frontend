@@ -20,12 +20,33 @@ window.addEventListener('DOMContentLoaded', function () {
   const isMobileUA = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent || '');
   const isMobile = isTelegramMobile || isCoarsePointer || isTouchCapable || isMobileUA;
   
-  // Apply center-dot and mobile UX on any mobile device; remove dot otherwise
+  // Dynamic app height to avoid 100vh issues on mobile browsers
+  function updateAppHeight() {
+    try {
+      const tg = window.Telegram && window.Telegram.WebApp;
+      const heightFromTelegram = tg && typeof tg.viewportHeight === 'number' ? tg.viewportHeight : null;
+      const visualVp = window.visualViewport;
+      const vh = heightFromTelegram || (visualVp && typeof visualVp.height === 'number' ? Math.round(visualVp.height) : window.innerHeight);
+      document.documentElement.style.setProperty('--app-height', vh + 'px');
+    } catch (e) {}
+  }
+  updateAppHeight();
+  window.addEventListener('resize', updateAppHeight);
+  window.addEventListener('orientationchange', updateAppHeight);
+  if (window.visualViewport && window.visualViewport.addEventListener) {
+    window.visualViewport.addEventListener('resize', updateAppHeight);
+  }
+  if (tgWa && typeof tgWa.onEvent === 'function') {
+    try { tgWa.onEvent('viewportChanged', updateAppHeight); } catch (e) {}
+  }
+  
+  // Apply Telegram-specific UX only when running inside Telegram; remove dot otherwise
   const centerDotEl = document.querySelector('.map-center-dot');
-  if (isMobile) {
+  if (isTelegramWebApp) {
     document.body.classList.add('telegram-webapp');
     if (centerDotEl) centerDotEl.style.display = 'block';
   } else {
+    document.body.classList.remove('telegram-webapp');
     if (centerDotEl) centerDotEl.remove();
   }
   
@@ -33,7 +54,7 @@ window.addEventListener('DOMContentLoaded', function () {
   const map = L.map('map', {
     center: [20.5937, 78.9629], // Centered on India as an example
     zoom: 5,
-    zoomControl: !isMobile // Hide zoom controls on mobile
+    zoomControl: true
   });
 
   // Terrain layer (OpenTopoMap)
@@ -96,8 +117,8 @@ window.addEventListener('DOMContentLoaded', function () {
   // initial fetch
   loadAndRenderRefuges();
 
-  // Mobile: center-dot selector model (select by moving map under the dot)
-  if (isMobile) {
+  // Telegram: center-dot selector model (select by moving map under the dot)
+  if (isTelegramWebApp) {
     let selectedLatLng = map.getCenter();
     const updateSelected = () => {
       selectedLatLng = map.getCenter();
@@ -329,8 +350,8 @@ window.addEventListener('DOMContentLoaded', function () {
         <button class="hud-cancel" title="Cancel" aria-label="Cancel drawing">✕</button>
       </div>
       <div class="hud-controls" style="display:none;">
-        <div class="hud-controls-row">
-          <input class="hud-name" type="text" placeholder="Refuge name" aria-label="Refuge name" />
+        <input class="hud-name" type="text" placeholder="Refuge name" aria-label="Refuge name" />
+        <div class="hud-actions">
           <button class="hud-ok" type="button" aria-label="Confirm name">OK</button>
         </div>
       </div>
@@ -473,7 +494,7 @@ window.addEventListener('DOMContentLoaded', function () {
     const hudApi = createDrawingHud(() => teardownDrawing());
 
     const state = {
-      mode: isMobile ? 'telegram' : 'web',
+      mode: isTelegramWebApp ? 'telegram' : 'web',
       vertices: [], // array of L.LatLng
       polyline: L.polyline([], { color: '#ff5722', weight: 2 }).addTo(refugeLayerGroup),
       firstMarker: null,
@@ -506,6 +527,10 @@ window.addEventListener('DOMContentLoaded', function () {
         state.setStatus && state.setStatus('Need at least 3 points', 'error');
         return;
       }
+      // Detach the drawing line immediately upon closing intent
+      if (!state.closedPreview) {
+        showClosedPreview();
+      }
       const name = state.getName ? state.getName() : '';
       if (!name) {
         state.showNameBar && state.showNameBar();
@@ -513,7 +538,6 @@ window.addEventListener('DOMContentLoaded', function () {
         state.focusName && state.focusName();
         return;
       }
-      showClosedPreview();
       const ok = await saveRefugePolygon(state.vertices, name, state.setStatus);
       if (ok) teardownDrawing();
     };
@@ -666,6 +690,8 @@ window.addEventListener('DOMContentLoaded', function () {
         state.lastTouchTime = now;
         ev.preventDefault && ev.preventDefault();
         ev.stopPropagation && ev.stopPropagation();
+        // If preview is shown, do not add more vertices (detached)
+        if (state.closedPreview) return;
         // Immediate add (no defer)
         const centerLatLng = map.getCenter();
         state.vertices.push(centerLatLng);
@@ -761,6 +787,8 @@ window.addEventListener('DOMContentLoaded', function () {
       const onClick = (ev) => {
         // Only process click if not in double-click holding mode and not suppressed
         if (isDoubleClickHolding || suppressNextClick) return;
+        // If preview is shown, prevent further vertex additions
+        if (state.closedPreview) return;
         // If near first vertex and polygon can be closed, do NOT add a new vertex.
         if (state.vertices.length >= 3 && isNearFirst(ev.latlng)) {
           return;
@@ -856,6 +884,8 @@ window.addEventListener('DOMContentLoaded', function () {
               updatePolyline();
             }
           }
+          // Show preview immediately to detach line
+          showClosedPreview();
           attemptSave();
           isDoubleClickHolding = false;
         } else {
@@ -879,6 +909,8 @@ window.addEventListener('DOMContentLoaded', function () {
               }
             }
             state.isClosing = true;
+            // Detach line immediately
+            showClosedPreview();
             await attemptSave();
           }
         } else {
@@ -926,6 +958,7 @@ window.addEventListener('DOMContentLoaded', function () {
         ev.preventDefault && ev.preventDefault();
         ev.stopPropagation && ev.stopPropagation();
         if (touchMovedWeb) return; // treat as pan/drag
+        if (state.closedPreview) return; // detached
 
         if (now - lastTouchTimeWeb < 280) {
           // Double-tap: attempt to finish if near first
@@ -940,6 +973,8 @@ window.addEventListener('DOMContentLoaded', function () {
                   updatePolyline();
                 }
               }
+              // Detach line immediately
+              showClosedPreview();
               await attemptSave();
             }
           } else {
