@@ -329,14 +329,17 @@ window.addEventListener('DOMContentLoaded', function () {
     hud = document.createElement('div');
     hud.className = 'drawing-hud';
     const initialMsg = isMobile
-      ? 'Tap to add vertex. Double-tap near first point to finish.'
-      : 'Click to add vertex. Double-click near first point to finish.';
+      ? 'Tap to add a vertex.'
+      : 'Click to add a vertex.';
     hud.innerHTML = `
       <div class="hud-row">
         <div class="hud-title">
           <span>Drawing refuge</span>
         </div>
         <button class="hud-cancel" title="Cancel" aria-label="Cancel drawing">✕</button>
+      </div>
+      <div class="hud-controls">
+        <input class="hud-name" type="text" placeholder="Refuge name" aria-label="Refuge name" />
       </div>
       <div class="hud-status status-info">${initialMsg}</div>
     `;
@@ -349,7 +352,20 @@ window.addEventListener('DOMContentLoaded', function () {
       statusEl.classList.remove('status-info', 'status-error', 'status-success');
       statusEl.classList.add(`status-${kind}`);
     };
-    return { hud, setStatus };
+    const nameInput = hud.querySelector('.hud-name');
+    const getName = () => (nameInput && typeof nameInput.value === 'string' ? nameInput.value.trim() : '');
+    const focusName = () => { try { nameInput && nameInput.focus(); nameInput && nameInput.select && nameInput.select(); } catch (e) {} };
+    const onNameEnter = (cb) => {
+      if (!nameInput) return;
+      const handler = (e) => {
+        if (e && (e.key === 'Enter' || e.keyCode === 13)) {
+          e.preventDefault();
+          cb && cb();
+        }
+      };
+      nameInput.addEventListener('keydown', handler);
+    };
+    return { hud, setStatus, getName, focusName, onNameEnter };
   }
 
   function teardownDrawing() {
@@ -400,7 +416,7 @@ window.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  async function saveRefugePolygon(latlngs, setStatus) {
+  async function saveRefugePolygon(latlngs, name, setStatus) {
     // Ensure closed ring and convert to GeoJSON lon/lat
     const ring = latlngs.map(ll => [ll.lng, ll.lat]);
     if (ring.length >= 3) {
@@ -408,38 +424,35 @@ window.addEventListener('DOMContentLoaded', function () {
       const last = ring[ring.length - 1];
       if (first[0] !== last[0] || first[1] !== last[1]) ring.push(first);
     }
-    setStatus && setStatus('Enter a name in the dialog…', 'info');
-    let name = prompt('Name this refuge:');
-    if (!name) { setStatus && setStatus('Cancelled naming. Continue drawing or cancel.', 'error'); return false; }
-    while (true) {
-      try {
-        setStatus && setStatus('Saving…', 'info');
-        const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, polygon: { type: 'Polygon', coordinates: [ring] } })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && data && data.status === 'success') {
-          await loadAndRenderRefuges();
-          setStatus && setStatus('Saved.', 'success');
-          return true;
-        }
-        const serverMsg = (data && data.message) || '';
-        const isDuplicate = res.status === 409 || /already exists/i.test(serverMsg);
-        if (isDuplicate) {
-          const newName = prompt('That name is already in use. Enter a different name:', name);
-          if (!newName) { setStatus && setStatus('Cancelled naming. Continue drawing or cancel.', 'error'); return false; }
-          name = newName;
-          continue; // retry
-        }
-        const msg = serverMsg || `Failed to save refuge (${res.status})`;
-        setStatus && setStatus(msg, 'error');
-        return false;
-      } catch (e) {
-        setStatus && setStatus('Error saving refuge.', 'error');
+    if (!name || !name.trim()) {
+      setStatus && setStatus('Enter a name in the bar to save.', 'error');
+      return false;
+    }
+    try {
+      setStatus && setStatus('Saving…', 'info');
+      const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, polygon: { type: 'Polygon', coordinates: [ring] } })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data && data.status === 'success') {
+        await loadAndRenderRefuges();
+        setStatus && setStatus('Saved.', 'success');
+        return true;
+      }
+      const serverMsg = (data && data.message) || '';
+      const isDuplicate = res.status === 409 || /already exists/i.test(serverMsg);
+      if (isDuplicate) {
+        setStatus && setStatus('That name is already in use. Enter a different name in the bar.', 'error');
         return false;
       }
+      const msg = serverMsg || `Failed to save refuge (${res.status})`;
+      setStatus && setStatus(msg, 'error');
+      return false;
+    } catch (e) {
+      setStatus && setStatus('Error saving refuge.', 'error');
+      return false;
     }
   }
 
@@ -460,9 +473,33 @@ window.addEventListener('DOMContentLoaded', function () {
       lastTouchTime: 0,
       suppressNextDblClick: false,
       isClosing: false,
-      setStatus: hudApi.setStatus
+      setStatus: hudApi.setStatus,
+      getName: hudApi.getName,
+      focusName: hudApi.focusName
     };
     drawing = state;
+    const attemptSave = async () => {
+      if (state.vertices.length < 3) {
+        state.setStatus && state.setStatus('Need at least 3 points', 'error');
+        return;
+      }
+      const name = state.getName ? state.getName() : '';
+      if (!name) {
+        state.setStatus && state.setStatus('Enter a name in the bar to save.', 'error');
+        state.focusName && state.focusName();
+        return;
+      }
+      showClosedPreview();
+      const ok = await saveRefugePolygon(state.vertices, name, state.setStatus);
+      if (ok) teardownDrawing();
+    };
+
+    hudApi.onNameEnter && hudApi.onNameEnter(() => {
+      if (state.vertices.length >= 3) {
+        attemptSave();
+      }
+    });
+
 
     const NEAR_FIRST_THRESHOLD_PX_TG = 8; // tighter proximity: require near-exact overlap on Telegram
     const NEAR_FIRST_THRESHOLD_PX = 8; // tighter proximity: require near-exact overlap on web
@@ -503,9 +540,7 @@ window.addEventListener('DOMContentLoaded', function () {
       if (state.mode === 'web') {
         const finishIfReady = async () => {
           if (state.vertices.length >= 3) {
-            showClosedPreview();
-            const ok = await saveRefugePolygon(state.vertices, state.setStatus);
-            if (ok) teardownDrawing();
+            await attemptSave();
           } else {
             state.setStatus && state.setStatus('Need at least 3 points', 'error');
           }
@@ -521,7 +556,7 @@ window.addEventListener('DOMContentLoaded', function () {
         let markerLastTouchTime = 0;
         state.firstMarker.on('touchstart', () => {
           if (state.vertices.length >= 3) {
-            state.setStatus && state.setStatus('Double-tap to finish', 'info');
+            state.setStatus && state.setStatus('Double-tap near the first vertex to close the area.', 'info');
           }
         });
         state.firstMarker.on('touchend', async (ev) => {
@@ -539,16 +574,14 @@ window.addEventListener('DOMContentLoaded', function () {
         });
         state.firstMarker.on('mouseover', () => {
           if (state.vertices.length >= 3) {
-            state.setStatus && state.setStatus('Double-click to finish', 'info');
+            state.setStatus && state.setStatus('Double-click near the first vertex to close the area.', 'info');
           }
         });
       } else {
         // Telegram mobile: allow double-tap directly on the marker to finish (ignore center proximity)
         const finishIfReadyTg = async () => {
           if (state.vertices.length >= 3) {
-            showClosedPreview();
-            const ok = await saveRefugePolygon(state.vertices, state.setStatus);
-            if (ok) teardownDrawing();
+            await attemptSave();
           } else {
             state.setStatus && state.setStatus('Need at least 3 points', 'error');
           }
@@ -556,7 +589,7 @@ window.addEventListener('DOMContentLoaded', function () {
         let markerLastTouchTimeTg = 0;
         state.firstMarker.on('touchstart', () => {
           if (state.vertices.length >= 3) {
-            state.setStatus && state.setStatus('Double-tap to finish', 'info');
+            state.setStatus && state.setStatus('Double-tap near the first vertex to close the area.', 'info');
           }
         });
         state.firstMarker.on('touchend', async (ev) => {
@@ -621,7 +654,13 @@ window.addEventListener('DOMContentLoaded', function () {
         state.vertices.push(centerLatLng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
-        state.setStatus && state.setStatus('Tap to add vertex. Double-tap near first point to finish.', 'info');
+        if (state.vertices.length === 1) {
+          state.setStatus && state.setStatus('Drag to draw a line, then tap to add the next vertex.', 'info');
+        } else if (state.vertices.length >= 3) {
+          state.setStatus && state.setStatus('Drag to draw lines and tap to add vertices. Double-tap near the first vertex to close the area.', 'info');
+        } else {
+          state.setStatus && state.setStatus('Tap to add a vertex.', 'info');
+        }
         state.lastVertexAddedAt = Date.now();
         state.lastVertexAddedBy = 'tap';
       };
@@ -640,9 +679,10 @@ window.addEventListener('DOMContentLoaded', function () {
           const dy = pCenter.y - pFirst.y;
           if ((dx * dx + dy * dy) <= (NEAR_FIRST_THRESHOLD_PX_TG * NEAR_FIRST_THRESHOLD_PX_TG)) {
             dot.classList.add('near-first');
-            if (state.vertices.length >= 3) state.setStatus && state.setStatus('Double-tap to finish', 'info');
+            if (state.vertices.length >= 3) state.setStatus && state.setStatus('Double-tap near the first vertex to close the area.', 'info');
           } else {
             dot.classList.remove('near-first');
+            if (state.vertices.length >= 3) state.setStatus && state.setStatus('Drag to draw lines and tap to add vertices.', 'info');
           }
         }
       };
@@ -667,9 +707,7 @@ window.addEventListener('DOMContentLoaded', function () {
                 updatePolyline();
               }
             }
-            showClosedPreview();
-            const ok = await saveRefugePolygon(state.vertices, state.setStatus);
-            if (ok) teardownDrawing();
+            await attemptSave();
           } else {
             state.setStatus && state.setStatus('Move near first point to close', 'error');
           }
@@ -712,7 +750,7 @@ window.addEventListener('DOMContentLoaded', function () {
         if (isDoubleClickHolding || suppressNextClick) return;
         // If near first vertex and polygon can be closed, do NOT add a new vertex.
         if (state.vertices.length >= 3 && isNearFirst(ev.latlng)) {
-          state.setStatus && state.setStatus('Double-click to finish', 'info');
+            state.setStatus && state.setStatus('Double-click near the first vertex to close the area.', 'info');
           return;
         }
         const latlng = ev.latlng;
@@ -729,9 +767,9 @@ window.addEventListener('DOMContentLoaded', function () {
         // Provide proximity feedback
         if (state.vertices.length >= 3) {
           if (isNearFirst(ev.latlng)) {
-            state.setStatus && state.setStatus('Double-click to finish', 'info');
+            state.setStatus && state.setStatus('Double-click near the first vertex to close the area.', 'info');
           } else {
-            state.setStatus && state.setStatus('Move near first point to close', 'info');
+            state.setStatus && state.setStatus('Drag to draw lines and click to add vertices.', 'info');
           }
         }
       };
@@ -748,7 +786,13 @@ window.addEventListener('DOMContentLoaded', function () {
         setFirstMarker(state.vertices[0]);
         updatePolyline();
         setDrawingCursor('cross');
-        state.setStatus && state.setStatus('Click to add vertex. Double-click near first point to finish.', 'info');
+        if (state.vertices.length === 1) {
+          state.setStatus && state.setStatus('Drag to draw a line, then click to add the next vertex.', 'info');
+        } else if (state.vertices.length >= 3) {
+          state.setStatus && state.setStatus('Drag to draw lines and click to add vertices. Double-click near the first vertex to close the area.', 'info');
+        } else {
+          state.setStatus && state.setStatus('Click to add a vertex.', 'info');
+        }
         state.lastVertexAddedAt = Date.now();
         state.lastVertexAddedBy = source;
         state.pendingVertexLatLng = null;
@@ -786,10 +830,7 @@ window.addEventListener('DOMContentLoaded', function () {
               updatePolyline();
             }
           }
-          showClosedPreview();
-          saveRefugePolygon(state.vertices, state.setStatus).then((ok) => {
-            if (ok) teardownDrawing();
-          });
+          attemptSave();
           isDoubleClickHolding = false;
         } else {
           // Ensure cross cursor is always shown for single clicks
@@ -812,11 +853,9 @@ window.addEventListener('DOMContentLoaded', function () {
               }
             }
             state.isClosing = true;
-            showClosedPreview();
-            const ok = await saveRefugePolygon(state.vertices, state.setStatus);
-            if (ok) teardownDrawing();
+            await attemptSave();
           } else {
-            state.setStatus && state.setStatus('Move near first point to close', 'error');
+            state.setStatus && state.setStatus('Move near the first vertex to close the area.', 'error');
           }
         } else {
           state.setStatus && state.setStatus('Need at least 3 points', 'error');
@@ -853,6 +892,13 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], info.latlng]);
         }
+        if (state.vertices.length >= 3) {
+          if (isNearFirst(info.latlng)) {
+            state.setStatus && state.setStatus('Double-tap near the first vertex to close the area.', 'info');
+          } else {
+            state.setStatus && state.setStatus('Drag to draw lines and tap to add vertices.', 'info');
+          }
+        }
       };
       const onTouchEndWeb = async (ev) => {
         const now = Date.now();
@@ -876,11 +922,9 @@ window.addEventListener('DOMContentLoaded', function () {
                   updatePolyline();
                 }
               }
-              showClosedPreview();
-              const ok = await saveRefugePolygon(state.vertices, state.setStatus);
-              if (ok) teardownDrawing();
+              await attemptSave();
             } else {
-              state.setStatus && state.setStatus('Move near first point to close', 'error');
+              state.setStatus && state.setStatus('Move near the first vertex to close the area.', 'error');
             }
           } else {
             state.setStatus && state.setStatus('Need at least 3 points', 'error');
@@ -896,7 +940,13 @@ window.addEventListener('DOMContentLoaded', function () {
           setFirstMarker(state.vertices[0]);
           updatePolyline();
           setDrawingCursor('cross');
-          state.setStatus && state.setStatus('Tap to add vertex. Double-tap near first point to finish.', 'info');
+          if (state.vertices.length === 1) {
+            state.setStatus && state.setStatus('Drag to draw a line, then tap to add the next vertex.', 'info');
+          } else if (state.vertices.length >= 3) {
+            state.setStatus && state.setStatus('Drag to draw lines and tap to add vertices. Double-tap near the first vertex to close the area.', 'info');
+          } else {
+            state.setStatus && state.setStatus('Tap to add a vertex.', 'info');
+          }
           state.lastVertexAddedAt = Date.now();
           state.lastVertexAddedBy = 'tap';
         }
