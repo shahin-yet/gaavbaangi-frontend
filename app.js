@@ -533,6 +533,7 @@ window.addEventListener('DOMContentLoaded', function () {
       suppressNextDblClick: false,
       isClosing: false,
       helpersMuted: false, // when true, helper announcements are suppressed
+      isDragging: false,
       setStatus: hudApi.setStatus,
       getName: hudApi.getName,
       focusName: hudApi.focusName,
@@ -755,20 +756,46 @@ window.addEventListener('DOMContentLoaded', function () {
         } else if (dot) {
           dot.classList.remove('near-first');
         }
-        // Mirror desktop idle prompt cadence on mobile
-        if (state.idleTimer) { try { clearTimeout(state.idleTimer); } catch (e) {} }
-        state.idleTimer = setTimeout(() => {
-          if (!drawing || drawing !== state) return;
-          if (state.vertices.length === 0) {
-            showClickToAdd();
-            return;
-          }
+        // Messaging based on drag state
+        if (state.vertices.length === 0) {
+          showClickToAdd();
+          return;
+        }
+        if (state.isDragging) {
+          showClickToAdd();
+          return;
+        }
+        if (state.vertices.length >= 3 && nearFirst) {
+          showDoubleToClose();
+        } else {
+          showDragToDraw();
+        }
+      };
+      const onDragStart = () => {
+        state.isDragging = true;
+        if (state.vertices.length >= 1 && !state.closedPreview) {
+          showClickToAdd();
+        }
+      };
+      const onDragEnd = () => {
+        state.isDragging = false;
+        if (state.closedPreview) return;
+        if (state.vertices.length === 0) {
+          showClickToAdd();
+        } else {
+          const first = state.vertices[0];
+          const center = map.getCenter();
+          const pFirst = map.latLngToContainerPoint(first);
+          const pCenter = map.latLngToContainerPoint(center);
+          const dx = pCenter.x - pFirst.x;
+          const dy = pCenter.y - pFirst.y;
+          const nearFirst = (dx * dx + dy * dy) <= (NEAR_FIRST_THRESHOLD_PX_TG * NEAR_FIRST_THRESHOLD_PX_TG);
           if (state.vertices.length >= 3 && nearFirst) {
             showDoubleToClose();
           } else {
             showDragToDraw();
           }
-        }, 450);
+        }
       };
       const onCenterDouble = async () => {
         if (state.vertices.length >= 3) {
@@ -802,6 +829,8 @@ window.addEventListener('DOMContentLoaded', function () {
       container.addEventListener('touchend', onTouchEnd, { passive: false });
       state.domHandlers.push({ el: container, evt: 'touchend', fn: onTouchEnd, opts: { passive: false } });
       map.on('move', onMove); state.mouseHandlers.push({ evt: 'move', fn: onMove });
+      map.on('dragstart', onDragStart); state.mouseHandlers.push({ evt: 'dragstart', fn: onDragStart });
+      map.on('dragend', onDragEnd); state.mouseHandlers.push({ evt: 'dragend', fn: onDragEnd });
       window.addEventListener('map-center-doubletap', onCenterDouble);
       state.domHandlers.push({ el: window, evt: 'map-center-doubletap', fn: onCenterDouble });
       // Suppress default zooming effect on double-tap while drawing
@@ -991,13 +1020,9 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], info.latlng]);
         }
-        // Mobile web: show context hints during move
-        if (state.vertices.length >= 3) {
-          if (isNearFirst && isNearFirst(info.latlng)) {
-            showDoubleToClose();
-          } else {
-            showDragToDraw();
-          }
+        // Mobile web: while dragging, prompt to tap to add
+        if (state.vertices.length === 0) {
+          showClickToAdd();
         } else {
           showClickToAdd();
         }
@@ -1009,7 +1034,14 @@ window.addEventListener('DOMContentLoaded', function () {
         // Prevent the synthetic click Leaflet may emit
         ev.preventDefault && ev.preventDefault();
         ev.stopPropagation && ev.stopPropagation();
-        if (touchMovedWeb) return; // treat as pan/drag
+        if (touchMovedWeb) {
+          // Finished panning: show stationary hint
+          if (!state.closedPreview && state.vertices.length >= 1) {
+            showDragToDraw();
+          }
+          touchMovedWeb = false;
+          return; // treat as pan/drag
+        }
         if (state.closedPreview) return; // detached
 
         if (now - lastTouchTimeWeb < 280) {
