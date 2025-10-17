@@ -540,19 +540,10 @@ window.addEventListener('DOMContentLoaded', function () {
       hideNameBar: hudApi.hideNameBar
     };
     drawing = state;
-    // Dynamic announcement helpers (mobile-friendly wording and center-dot mode)
-    const getMsgClickToAdd = () => {
-      if (state.mode === 'telegram') return 'tap to add at center';
-      return isMobile ? 'tap to add vertex' : 'click to add vertex';
-    };
-    const getMsgDragToDraw = () => {
-      if (state.mode === 'telegram') return 'move map to aim the dot';
-      return 'drag to draw line';
-    };
-    const getMsgDoubleToClose = () => {
-      if (state.mode === 'telegram') return 'double tap to close when dot overlaps first point';
-      return isMobile ? 'double tap to close area' : 'double click to close area';
-    };
+    // Dynamic announcement helpers (unified with desktop; mobile = tap wording)
+    const getMsgClickToAdd = () => (isMobile ? 'tap to add vertex' : 'click to add vertex');
+    const getMsgDragToDraw = () => 'drag to draw line';
+    const getMsgDoubleToClose = () => (isMobile ? 'double tap to close area' : 'double click to close area');
     const showClickToAdd = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(getMsgClickToAdd(), 'info'); };
     const showDragToDraw = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(getMsgDragToDraw(), 'info'); };
     const showDoubleToClose = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(getMsgDoubleToClose(), 'info'); };
@@ -736,11 +727,8 @@ window.addEventListener('DOMContentLoaded', function () {
         state.vertices.push(centerLatLng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
-        if (state.vertices.length >= 1) {
-          showClickToAdd(); // moving after first vertex
-        } else {
-          showClickToAdd(); // still before first vertex
-        }
+        // After first vertex, mirror desktop guidance
+        if (state.vertices.length >= 1) { showDragToDraw(); } else { showClickToAdd(); }
         state.lastVertexAddedAt = Date.now();
         state.lastVertexAddedBy = 'tap';
       };
@@ -748,8 +736,9 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], map.getCenter()]);
         }
-        // Only maintain the near-first visual indicator; no status changes here
+        // Maintain the near-first visual indicator
         const dot = document.querySelector('.map-center-dot');
+        let nearFirst = false;
         if (dot && state.vertices.length >= 3) {
           const first = state.vertices[0];
           const center = map.getCenter();
@@ -759,26 +748,27 @@ window.addEventListener('DOMContentLoaded', function () {
           const dy = pCenter.y - pFirst.y;
           if ((dx * dx + dy * dy) <= (NEAR_FIRST_THRESHOLD_PX_TG * NEAR_FIRST_THRESHOLD_PX_TG)) {
             dot.classList.add('near-first');
-            // Guide user to finish when near first
-            showDoubleToClose();
+            nearFirst = true;
           } else {
             dot.classList.remove('near-first');
-            // Keep helpful guidance while moving
-            if (state.vertices.length === 0) {
-              showClickToAdd();
-            } else {
-              showDragToDraw();
-            }
           }
         } else if (dot) {
           dot.classList.remove('near-first');
-          // Before 3 points, guide to add vertices
+        }
+        // Mirror desktop idle prompt cadence on mobile
+        if (state.idleTimer) { try { clearTimeout(state.idleTimer); } catch (e) {} }
+        state.idleTimer = setTimeout(() => {
+          if (!drawing || drawing !== state) return;
           if (state.vertices.length === 0) {
             showClickToAdd();
+            return;
+          }
+          if (state.vertices.length >= 3 && nearFirst) {
+            showDoubleToClose();
           } else {
             showDragToDraw();
           }
-        }
+        }, 450);
       };
       const onCenterDouble = async () => {
         if (state.vertices.length >= 3) {
