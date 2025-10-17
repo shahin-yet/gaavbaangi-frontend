@@ -40,14 +40,22 @@ window.addEventListener('DOMContentLoaded', function () {
     try { tgWa.onEvent('viewportChanged', updateAppHeight); } catch (e) {}
   }
   
-  // Apply Telegram-specific UX only when running inside Telegram; remove dot otherwise
+  // Apply environment classes: Telegram presence and device-based mobile UI
   const centerDotEl = document.querySelector('.map-center-dot');
   if (isTelegramWebApp) {
     document.body.classList.add('telegram-webapp');
-    if (centerDotEl) centerDotEl.style.display = 'block';
   } else {
     document.body.classList.remove('telegram-webapp');
-    if (centerDotEl) centerDotEl.remove();
+  }
+  // Mark mobile UI across Telegram and regular browsers
+  if (isMobile) {
+    document.body.classList.add('mobile-ui');
+  } else {
+    document.body.classList.remove('mobile-ui');
+  }
+  // Keep dot element in DOM; CSS controls visibility by class
+  if (centerDotEl) {
+    centerDotEl.style.display = '';
   }
   
   // Initialize the map
@@ -117,8 +125,8 @@ window.addEventListener('DOMContentLoaded', function () {
   // initial fetch
   loadAndRenderRefuges();
 
-  // Telegram: center-dot selector model (select by moving map under the dot)
-  if (isTelegramWebApp) {
+  // Mobile: center-dot selector model (select by moving map under the dot)
+  if (isMobile) {
     let selectedLatLng = map.getCenter();
     const updateSelected = () => {
       selectedLatLng = map.getCenter();
@@ -159,7 +167,7 @@ window.addEventListener('DOMContentLoaded', function () {
       }));
     };
 
-    // Desktop-style double click (if Telegram web triggers it)
+    // Desktop-style double click (if a dblclick occurs on mobile web/Telegram)
     map.on('dblclick', function (ev) {
       if (ev && ev.originalEvent) {
         ev.originalEvent.preventDefault && ev.originalEvent.preventDefault();
@@ -502,7 +510,8 @@ window.addEventListener('DOMContentLoaded', function () {
     const hudApi = createDrawingHud(() => teardownDrawing());
 
     const state = {
-      mode: isTelegramWebApp ? 'telegram' : 'web',
+      // Use mobile-vs-desktop to decide interaction model, independent of Telegram
+      mode: isMobile ? 'telegram' : 'web',
       vertices: [], // array of L.LatLng
       polyline: L.polyline([], { color: '#ff5722', weight: 2 }).addTo(refugeLayerGroup),
       firstMarker: null,
