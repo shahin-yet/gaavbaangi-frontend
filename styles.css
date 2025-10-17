@@ -350,12 +350,11 @@ body {
   z-index: 1100;
 }
 
-.telegram-webapp .map-center-dot {
-  display: block;
-}
+/* Show center dot on any mobile UI (Telegram or browser) */
+.mobile-ui .map-center-dot { display: block; }
 
 /* Highlight when center is near first vertex (Telegram drawing) */
-.telegram-webapp .map-center-dot.near-first {
+.mobile-ui .map-center-dot.near-first {
   box-shadow: 0 0 0 12px rgba(30, 144, 255, 0.2);
   border-color: #1e90ff;
 }
