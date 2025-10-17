@@ -205,7 +205,16 @@ window.addEventListener('DOMContentLoaded', function () {
       const item = document.createElement('div');
       item.className = 'option-item';
       item.innerHTML = `<i class="${option.icon}"></i>${option.text}`;
-      item.onclick = option.action;
+      // Always close any open option panels after a selection, then run the action
+      item.addEventListener('click', function(e) {
+        e.stopPropagation();
+        try {
+          document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
+        } catch (err) {}
+        try {
+          if (typeof option.action === 'function') option.action();
+        } catch (err) { console.warn(err); }
+      });
       panel.appendChild(item);
     });
     
@@ -531,13 +540,22 @@ window.addEventListener('DOMContentLoaded', function () {
       hideNameBar: hudApi.hideNameBar
     };
     drawing = state;
-    // Dynamic announcement helpers
-    const ANNOUNCE_CLICK_TO_ADD = 'click to add vertex';
-    const ANNOUNCE_DRAG_TO_DRAW = 'drag to draw line';
-    const ANNOUNCE_DOUBLE_TO_CLOSE = 'double click to close area';
-    const showClickToAdd = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(ANNOUNCE_CLICK_TO_ADD, 'info'); };
-    const showDragToDraw = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(ANNOUNCE_DRAG_TO_DRAW, 'info'); };
-    const showDoubleToClose = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(ANNOUNCE_DOUBLE_TO_CLOSE, 'info'); };
+    // Dynamic announcement helpers (mobile-friendly wording and center-dot mode)
+    const getMsgClickToAdd = () => {
+      if (state.mode === 'telegram') return 'tap to add at center';
+      return isMobile ? 'tap to add vertex' : 'click to add vertex';
+    };
+    const getMsgDragToDraw = () => {
+      if (state.mode === 'telegram') return 'move map to aim the dot';
+      return 'drag to draw line';
+    };
+    const getMsgDoubleToClose = () => {
+      if (state.mode === 'telegram') return 'double tap to close when dot overlaps first point';
+      return isMobile ? 'double tap to close area' : 'double click to close area';
+    };
+    const showClickToAdd = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(getMsgClickToAdd(), 'info'); };
+    const showDragToDraw = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(getMsgDragToDraw(), 'info'); };
+    const showDoubleToClose = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(getMsgDoubleToClose(), 'info'); };
     // Show initial message on start
     showClickToAdd();
     const attemptSave = async () => {
@@ -741,11 +759,25 @@ window.addEventListener('DOMContentLoaded', function () {
           const dy = pCenter.y - pFirst.y;
           if ((dx * dx + dy * dy) <= (NEAR_FIRST_THRESHOLD_PX_TG * NEAR_FIRST_THRESHOLD_PX_TG)) {
             dot.classList.add('near-first');
+            // Guide user to finish when near first
+            showDoubleToClose();
           } else {
             dot.classList.remove('near-first');
+            // Keep helpful guidance while moving
+            if (state.vertices.length === 0) {
+              showClickToAdd();
+            } else {
+              showDragToDraw();
+            }
           }
         } else if (dot) {
           dot.classList.remove('near-first');
+          // Before 3 points, guide to add vertices
+          if (state.vertices.length === 0) {
+            showClickToAdd();
+          } else {
+            showDragToDraw();
+          }
         }
       };
       const onCenterDouble = async () => {
@@ -969,7 +1001,16 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], info.latlng]);
         }
-        // No dynamic messages during move
+        // Mobile web: show context hints during move
+        if (state.vertices.length >= 3) {
+          if (isNearFirst && isNearFirst(info.latlng)) {
+            showDoubleToClose();
+          } else {
+            showDragToDraw();
+          }
+        } else {
+          showClickToAdd();
+        }
       };
       const onTouchEndWeb = async (ev) => {
         const now = Date.now();
