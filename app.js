@@ -40,22 +40,14 @@ window.addEventListener('DOMContentLoaded', function () {
     try { tgWa.onEvent('viewportChanged', updateAppHeight); } catch (e) {}
   }
   
-  // Apply environment classes: Telegram presence and device-based mobile UI
+  // Apply Telegram-specific UX only when running inside Telegram; remove dot otherwise
   const centerDotEl = document.querySelector('.map-center-dot');
   if (isTelegramWebApp) {
     document.body.classList.add('telegram-webapp');
+    if (centerDotEl) centerDotEl.style.display = 'block';
   } else {
     document.body.classList.remove('telegram-webapp');
-  }
-  // Mark mobile UI across Telegram and regular browsers
-  if (isMobile) {
-    document.body.classList.add('mobile-ui');
-  } else {
-    document.body.classList.remove('mobile-ui');
-  }
-  // Keep dot element in DOM; CSS controls visibility by class
-  if (centerDotEl) {
-    centerDotEl.style.display = '';
+    if (centerDotEl) centerDotEl.remove();
   }
   
   // Initialize the map
@@ -125,8 +117,8 @@ window.addEventListener('DOMContentLoaded', function () {
   // initial fetch
   loadAndRenderRefuges();
 
-  // Mobile: center-dot selector model (select by moving map under the dot)
-  if (isMobile) {
+  // Telegram: center-dot selector model (select by moving map under the dot)
+  if (isTelegramWebApp) {
     let selectedLatLng = map.getCenter();
     const updateSelected = () => {
       selectedLatLng = map.getCenter();
@@ -167,7 +159,7 @@ window.addEventListener('DOMContentLoaded', function () {
       }));
     };
 
-    // Desktop-style double click (if a dblclick occurs on mobile web/Telegram)
+    // Desktop-style double click (if Telegram web triggers it)
     map.on('dblclick', function (ev) {
       if (ev && ev.originalEvent) {
         ev.originalEvent.preventDefault && ev.originalEvent.preventDefault();
@@ -205,16 +197,7 @@ window.addEventListener('DOMContentLoaded', function () {
       const item = document.createElement('div');
       item.className = 'option-item';
       item.innerHTML = `<i class="${option.icon}"></i>${option.text}`;
-      // Always close any open option panels after a selection, then run the action
-      item.addEventListener('click', function(e) {
-        e.stopPropagation();
-        try {
-          document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
-        } catch (err) {}
-        try {
-          if (typeof option.action === 'function') option.action();
-        } catch (err) { console.warn(err); }
-      });
+      item.onclick = option.action;
       panel.appendChild(item);
     });
     
@@ -519,8 +502,7 @@ window.addEventListener('DOMContentLoaded', function () {
     const hudApi = createDrawingHud(() => teardownDrawing());
 
     const state = {
-      // Use mobile-vs-desktop to decide interaction model, independent of Telegram
-      mode: isMobile ? 'telegram' : 'web',
+      mode: isTelegramWebApp ? 'telegram' : 'web',
       vertices: [], // array of L.LatLng
       polyline: L.polyline([], { color: '#ff5722', weight: 2 }).addTo(refugeLayerGroup),
       firstMarker: null,
@@ -540,13 +522,13 @@ window.addEventListener('DOMContentLoaded', function () {
       hideNameBar: hudApi.hideNameBar
     };
     drawing = state;
-    // Dynamic announcement helpers (always use desktop text on all devices)
-    const getMsgClickToAdd = () => 'click to add vertex';
-    const getMsgDragToDraw = () => 'drag to draw line';
-    const getMsgDoubleToClose = () => 'double click to close area';
-    const showClickToAdd = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(getMsgClickToAdd(), 'info'); };
-    const showDragToDraw = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(getMsgDragToDraw(), 'info'); };
-    const showDoubleToClose = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(getMsgDoubleToClose(), 'info'); };
+    // Dynamic announcement helpers
+    const ANNOUNCE_CLICK_TO_ADD = 'click to add vertex';
+    const ANNOUNCE_DRAG_TO_DRAW = 'drag to draw line';
+    const ANNOUNCE_DOUBLE_TO_CLOSE = 'double click to close area';
+    const showClickToAdd = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(ANNOUNCE_CLICK_TO_ADD, 'info'); };
+    const showDragToDraw = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(ANNOUNCE_DRAG_TO_DRAW, 'info'); };
+    const showDoubleToClose = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(ANNOUNCE_DOUBLE_TO_CLOSE, 'info'); };
     // Show initial message on start
     showClickToAdd();
     const attemptSave = async () => {
@@ -709,14 +691,6 @@ window.addEventListener('DOMContentLoaded', function () {
         if ((dx * dx + dy * dy) > (TAP_MOVE_THRESHOLD_PX * TAP_MOVE_THRESHOLD_PX)) {
           state.touchMoved = true; // treat as pan/drag
         }
-        // While dragging, mirror desktop movement guidance
-        if (state.vertices.length === 0) {
-          showClickToAdd();
-        } else {
-          showDragToDraw();
-        }
-        // Update guide line and near-first indicator based on current center
-        onMove();
       };
 
       const onTouchEnd = (ev) => {
@@ -735,8 +709,11 @@ window.addEventListener('DOMContentLoaded', function () {
         state.vertices.push(centerLatLng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
-        // After first vertex, mirror desktop guidance
-        if (state.vertices.length >= 1) { showDragToDraw(); } else { showClickToAdd(); }
+        if (state.vertices.length >= 1) {
+          showClickToAdd(); // moving after first vertex
+        } else {
+          showClickToAdd(); // still before first vertex
+        }
         state.lastVertexAddedAt = Date.now();
         state.lastVertexAddedBy = 'tap';
       };
@@ -744,9 +721,8 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], map.getCenter()]);
         }
-        // Maintain the near-first visual indicator
+        // Only maintain the near-first visual indicator; no status changes here
         const dot = document.querySelector('.map-center-dot');
-        let nearFirst = false;
         if (dot && state.vertices.length >= 3) {
           const first = state.vertices[0];
           const center = map.getCenter();
@@ -756,35 +732,12 @@ window.addEventListener('DOMContentLoaded', function () {
           const dy = pCenter.y - pFirst.y;
           if ((dx * dx + dy * dy) <= (NEAR_FIRST_THRESHOLD_PX_TG * NEAR_FIRST_THRESHOLD_PX_TG)) {
             dot.classList.add('near-first');
-            nearFirst = true;
           } else {
             dot.classList.remove('near-first');
           }
         } else if (dot) {
           dot.classList.remove('near-first');
         }
-        // Immediate dynamic helper while moving
-        if (state.vertices.length === 0) {
-          showClickToAdd();
-        } else if (state.vertices.length >= 3 && nearFirst) {
-          showDoubleToClose();
-        } else {
-          showDragToDraw();
-        }
-        // Mirror desktop idle prompt cadence on mobile
-        if (state.idleTimer) { try { clearTimeout(state.idleTimer); } catch (e) {} }
-        state.idleTimer = setTimeout(() => {
-          if (!drawing || drawing !== state) return;
-          if (state.vertices.length === 0) {
-            showClickToAdd();
-            return;
-          }
-          if (state.vertices.length >= 3 && nearFirst) {
-            showDoubleToClose();
-          } else {
-            showDragToDraw();
-          }
-        }, 450);
       };
       const onCenterDouble = async () => {
         if (state.vertices.length >= 3) {
@@ -865,13 +818,12 @@ window.addEventListener('DOMContentLoaded', function () {
         }
         // Track last mouse latlng for idle proximity evaluation
         state.lastMouseLatLng = ev.latlng;
-        // Dynamic helper on move
+        // Before first vertex: keep static "click to add vertex"
         if (state.vertices.length === 0) {
           showClickToAdd();
-        } else if (state.vertices.length >= 3 && isNearFirst(ev.latlng)) {
-          showDoubleToClose();
         } else {
-          showDragToDraw();
+          // After first vertex: moving => "click to add vertex"
+          showClickToAdd();
         }
         if (state.idleTimer) { try { clearTimeout(state.idleTimer); } catch (e) {} }
         state.idleTimer = setTimeout(() => {
@@ -1008,16 +960,7 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], info.latlng]);
         }
-        // Mobile web: show context hints during move
-        if (state.vertices.length >= 3) {
-          if (isNearFirst && isNearFirst(info.latlng)) {
-            showDoubleToClose();
-          } else {
-            showDragToDraw();
-          }
-        } else {
-          showClickToAdd();
-        }
+        // No dynamic messages during move
       };
       const onTouchEndWeb = async (ev) => {
         const now = Date.now();
