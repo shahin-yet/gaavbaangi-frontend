@@ -540,10 +540,10 @@ window.addEventListener('DOMContentLoaded', function () {
       hideNameBar: hudApi.hideNameBar
     };
     drawing = state;
-    // Dynamic announcement helpers (unified with desktop; mobile = tap wording)
-    const getMsgClickToAdd = () => (isMobile ? 'tap to add vertex' : 'click to add vertex');
+    // Dynamic announcement helpers (always use desktop text on all devices)
+    const getMsgClickToAdd = () => 'click to add vertex';
     const getMsgDragToDraw = () => 'drag to draw line';
-    const getMsgDoubleToClose = () => (isMobile ? 'double tap to close area' : 'double click to close area');
+    const getMsgDoubleToClose = () => 'double click to close area';
     const showClickToAdd = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(getMsgClickToAdd(), 'info'); };
     const showDragToDraw = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(getMsgDragToDraw(), 'info'); };
     const showDoubleToClose = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(getMsgDoubleToClose(), 'info'); };
