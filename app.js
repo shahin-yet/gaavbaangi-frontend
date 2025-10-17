@@ -709,6 +709,14 @@ window.addEventListener('DOMContentLoaded', function () {
         if ((dx * dx + dy * dy) > (TAP_MOVE_THRESHOLD_PX * TAP_MOVE_THRESHOLD_PX)) {
           state.touchMoved = true; // treat as pan/drag
         }
+        // While dragging, mirror desktop movement guidance
+        if (state.vertices.length === 0) {
+          showClickToAdd();
+        } else {
+          showDragToDraw();
+        }
+        // Update guide line and near-first indicator based on current center
+        onMove();
       };
 
       const onTouchEnd = (ev) => {
@@ -802,10 +810,6 @@ window.addEventListener('DOMContentLoaded', function () {
       container.addEventListener('touchend', onTouchEnd, { passive: false });
       state.domHandlers.push({ el: container, evt: 'touchend', fn: onTouchEnd, opts: { passive: false } });
       map.on('move', onMove); state.mouseHandlers.push({ evt: 'move', fn: onMove });
-      // Ensure movement-derived announcements also update after pan/zoom completes
-      map.on('moveend', onMove); state.mouseHandlers.push({ evt: 'moveend', fn: onMove });
-      map.on('zoom', onMove); state.mouseHandlers.push({ evt: 'zoom', fn: onMove });
-      map.on('zoomend', onMove); state.mouseHandlers.push({ evt: 'zoomend', fn: onMove });
       window.addEventListener('map-center-doubletap', onCenterDouble);
       state.domHandlers.push({ el: window, evt: 'map-center-doubletap', fn: onCenterDouble });
       // Suppress default zooming effect on double-tap while drawing
