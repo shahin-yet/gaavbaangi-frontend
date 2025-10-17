@@ -688,10 +688,6 @@ window.addEventListener('DOMContentLoaded', function () {
       state.touchStart = { x: 0, y: 0, t: 0 };
       state.touchMoved = false;
       const TAP_MOVE_THRESHOLD_PX = 8;
-      // Drag-to-draw tuning
-      const DRAG_ADD_THRESHOLD_PX = 12; // min pixel distance between auto-added vertices
-      const DRAG_ADD_THROTTLE_MS = 60; // min time between auto-adds while dragging
-      state.lastDragAddTime = 0;
 
       const getTouchPoint = (e) => {
         const t = (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]) || null;
@@ -726,7 +722,7 @@ window.addEventListener('DOMContentLoaded', function () {
       const onTouchEnd = (ev) => {
         const now = Date.now();
         // If finger moved significantly, ignore as tap
-        if (state.touchMoved) { state.touchMoved = false; return; }
+        if (state.touchMoved) return;
         // Double-tap is handled globally; skip adding
         if (now - state.lastTouchTime < 280) { state.lastTouchTime = 0; return; }
         state.lastTouchTime = now;
@@ -748,23 +744,6 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.tempGuide && state.vertices.length > 0) {
           state.tempGuide.setLatLngs([state.vertices[state.vertices.length - 1], map.getCenter()]);
         }
-        // While dragging: auto-add vertices along the path of the map center
-        if (state.vertices.length > 0 && state.touchMoved && !state.closedPreview) {
-          const last = state.vertices[state.vertices.length - 1];
-          const center = map.getCenter();
-          const pLast = map.latLngToContainerPoint(last);
-          const pCenter = map.latLngToContainerPoint(center);
-          const dx = pCenter.x - pLast.x;
-          const dy = pCenter.y - pLast.y;
-          const now = Date.now();
-          if ((dx * dx + dy * dy) >= (DRAG_ADD_THRESHOLD_PX * DRAG_ADD_THRESHOLD_PX) && (now - (state.lastDragAddTime || 0)) >= DRAG_ADD_THROTTLE_MS) {
-            state.vertices.push(center);
-            updatePolyline();
-            state.lastDragAddTime = now;
-            state.lastVertexAddedAt = now;
-            state.lastVertexAddedBy = 'drag';
-          }
-        }
         // Maintain the near-first visual indicator
         const dot = document.querySelector('.map-center-dot');
         let nearFirst = false;
@@ -783,6 +762,14 @@ window.addEventListener('DOMContentLoaded', function () {
           }
         } else if (dot) {
           dot.classList.remove('near-first');
+        }
+        // Immediate dynamic helper while moving
+        if (state.vertices.length === 0) {
+          showClickToAdd();
+        } else if (state.vertices.length >= 3 && nearFirst) {
+          showDoubleToClose();
+        } else {
+          showDragToDraw();
         }
         // Mirror desktop idle prompt cadence on mobile
         if (state.idleTimer) { try { clearTimeout(state.idleTimer); } catch (e) {} }
@@ -878,12 +865,13 @@ window.addEventListener('DOMContentLoaded', function () {
         }
         // Track last mouse latlng for idle proximity evaluation
         state.lastMouseLatLng = ev.latlng;
-        // Before first vertex: keep static "click to add vertex"
+        // Dynamic helper on move
         if (state.vertices.length === 0) {
           showClickToAdd();
+        } else if (state.vertices.length >= 3 && isNearFirst(ev.latlng)) {
+          showDoubleToClose();
         } else {
-          // After first vertex: moving => "click to add vertex"
-          showClickToAdd();
+          showDragToDraw();
         }
         if (state.idleTimer) { try { clearTimeout(state.idleTimer); } catch (e) {} }
         state.idleTimer = setTimeout(() => {
