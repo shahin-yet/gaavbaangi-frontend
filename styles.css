@@ -561,6 +561,17 @@ body {
 }
 .refuge-popup .refuge-edit-link:hover { background: #e8f2ff; }
 
+/* Make Leaflet popup shrink-wrap when it contains our refuge popup */
+.leaflet-popup-content:has(.refuge-popup) {
+  display: inline-block;
+  width: auto !important;
+  margin: 8px 10px; /* keep default-ish padding */
+}
+.leaflet-popup-content-wrapper:has(.refuge-popup) {
+  width: auto;
+  max-width: none;
+}
+
 /* Undo toast */
 .undo-toast {
   position: absolute;
