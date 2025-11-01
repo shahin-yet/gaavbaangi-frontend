@@ -167,7 +167,13 @@ window.addEventListener('DOMContentLoaded', function () {
     if (statusEl) { statusEl.innerHTML = ''; statusEl.style.display = 'none'; }
     hudApi.showNameBar && hudApi.showNameBar();
     const input = hud.querySelector('.hud-name');
-    if (input) input.value = refuge.name || '';
+    if (input) {
+      input.value = refuge.name || '';
+      // Freeze name until Rename is clicked; also remove from tab order
+      try { input.readOnly = true; } catch (e) {}
+      try { input.setAttribute('tabindex', '-1'); } catch (e) {}
+      input.classList.add('is-readonly');
+    }
     const ok = hud.querySelector('.hud-ok');
     if (ok) ok.textContent = 'Save';
     // Hide Save until a change is made from the original name
@@ -187,6 +193,22 @@ window.addEventListener('DOMContentLoaded', function () {
       updateOkVisibility();
     }
     const actions = hud.querySelector('.hud-actions');
+    // Add a Rename button at the end of the name bar (in actions row)
+    if (actions && !hud.querySelector('.hud-rename')) {
+      const rn = document.createElement('button');
+      rn.className = 'hud-rename';
+      rn.type = 'button';
+      rn.textContent = 'Rename';
+      // Insert before Save so order is: Rename, Save, Delete
+      try { actions.insertBefore(rn, ok || actions.firstChild); } catch (e) { actions.appendChild(rn); }
+      rn.addEventListener('click', () => {
+        if (!input) return;
+        try { input.readOnly = false; } catch (e) {}
+        try { input.setAttribute('tabindex', '0'); } catch (e) {}
+        input.classList.remove('is-readonly');
+        try { input.focus(); input.select && input.select(); } catch (e) {}
+      });
+    }
     if (actions && !hud.querySelector('.hud-delete')) {
       const del = document.createElement('button');
       del.className = 'hud-delete';
@@ -202,7 +224,8 @@ window.addEventListener('DOMContentLoaded', function () {
           await loadAndRenderRefuges();
           const h = document.querySelector('.drawing-hud');
           h && h.remove();
-          showUndoToast('Refuge deleted', async () => {
+          const deletedName = (deleted && deleted.name) || (refuge && refuge.name) || 'refuge';
+          showUndoToast(`Deleted ${deletedName}`, async () => {
             if (lastDeletedRefuge) {
               try { await recreateRefuge(lastDeletedRefuge); } finally { lastDeletedRefuge = null; }
               await loadAndRenderRefuges();
@@ -257,7 +280,10 @@ window.addEventListener('DOMContentLoaded', function () {
                 const popupHtml = `
                   <div class="refuge-popup">
                     <div class="refuge-name">${escapeHtml(r.name || 'Refuge')}</div>
-                    <button id="${popupId}" class="refuge-edit-link" type="button">Edit</button>
+                    <div class="refuge-actions">
+                      <button id="${popupId}" class="refuge-edit-link" type="button">Edit</button>
+                      <button id="${popupId}-del" class="refuge-delete-link" type="button">Delete</button>
+                    </div>
                   </div>
                 `;
                 polygon.addTo(refugeLayerGroup).bindPopup(popupHtml);
@@ -268,6 +294,27 @@ window.addEventListener('DOMContentLoaded', function () {
                       ev && ev.stopPropagation && ev.stopPropagation();
                       try { polygon.closePopup(); } catch (e) {}
                       openRefugeEditor(polygon._refuge);
+                    };
+                  }
+                  const delBtn = document.getElementById(`${popupId}-del`);
+                  if (delBtn) {
+                    delBtn.onclick = async (ev) => {
+                      ev && ev.stopPropagation && ev.stopPropagation();
+                      try { polygon.closePopup(); } catch (e) {}
+                      try {
+                        const deleted = await deleteRefugeById(r.id);
+                        lastDeletedRefuge = deleted;
+                        await loadAndRenderRefuges();
+                        const deletedName = (deleted && deleted.name) || (r && r.name) || 'refuge';
+                        showUndoToast(`Deleted ${deletedName}`, async () => {
+                          if (lastDeletedRefuge) {
+                            try { await recreateRefuge(lastDeletedRefuge); } finally { lastDeletedRefuge = null; }
+                            await loadAndRenderRefuges();
+                          }
+                        }, 12000);
+                      } catch (e) {
+                        alert((e && e.message) || 'Delete failed');
+                      }
                     };
                   }
                 });
