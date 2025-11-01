@@ -165,28 +165,13 @@ window.addEventListener('DOMContentLoaded', function () {
     // Remove the drawing announcement in edit mode (hide status area by default)
     const statusEl = hud.querySelector('.hud-status');
     if (statusEl) { statusEl.innerHTML = ''; statusEl.style.display = 'none'; }
-    // Hide the name bar in edit mode (remove name input from Edit bar)
-    hudApi.hideNameBar && hudApi.hideNameBar();
-    const input = hud.querySelector('.hud-name');
-    if (input) input.value = refuge.name || '';
-    const ok = hud.querySelector('.hud-ok');
-    if (ok) ok.textContent = 'Save';
-    // Hide Save until a change is made from the original name
-    const originalName = (refuge.name || '').trim();
-    hudApi.hideOk && hudApi.hideOk();
-    if (input) {
-      const updateOkVisibility = () => {
-        const cur = (input.value || '').trim();
-        if (cur && cur !== originalName) {
-          hudApi.showOk && hudApi.showOk();
-        } else {
-          hudApi.hideOk && hudApi.hideOk();
-        }
-      };
-      input.addEventListener('input', updateOkVisibility);
-      // Initialize based on current value
-      updateOkVisibility();
-    }
+    // Remove name input and Save button entirely in edit mode; keep actions area visible
+    const controls = hud.querySelector('.hud-controls');
+    const inputEl = hud.querySelector('.hud-name');
+    if (inputEl) { try { inputEl.remove(); } catch (e) {} }
+    const okBtn = hud.querySelector('.hud-ok');
+    if (okBtn) { try { okBtn.remove(); } catch (e) {} }
+    if (controls) { controls.style.display = ''; }
     const actions = hud.querySelector('.hud-actions');
     if (actions && !hud.querySelector('.hud-delete')) {
       const del = document.createElement('button');
@@ -215,23 +200,7 @@ window.addEventListener('DOMContentLoaded', function () {
         }
       });
     }
-    const attemptSave = async () => {
-      const newName = hudApi.getName ? hudApi.getName() : '';
-      if (!newName) { hudApi.setStatus && hudApi.setStatus('Enter a name to save.', 'info'); if (statusEl) statusEl.style.display = ''; hudApi.focusName && hudApi.focusName(); return; }
-      if (newName.trim() === originalName) { return; }
-      try {
-        if (statusEl) statusEl.style.display = '';
-        hudApi.setStatus && hudApi.setStatus('Saving…', 'info');
-        await updateRefugeName(refuge.id, newName);
-        await loadAndRenderRefuges();
-        const h = document.querySelector('.drawing-hud'); h && h.remove();
-      } catch (e) {
-        if (statusEl) statusEl.style.display = '';
-        hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Save failed', 'error');
-      }
-    };
-    hudApi.onNameEnter && hudApi.onNameEnter(attemptSave);
-    hudApi.onOkClick && hudApi.onOkClick(attemptSave);
+    // No rename in edit mode; only Delete is available
   }
 
   async function loadAndRenderRefuges() {
