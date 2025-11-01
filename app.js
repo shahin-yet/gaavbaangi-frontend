@@ -80,25 +80,141 @@ window.addEventListener('DOMContentLoaded', function () {
   // Add satellite layer by default
   satellite.addTo(map);
 
-  // Remove Delete button from refuge popup action bar (keep Edit only)
-  map.on('popupopen', function (ev) {
-    try {
-      const popupEl = ev && ev.popup && typeof ev.popup.getElement === 'function' ? ev.popup.getElement() : null;
-      if (!popupEl) return;
-      // Remove by known class if present
-      popupEl.querySelectorAll('.refuge-delete-link').forEach(el => el.remove());
-      // Fallback: remove any button whose text is exactly "Delete"
-      popupEl.querySelectorAll('button').forEach(btn => {
-        const txt = (btn.textContent || '').trim().toLowerCase();
-        if (txt === 'delete') btn.remove();
-      });
-    } catch (e) {}
-  });
-
   // -----------------------------
   // Refuge rendering layer group
   // -----------------------------
   const refugeLayerGroup = L.layerGroup().addTo(map);
+  let lastDeletedRefuge = null; // for Undo restore
+
+  function escapeHtml(str) {
+    try {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    } catch (e) { return ''; }
+  }
+
+  async function updateRefugeName(refugeId, newName) {
+    const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges/${refugeId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data || data.status !== 'success') {
+      const msg = (data && data.message) || `Failed to update (${res.status})`;
+      throw new Error(msg);
+    }
+    return data.refuge;
+  }
+
+  async function deleteRefugeById(refugeId) {
+    const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges/${refugeId}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data || data.status !== 'success') {
+      const msg = (data && data.message) || `Failed to delete (${res.status})`;
+      throw new Error(msg);
+    }
+    return data.deleted;
+  }
+
+  async function recreateRefuge(refuge) {
+    const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: refuge.name, polygon: refuge.polygon })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data || data.status !== 'success') {
+      const msg = (data && data.message) || `Failed to restore (${res.status})`;
+      throw new Error(msg);
+    }
+    return data.refuge;
+  }
+
+  function showUndoToast(message, onUndo, timeoutMs = 12000) {
+    try { document.querySelectorAll('.undo-toast').forEach(el => el.remove()); } catch (e) {}
+    const toast = document.createElement('div');
+    toast.className = 'undo-toast';
+    toast.innerHTML = `<span class="undo-msg">${escapeHtml(message)}</span><button class="undo-btn" type="button">Undo</button>`;
+    document.body.appendChild(toast);
+    let cleared = false;
+    const clear = () => { if (cleared) return; cleared = true; try { toast.remove(); } catch (e) {} };
+    const timer = setTimeout(clear, timeoutMs);
+    const btn = toast.querySelector('.undo-btn');
+    if (btn) btn.addEventListener('click', async () => {
+      try { clearTimeout(timer); } catch (e) {}
+      clear();
+      try { await onUndo(); } catch (e) {}
+    });
+  }
+
+  function openRefugeEditor(refuge) {
+    // Reuse drawing HUD for a consistent look
+    const hudApi = createDrawingHud(() => {
+      const hud = document.querySelector('.drawing-hud');
+      hud && hud.remove();
+    });
+    const hud = document.querySelector('.drawing-hud');
+    if (!hud) return;
+    const titleEl = hud.querySelector('.hud-title span');
+    if (titleEl) titleEl.textContent = 'Edit bar';
+    // Keep status line visible in edit mode
+    const statusEl = hud.querySelector('.hud-status');
+    if (statusEl) statusEl.style.display = '';
+    hudApi.showNameBar && hudApi.showNameBar();
+    const input = hud.querySelector('.hud-name');
+    if (input) input.value = refuge.name || '';
+    const ok = hud.querySelector('.hud-ok');
+    if (ok) ok.textContent = 'Save';
+    const actions = hud.querySelector('.hud-actions');
+    if (actions && !hud.querySelector('.hud-delete')) {
+      const del = document.createElement('button');
+      del.className = 'hud-delete';
+      del.type = 'button';
+      del.textContent = 'Delete';
+      actions.appendChild(del);
+      del.addEventListener('click', async () => {
+        try {
+          if (statusEl) statusEl.style.display = '';
+          hudApi.setStatus && hudApi.setStatus('Deleting…', 'info');
+          const deleted = await deleteRefugeById(refuge.id);
+          lastDeletedRefuge = deleted;
+          await loadAndRenderRefuges();
+          const h = document.querySelector('.drawing-hud');
+          h && h.remove();
+          showUndoToast('Refuge deleted', async () => {
+            if (lastDeletedRefuge) {
+              try { await recreateRefuge(lastDeletedRefuge); } finally { lastDeletedRefuge = null; }
+              await loadAndRenderRefuges();
+            }
+          }, 12000);
+        } catch (e) {
+          if (statusEl) statusEl.style.display = '';
+          hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Delete failed', 'error');
+        }
+      });
+    }
+    const attemptSave = async () => {
+      const newName = hudApi.getName ? hudApi.getName() : '';
+      if (!newName) { hudApi.setStatus && hudApi.setStatus('Enter a name to save.', 'info'); hudApi.focusName && hudApi.focusName(); return; }
+      try {
+        if (statusEl) statusEl.style.display = '';
+        hudApi.setStatus && hudApi.setStatus('Saving…', 'info');
+        await updateRefugeName(refuge.id, newName);
+        await loadAndRenderRefuges();
+        const h = document.querySelector('.drawing-hud'); h && h.remove();
+      } catch (e) {
+        if (statusEl) statusEl.style.display = '';
+        hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Save failed', 'error');
+      }
+    };
+    hudApi.onNameEnter && hudApi.onNameEnter(attemptSave);
+    hudApi.onOkClick && hudApi.onOkClick(attemptSave);
+  }
 
   async function loadAndRenderRefuges() {
     try {
@@ -119,7 +235,25 @@ window.addEventListener('DOMContentLoaded', function () {
                   fillColor: '#1e90ff',
                   fillOpacity: 0.15
                 });
-                polygon.addTo(refugeLayerGroup).bindPopup(r.name || 'Refuge');
+                polygon._refuge = { id: r.id, name: r.name, polygon: r.polygon };
+                const popupId = `ref-edit-${r.id}`;
+                const popupHtml = `
+                  <div class="refuge-popup">
+                    <div class="refuge-name">${escapeHtml(r.name || 'Refuge')}</div>
+                    <button id="${popupId}" class="refuge-edit-link" type="button">Edit</button>
+                  </div>
+                `;
+                polygon.addTo(refugeLayerGroup).bindPopup(popupHtml);
+                polygon.on('popupopen', () => {
+                  const btn = document.getElementById(popupId);
+                  if (btn) {
+                    btn.onclick = (ev) => {
+                      ev && ev.stopPropagation && ev.stopPropagation();
+                      try { polygon.closePopup(); } catch (e) {}
+                      openRefugeEditor(polygon._refuge);
+                    };
+                  }
+                });
               };
               if (geom.type === 'Polygon') {
                 drawPolygon(geom.coordinates || []);
@@ -223,6 +357,10 @@ window.addEventListener('DOMContentLoaded', function () {
       // Always close any open option panels after a selection, then run the action
       item.addEventListener('click', function(e) {
         e.stopPropagation();
+        // Block option logic while drawing is active, except for layer panel actions
+        if (typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') {
+          return;
+        }
         try {
           document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
         } catch (err) {}
@@ -238,6 +376,10 @@ window.addEventListener('DOMContentLoaded', function () {
     // Toggle panel on button click
     button.onclick = function(e) {
       e.stopPropagation();
+      // Block opening option panels while drawing, except allow the layer panel
+      if (typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') {
+        return;
+      }
       const isVisible = panel.classList.contains('show');
       
       // Close all other panels first
@@ -332,13 +474,18 @@ window.addEventListener('DOMContentLoaded', function () {
   if (fabMenu && sidePanel && sideClose && menuOverlay) {
     fabMenu.addEventListener('click', function (e) {
       e.stopPropagation();
+      if (typeof drawing !== 'undefined' && drawing) return;
       openSidePanel();
     });
     sideClose.addEventListener('click', function (e) {
       e.stopPropagation();
+      if (typeof drawing !== 'undefined' && drawing) return;
       closeSidePanel();
     });
-    menuOverlay.addEventListener('click', closeSidePanel);
+    menuOverlay.addEventListener('click', function () {
+      if (typeof drawing !== 'undefined' && drawing) return;
+      closeSidePanel();
+    });
   }
 
   // Menu item actions
@@ -366,6 +513,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
   document.querySelectorAll('.menu-item').forEach(btn => {
     btn.addEventListener('click', function () {
+      if (typeof drawing !== 'undefined' && drawing) return;
       const action = this.getAttribute('data-action');
       const handler = menuActions[action];
       if (typeof handler === 'function') handler();
@@ -418,6 +566,8 @@ window.addEventListener('DOMContentLoaded', function () {
     const focusName = () => { try { nameInput && nameInput.focus(); nameInput && nameInput.select && nameInput.select(); } catch (e) {} };
     const showNameBar = () => { if (controlsEl) controlsEl.style.display = ''; };
     const hideNameBar = () => { if (controlsEl) controlsEl.style.display = 'none'; };
+    const hideOk = () => { try { okButton && (okButton.style.display = 'none'); } catch (e) {} };
+    const showOk = () => { try { okButton && (okButton.style.display = ''); } catch (e) {} };
     const onNameEnter = (cb) => {
       if (!nameInput) return;
       const handler = (e) => {
@@ -429,7 +579,7 @@ window.addEventListener('DOMContentLoaded', function () {
       nameInput.addEventListener('keydown', handler);
     };
     const onOkClick = (cb) => { if (okButton) okButton.addEventListener('click', () => cb && cb()); };
-    return { hud, setStatus, getName, focusName, onNameEnter, onOkClick, showNameBar, hideNameBar };
+    return { hud, setStatus, getName, focusName, onNameEnter, onOkClick, showNameBar, hideNameBar, hideOk, showOk };
   }
 
   function teardownDrawing() {
@@ -461,6 +611,8 @@ window.addEventListener('DOMContentLoaded', function () {
     if (hud) hud.remove();
     const dot = document.querySelector('.map-center-dot');
     if (dot) dot.classList.remove('near-first');
+    // Re-enable bottom UI interactions
+    try { document.body.classList.remove('drawing-active'); } catch (e) {}
     drawing = null;
   }
 
@@ -531,6 +683,13 @@ window.addEventListener('DOMContentLoaded', function () {
 
   function startRefugeDrawing() {
     if (drawing) teardownDrawing();
+    // Disable bottom UI interactions while drawing
+    try {
+      document.body.classList.add('drawing-active');
+      // Close any open option panels and side panel to avoid overlaying the map
+      try { document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show')); } catch (e) {}
+      try { typeof closeSidePanel === 'function' && closeSidePanel(); } catch (e) {}
+    } catch (e) {}
     const hudApi = createDrawingHud(() => teardownDrawing());
 
     const state = {
@@ -584,8 +743,13 @@ window.addEventListener('DOMContentLoaded', function () {
         state.focusName && state.focusName();
         return;
       }
+      hudApi.hideOk && hudApi.hideOk();
       const ok = await saveRefugePolygon(state.vertices, name, state.setStatus);
-      if (ok) teardownDrawing();
+      if (ok) {
+        teardownDrawing();
+      } else {
+        hudApi.showOk && hudApi.showOk();
+      }
     };
 
     hudApi.onNameEnter && hudApi.onNameEnter(() => {
