@@ -546,9 +546,9 @@ body {
 }
 .drawing-hud .hud-delete:hover { filter: brightness(0.95); }
 
-/* Popup edit link */
-.refuge-popup { min-width: 160px; }
-.refuge-popup .refuge-name { font-weight: 600; margin-bottom: 6px; }
+/* Popup content: size to name and place Edit on the right */
+.refuge-popup { display: flex; align-items: center; gap: 10px; }
+.refuge-popup .refuge-name { font-weight: 600; white-space: nowrap; }
 .refuge-popup .refuge-edit-link {
   border: 1px solid var(--gray-300);
   background: #f5f9ff;
@@ -557,6 +557,7 @@ body {
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
+  margin-left: auto;
 }
 .refuge-popup .refuge-edit-link:hover { background: #e8f2ff; }
 
