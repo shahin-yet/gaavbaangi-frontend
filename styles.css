@@ -542,12 +542,4 @@ body {
   cursor: default;
 }
 
-/* Disable bottom UI interactions during drawing */
-.drawing-active .map-toolbar,
-.drawing-active .fab-menu,
-.drawing-active .option-panel,
-.drawing-active .side-panel,
-.drawing-active .menu-overlay {
-  pointer-events: none;
-  opacity: 0.6;
-}
+/* drawing-active now only signals state; no visual or pointer blocking here */
