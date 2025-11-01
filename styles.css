@@ -554,10 +554,10 @@ body {
 
 /* Popup content: name with rename button on the right */
 .refuge-popup { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
-.refuge-popup .refuge-name-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 180px; }
-.refuge-popup .refuge-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; outline: none; }
+.refuge-popup .refuge-name-row { display: inline-flex; align-items: center; gap: 8px; }
+.refuge-popup .refuge-name { font-weight: 600; white-space: nowrap; outline: none; }
 .refuge-popup .refuge-name:focus { outline: 2px solid var(--gray-300); outline-offset: 2px; border-radius: 4px; }
-.refuge-popup .refuge-name-input { width: 100%; font-weight: 600; padding: 4px 6px; border: 1px solid var(--gray-300); border-radius: 6px; }
+.refuge-popup .refuge-name-input { width: auto; font-weight: 600; padding: 4px 6px; border: 1px solid var(--gray-300); border-radius: 6px; }
 .refuge-popup .refuge-edit-link {
   border: 1px solid var(--gray-300);
   background: #f5f9ff;
@@ -578,6 +578,7 @@ body {
 .leaflet-popup-content-wrapper:has(.refuge-popup) {
   width: auto;
   max-width: none;
+  padding-right: 28px; /* keep space for the close (×) button */
 }
 
 /* Undo toast */
