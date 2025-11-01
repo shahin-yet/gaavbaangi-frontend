@@ -496,6 +496,8 @@ window.addEventListener('DOMContentLoaded', function () {
     menuOverlay.classList.add('show');
     sidePanel.setAttribute('aria-hidden', 'false');
     menuOverlay.setAttribute('aria-hidden', 'false');
+    // Mark body so CSS can hide FAB to prevent overlap
+    document.body.classList.add('side-open');
   }
 
   function closeSidePanel() {
@@ -503,6 +505,8 @@ window.addEventListener('DOMContentLoaded', function () {
     menuOverlay.classList.remove('show');
     sidePanel.setAttribute('aria-hidden', 'true');
     menuOverlay.setAttribute('aria-hidden', 'true');
+    // Remove marker class when panel closes
+    document.body.classList.remove('side-open');
   }
 
   if (fabMenu && sidePanel && sideClose && menuOverlay) {
