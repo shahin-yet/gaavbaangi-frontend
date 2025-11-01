@@ -383,8 +383,6 @@ window.addEventListener('DOMContentLoaded', function () {
     const button = document.getElementById(buttonId);
     const panel = document.createElement('div');
     panel.className = 'option-panel';
-    // Helper: close any open Leaflet popups (name flags)
-    const closeMapPopup = () => { try { map && map.closePopup && map.closePopup(); } catch (e) {} };
     
     options.forEach(option => {
       const item = document.createElement('div');
@@ -397,8 +395,6 @@ window.addEventListener('DOMContentLoaded', function () {
         if ((typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') || (window.__editing)) {
           return;
         }
-        // Close any open name popups
-        closeMapPopup();
         try {
           document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
         } catch (err) {}
@@ -418,8 +414,6 @@ window.addEventListener('DOMContentLoaded', function () {
       if ((typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') || (window.__editing)) {
         return;
       }
-      // Close any open name popups when interacting with toolbar
-      closeMapPopup();
       const isVisible = panel.classList.contains('show');
       
       // Close all other panels first
@@ -488,7 +482,6 @@ window.addEventListener('DOMContentLoaded', function () {
 
   // Center button (no options, just action)
   document.getElementById('btn-center').onclick = function() {
-    try { map && map.closePopup && map.closePopup(); } catch (e) {}
     map.setView([20.5937, 78.9629], 5);
   };
 
@@ -520,7 +513,6 @@ window.addEventListener('DOMContentLoaded', function () {
     fabMenu.addEventListener('click', function (e) {
       e.stopPropagation();
       if ((typeof drawing !== 'undefined' && drawing) || (window.__editing)) return;
-      try { map && map.closePopup && map.closePopup(); } catch (err) {}
       openSidePanel();
     });
     sideClose.addEventListener('click', function (e) {
@@ -560,7 +552,6 @@ window.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('.menu-item').forEach(btn => {
     btn.addEventListener('click', function () {
       if ((typeof drawing !== 'undefined' && drawing) || (window.__editing)) return;
-      try { map && map.closePopup && map.closePopup(); } catch (err) {}
       const action = this.getAttribute('data-action');
       const handler = menuActions[action];
       if (typeof handler === 'function') handler();
