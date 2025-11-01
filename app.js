@@ -154,11 +154,46 @@ window.addEventListener('DOMContentLoaded', function () {
 
   function openRefugeEditor(refuge) {
     // Reuse drawing HUD for a consistent look
-    const beginEditing = () => { try { document.body.classList.add('editing-active'); } catch (e) {} window.__editing = true; };
-    const endEditing = () => { try { document.body.classList.remove('editing-active'); } catch (e) {} window.__editing = false; };
-    // Close any open UI panels while editing
+    const beginEditing = () => {
+      try { document.body.classList.add('editing-active'); } catch (e) {}
+      window.__editing = true;
+      // Add a transparent blocker to capture all pointer events beneath the HUD
+      try {
+        const blocker = document.createElement('div');
+        blocker.className = 'ui-edit-blocker';
+        blocker.style.position = 'fixed';
+        blocker.style.left = '0';
+        blocker.style.top = '0';
+        blocker.style.right = '0';
+        blocker.style.bottom = '0';
+        blocker.style.background = 'transparent';
+        blocker.style.zIndex = '1150'; // between toolbar/leaflet popups and HUD (1200)
+        blocker.style.pointerEvents = 'auto';
+        // Prevent context menu or accidental interactions
+        blocker.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
+        blocker.addEventListener('mousedown', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
+        blocker.addEventListener('mouseup', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
+        blocker.addEventListener('touchstart', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true, passive: false });
+        blocker.addEventListener('touchend', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true, passive: false });
+        blocker.addEventListener('wheel', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
+        document.body.appendChild(blocker);
+        window.__editBlocker = blocker;
+      } catch (e) {}
+    };
+    const endEditing = () => {
+      try { document.body.classList.remove('editing-active'); } catch (e) {}
+      window.__editing = false;
+      try {
+        if (window.__editBlocker && window.__editBlocker.parentNode) {
+          window.__editBlocker.parentNode.removeChild(window.__editBlocker);
+        }
+        window.__editBlocker = null;
+      } catch (e) {}
+    };
+    // Close any open UI panels and popups while entering edit mode
     try { document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show')); } catch (e) {}
     try { typeof closeSidePanel === 'function' && closeSidePanel(); } catch (e) {}
+    try { map && map.closePopup && map.closePopup(); } catch (e) {}
     beginEditing();
     const hudApi = createDrawingHud(() => {
       const hud = document.querySelector('.drawing-hud');
