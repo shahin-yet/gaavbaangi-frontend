@@ -576,6 +576,7 @@ body {
   cursor: pointer;
   font-size: 13px;
 }
+.refuge-popup .refuge-delete-link { display: none !important; }
 .refuge-popup .refuge-delete-link:hover { filter: brightness(0.95); }
 
 /* Make Leaflet popup shrink-wrap when it contains our refuge popup */
