@@ -273,19 +273,107 @@ window.addEventListener('DOMContentLoaded', function () {
                 const popupId = `ref-edit-${r.id}`;
                 const popupHtml = `
                   <div class="refuge-popup">
-                    <div class="refuge-name">${escapeHtml(r.name || 'Refuge')}</div>
-                    <button id="${popupId}" class="refuge-edit-link" type="button">Edit</button>
+                    <div class="refuge-name-row">
+                      <div class="refuge-name" tabindex="0" aria-label="Refuge name">${escapeHtml(r.name || 'Refuge')}</div>
+                      <button id="${popupId}" class="refuge-edit-link" type="button" aria-label="Rename">Rename</button>
+                    </div>
                   </div>
                 `;
                 polygon.addTo(refugeLayerGroup).bindPopup(popupHtml);
                 polygon.on('popupopen', () => {
                   const btn = document.getElementById(popupId);
+                  const popupRoot = btn && btn.closest('.refuge-popup');
+                  const nameEl = popupRoot && popupRoot.querySelector('.refuge-name');
+                  const startInlineRename = () => {
+                    if (!popupRoot || !nameEl) return;
+                    // Prevent multiple inputs
+                    if (popupRoot.querySelector('.refuge-name-input')) {
+                      const existing = popupRoot.querySelector('.refuge-name-input');
+                      try { existing.focus(); existing.select && existing.select(); } catch (e) {}
+                      return;
+                    }
+                    const originalName = String(polygon._refuge && polygon._refuge.name) || '';
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.className = 'refuge-name-input';
+                    input.value = originalName;
+                    input.setAttribute('aria-label', 'Edit refuge name');
+                    nameEl.replaceWith(input);
+                    try { input.focus(); input.select && input.select(); } catch (e) {}
+
+                    const finish = async (commit) => {
+                      input.disabled = true;
+                      const newName = (input.value || '').trim();
+                      const restoreNameEl = (text) => {
+                        const replacement = document.createElement('div');
+                        replacement.className = 'refuge-name';
+                        replacement.setAttribute('tabindex', '0');
+                        replacement.setAttribute('aria-label', 'Refuge name');
+                        replacement.textContent = text || 'Refuge';
+                        input.replaceWith(replacement);
+                        // Re-bind name events
+                        bindNameKeyboard(replacement);
+                        try { replacement.focus(); } catch (e) {}
+                      };
+                      if (!commit) {
+                        restoreNameEl(originalName);
+                        return;
+                      }
+                      if (!newName || newName === originalName) {
+                        restoreNameEl(originalName);
+                        return;
+                      }
+                      try {
+                        const updated = await updateRefugeName(polygon._refuge.id, newName);
+                        polygon._refuge.name = updated && updated.name ? updated.name : newName;
+                        restoreNameEl(polygon._refuge.name);
+                      } catch (err) {
+                        alert((err && err.message) || 'Failed to rename.');
+                        restoreNameEl(originalName);
+                      }
+                    };
+
+                    input.addEventListener('keydown', (e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        finish(true);
+                      } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        finish(false);
+                      } else if (e.key === 'Tab') {
+                        e.preventDefault();
+                        finish(true);
+                      }
+                    });
+                    input.addEventListener('blur', () => finish(true));
+                  };
+
+                  const bindNameKeyboard = (el) => {
+                    if (!el) return;
+                    el.addEventListener('keydown', (e) => {
+                      if (e.key === 'Tab' || e.key === 'Enter' || e.key === 'F2') {
+                        e.preventDefault();
+                        startInlineRename();
+                      }
+                    });
+                    el.addEventListener('dblclick', (e) => {
+                      e.preventDefault();
+                      startInlineRename();
+                    });
+                  };
+
+                  if (nameEl) bindNameKeyboard(nameEl);
                   if (btn) {
                     btn.onclick = (ev) => {
                       ev && ev.stopPropagation && ev.stopPropagation();
-                      try { polygon.closePopup(); } catch (e) {}
-                      openRefugeEditor(polygon._refuge);
+                      startInlineRename();
                     };
+                    btn.addEventListener('keydown', (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        startInlineRename();
+                      }
+                    });
                   }
                 });
               };
