@@ -446,6 +446,8 @@ window.addEventListener('DOMContentLoaded', function () {
     if (hud) hud.remove();
     const dot = document.querySelector('.map-center-dot');
     if (dot) dot.classList.remove('near-first');
+    // Re-enable bottom UI interactions
+    try { document.body.classList.remove('drawing-active'); } catch (e) {}
     drawing = null;
   }
 
@@ -516,6 +518,13 @@ window.addEventListener('DOMContentLoaded', function () {
 
   function startRefugeDrawing() {
     if (drawing) teardownDrawing();
+    // Disable bottom UI interactions while drawing
+    try {
+      document.body.classList.add('drawing-active');
+      // Close any open option panels and side panel to avoid overlaying the map
+      try { document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show')); } catch (e) {}
+      try { typeof closeSidePanel === 'function' && closeSidePanel(); } catch (e) {}
+    } catch (e) {}
     const hudApi = createDrawingHud(() => teardownDrawing());
 
     const state = {
