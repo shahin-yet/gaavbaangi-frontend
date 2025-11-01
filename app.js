@@ -162,9 +162,9 @@ window.addEventListener('DOMContentLoaded', function () {
     if (!hud) return;
     const titleEl = hud.querySelector('.hud-title span');
     if (titleEl) titleEl.textContent = 'Edit bar';
-    // Keep status line visible in edit mode
+    // Remove the drawing announcement in edit mode
     const statusEl = hud.querySelector('.hud-status');
-    if (statusEl) statusEl.style.display = '';
+    if (statusEl) { statusEl.innerHTML = ''; }
     hudApi.showNameBar && hudApi.showNameBar();
     const input = hud.querySelector('.hud-name');
     if (input) input.value = refuge.name || '';
