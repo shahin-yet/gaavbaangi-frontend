@@ -548,37 +548,7 @@ body {
 
 /* Popup content: show name on first line, Edit button below right */
 .refuge-popup { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
-.refuge-popup .refuge-name-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
-.refuge-popup .refuge-name { font-weight: 600; white-space: nowrap; flex: 1; }
-.refuge-popup .refuge-name-input {
-  font-weight: 600;
-  font-size: inherit;
-  font-family: inherit;
-  padding: 2px 4px;
-  border: 1px solid var(--primary-color);
-  border-radius: 4px;
-  outline: none;
-  flex: 1;
-  min-width: 100px;
-}
-.refuge-popup .refuge-rename-btn {
-  border: 1px solid var(--gray-300);
-  background: var(--white);
-  color: var(--gray-700);
-  padding: 3px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 500;
-  transition: var(--transition-fast);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.refuge-popup .refuge-rename-btn:hover { background: var(--gray-100); }
-.refuge-popup .refuge-rename-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+.refuge-popup .refuge-name { font-weight: 600; white-space: nowrap; }
 .refuge-popup .refuge-edit-link {
   border: 1px solid var(--gray-300);
   background: #f5f9ff;
