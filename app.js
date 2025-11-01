@@ -84,6 +84,130 @@ window.addEventListener('DOMContentLoaded', function () {
   // Refuge rendering layer group
   // -----------------------------
   const refugeLayerGroup = L.layerGroup().addTo(map);
+  let lastDeletedRefuge = null; // for Undo restore
+
+  function escapeHtml(str) {
+    try {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    } catch (e) { return ''; }
+  }
+
+  async function updateRefugeName(refugeId, newName) {
+    const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges/${refugeId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data || data.status !== 'success') {
+      const msg = (data && data.message) || `Failed to update (${res.status})`;
+      throw new Error(msg);
+    }
+    return data.refuge;
+  }
+
+  async function deleteRefugeById(refugeId) {
+    const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges/${refugeId}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data || data.status !== 'success') {
+      const msg = (data && data.message) || `Failed to delete (${res.status})`;
+      throw new Error(msg);
+    }
+    return data.deleted;
+  }
+
+  async function recreateRefuge(refuge) {
+    const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: refuge.name, polygon: refuge.polygon })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data || data.status !== 'success') {
+      const msg = (data && data.message) || `Failed to restore (${res.status})`;
+      throw new Error(msg);
+    }
+    return data.refuge;
+  }
+
+  function showUndoToast(message, onUndo, timeoutMs = 12000) {
+    try { document.querySelectorAll('.undo-toast').forEach(el => el.remove()); } catch (e) {}
+    const toast = document.createElement('div');
+    toast.className = 'undo-toast';
+    toast.innerHTML = `<span class="undo-msg">${escapeHtml(message)}</span><button class="undo-btn" type="button">Undo</button>`;
+    document.body.appendChild(toast);
+    let cleared = false;
+    const clear = () => { if (cleared) return; cleared = true; try { toast.remove(); } catch (e) {} };
+    const timer = setTimeout(clear, timeoutMs);
+    const btn = toast.querySelector('.undo-btn');
+    if (btn) btn.addEventListener('click', async () => {
+      try { clearTimeout(timer); } catch (e) {}
+      clear();
+      try { await onUndo(); } catch (e) {}
+    });
+  }
+
+  function openRefugeEditor(refuge) {
+    // Reuse drawing HUD for a consistent look
+    const hudApi = createDrawingHud(() => {
+      const hud = document.querySelector('.drawing-hud');
+      hud && hud.remove();
+    });
+    const hud = document.querySelector('.drawing-hud');
+    if (!hud) return;
+    const titleEl = hud.querySelector('.hud-title span');
+    if (titleEl) titleEl.textContent = 'Editing refuge';
+    hudApi.showNameBar && hudApi.showNameBar();
+    const input = hud.querySelector('.hud-name');
+    if (input) input.value = refuge.name || '';
+    const ok = hud.querySelector('.hud-ok');
+    if (ok) ok.textContent = 'Save';
+    const actions = hud.querySelector('.hud-actions');
+    if (actions && !hud.querySelector('.hud-delete')) {
+      const del = document.createElement('button');
+      del.className = 'hud-delete';
+      del.type = 'button';
+      del.textContent = 'Delete';
+      actions.appendChild(del);
+      del.addEventListener('click', async () => {
+        try {
+          hudApi.setStatus && hudApi.setStatus('Deleting…', 'info');
+          const deleted = await deleteRefugeById(refuge.id);
+          lastDeletedRefuge = deleted;
+          await loadAndRenderRefuges();
+          const h = document.querySelector('.drawing-hud');
+          h && h.remove();
+          showUndoToast('Refuge deleted', async () => {
+            if (lastDeletedRefuge) {
+              try { await recreateRefuge(lastDeletedRefuge); } finally { lastDeletedRefuge = null; }
+              await loadAndRenderRefuges();
+            }
+          }, 12000);
+        } catch (e) {
+          hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Delete failed', 'error');
+        }
+      });
+    }
+    const attemptSave = async () => {
+      const newName = hudApi.getName ? hudApi.getName() : '';
+      if (!newName) { hudApi.setStatus && hudApi.setStatus('Enter a name to save.', 'info'); hudApi.focusName && hudApi.focusName(); return; }
+      try {
+        hudApi.setStatus && hudApi.setStatus('Saving…', 'info');
+        await updateRefugeName(refuge.id, newName);
+        await loadAndRenderRefuges();
+        const h = document.querySelector('.drawing-hud'); h && h.remove();
+      } catch (e) {
+        hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Save failed', 'error');
+      }
+    };
+    hudApi.onNameEnter && hudApi.onNameEnter(attemptSave);
+    hudApi.onOkClick && hudApi.onOkClick(attemptSave);
+  }
 
   async function loadAndRenderRefuges() {
     try {
@@ -104,7 +228,25 @@ window.addEventListener('DOMContentLoaded', function () {
                   fillColor: '#1e90ff',
                   fillOpacity: 0.15
                 });
-                polygon.addTo(refugeLayerGroup).bindPopup(r.name || 'Refuge');
+                polygon._refuge = { id: r.id, name: r.name, polygon: r.polygon };
+                const popupId = `ref-edit-${r.id}`;
+                const popupHtml = `
+                  <div class="refuge-popup">
+                    <div class="refuge-name">${escapeHtml(r.name || 'Refuge')}</div>
+                    <button id="${popupId}" class="refuge-edit-link" type="button">Edit</button>
+                  </div>
+                `;
+                polygon.addTo(refugeLayerGroup).bindPopup(popupHtml);
+                polygon.on('popupopen', () => {
+                  const btn = document.getElementById(popupId);
+                  if (btn) {
+                    btn.onclick = (ev) => {
+                      ev && ev.stopPropagation && ev.stopPropagation();
+                      try { polygon.closePopup(); } catch (e) {}
+                      openRefugeEditor(polygon._refuge);
+                    };
+                  }
+                });
               };
               if (geom.type === 'Polygon') {
                 drawPolygon(geom.coordinates || []);
