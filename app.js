@@ -161,7 +161,10 @@ window.addEventListener('DOMContentLoaded', function () {
     const hud = document.querySelector('.drawing-hud');
     if (!hud) return;
     const titleEl = hud.querySelector('.hud-title span');
-    if (titleEl) titleEl.textContent = 'Editing refuge';
+    if (titleEl) titleEl.textContent = 'Edit bar';
+    // Keep status line visible in edit mode
+    const statusEl = hud.querySelector('.hud-status');
+    if (statusEl) statusEl.style.display = '';
     hudApi.showNameBar && hudApi.showNameBar();
     const input = hud.querySelector('.hud-name');
     if (input) input.value = refuge.name || '';
@@ -176,6 +179,7 @@ window.addEventListener('DOMContentLoaded', function () {
       actions.appendChild(del);
       del.addEventListener('click', async () => {
         try {
+          if (statusEl) statusEl.style.display = '';
           hudApi.setStatus && hudApi.setStatus('Deleting…', 'info');
           const deleted = await deleteRefugeById(refuge.id);
           lastDeletedRefuge = deleted;
@@ -189,6 +193,7 @@ window.addEventListener('DOMContentLoaded', function () {
             }
           }, 12000);
         } catch (e) {
+          if (statusEl) statusEl.style.display = '';
           hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Delete failed', 'error');
         }
       });
@@ -197,11 +202,13 @@ window.addEventListener('DOMContentLoaded', function () {
       const newName = hudApi.getName ? hudApi.getName() : '';
       if (!newName) { hudApi.setStatus && hudApi.setStatus('Enter a name to save.', 'info'); hudApi.focusName && hudApi.focusName(); return; }
       try {
+        if (statusEl) statusEl.style.display = '';
         hudApi.setStatus && hudApi.setStatus('Saving…', 'info');
         await updateRefugeName(refuge.id, newName);
         await loadAndRenderRefuges();
         const h = document.querySelector('.drawing-hud'); h && h.remove();
       } catch (e) {
+        if (statusEl) statusEl.style.display = '';
         hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Save failed', 'error');
       }
     };
@@ -559,6 +566,8 @@ window.addEventListener('DOMContentLoaded', function () {
     const focusName = () => { try { nameInput && nameInput.focus(); nameInput && nameInput.select && nameInput.select(); } catch (e) {} };
     const showNameBar = () => { if (controlsEl) controlsEl.style.display = ''; };
     const hideNameBar = () => { if (controlsEl) controlsEl.style.display = 'none'; };
+    const hideOk = () => { try { okButton && (okButton.style.display = 'none'); } catch (e) {} };
+    const showOk = () => { try { okButton && (okButton.style.display = ''); } catch (e) {} };
     const onNameEnter = (cb) => {
       if (!nameInput) return;
       const handler = (e) => {
@@ -570,7 +579,7 @@ window.addEventListener('DOMContentLoaded', function () {
       nameInput.addEventListener('keydown', handler);
     };
     const onOkClick = (cb) => { if (okButton) okButton.addEventListener('click', () => cb && cb()); };
-    return { hud, setStatus, getName, focusName, onNameEnter, onOkClick, showNameBar, hideNameBar };
+    return { hud, setStatus, getName, focusName, onNameEnter, onOkClick, showNameBar, hideNameBar, hideOk, showOk };
   }
 
   function teardownDrawing() {
@@ -734,8 +743,13 @@ window.addEventListener('DOMContentLoaded', function () {
         state.focusName && state.focusName();
         return;
       }
+      hudApi.hideOk && hudApi.hideOk();
       const ok = await saveRefugePolygon(state.vertices, name, state.setStatus);
-      if (ok) teardownDrawing();
+      if (ok) {
+        teardownDrawing();
+      } else {
+        hudApi.showOk && hudApi.showOk();
+      }
     };
 
     hudApi.onNameEnter && hudApi.onNameEnter(() => {
