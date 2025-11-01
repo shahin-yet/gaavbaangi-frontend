@@ -233,7 +233,8 @@ window.addEventListener('DOMContentLoaded', function () {
           const h = document.querySelector('.drawing-hud');
           h && h.remove();
           endEditing();
-          showUndoToast('Refuge deleted', async () => {
+          const deletedName = (deleted && typeof deleted.name === 'string' && deleted.name.trim()) ? deleted.name : 'Refuge';
+          showUndoToast(`${deletedName} deleted`, async () => {
             if (lastDeletedRefuge) {
               try { await recreateRefuge(lastDeletedRefuge); } finally { lastDeletedRefuge = null; }
               await loadAndRenderRefuges();
