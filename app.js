@@ -165,7 +165,8 @@ window.addEventListener('DOMContentLoaded', function () {
     // Remove the drawing announcement in edit mode (hide status area by default)
     const statusEl = hud.querySelector('.hud-status');
     if (statusEl) { statusEl.innerHTML = ''; statusEl.style.display = 'none'; }
-    hudApi.showNameBar && hudApi.showNameBar();
+    // Hide the name bar in edit mode (remove name input from Edit bar)
+    hudApi.hideNameBar && hudApi.hideNameBar();
     const input = hud.querySelector('.hud-name');
     if (input) input.value = refuge.name || '';
     const ok = hud.querySelector('.hud-ok');
