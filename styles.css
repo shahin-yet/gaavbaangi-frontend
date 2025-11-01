@@ -594,9 +594,11 @@ body {
 
 /* Make Leaflet popup shrink-wrap when it contains our refuge popup */
 .leaflet-popup-content:has(.refuge-popup) {
-  display: inline-block;
-  width: auto !important;
-  margin: 8px 10px; /* keep default-ish padding */
+  display: block;
+  width: 100% !important;
+  box-sizing: border-box;
+  margin: 0; /* remove side margins so content can be full width */
+  padding: 8px 10px; /* keep inner padding instead */
 }
 .leaflet-popup-content-wrapper:has(.refuge-popup) {
   width: auto;
