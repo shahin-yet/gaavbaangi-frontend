@@ -208,6 +208,10 @@ window.addEventListener('DOMContentLoaded', function () {
       // Always close any open option panels after a selection, then run the action
       item.addEventListener('click', function(e) {
         e.stopPropagation();
+        // Block option logic while drawing is active, except for layer panel actions
+        if (typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') {
+          return;
+        }
         try {
           document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
         } catch (err) {}
@@ -223,6 +227,10 @@ window.addEventListener('DOMContentLoaded', function () {
     // Toggle panel on button click
     button.onclick = function(e) {
       e.stopPropagation();
+      // Block opening option panels while drawing, except allow the layer panel
+      if (typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') {
+        return;
+      }
       const isVisible = panel.classList.contains('show');
       
       // Close all other panels first
@@ -317,13 +325,18 @@ window.addEventListener('DOMContentLoaded', function () {
   if (fabMenu && sidePanel && sideClose && menuOverlay) {
     fabMenu.addEventListener('click', function (e) {
       e.stopPropagation();
+      if (typeof drawing !== 'undefined' && drawing) return;
       openSidePanel();
     });
     sideClose.addEventListener('click', function (e) {
       e.stopPropagation();
+      if (typeof drawing !== 'undefined' && drawing) return;
       closeSidePanel();
     });
-    menuOverlay.addEventListener('click', closeSidePanel);
+    menuOverlay.addEventListener('click', function () {
+      if (typeof drawing !== 'undefined' && drawing) return;
+      closeSidePanel();
+    });
   }
 
   // Menu item actions
@@ -351,6 +364,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
   document.querySelectorAll('.menu-item').forEach(btn => {
     btn.addEventListener('click', function () {
+      if (typeof drawing !== 'undefined' && drawing) return;
       const action = this.getAttribute('data-action');
       const handler = menuActions[action];
       if (typeof handler === 'function') handler();
