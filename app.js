@@ -154,9 +154,16 @@ window.addEventListener('DOMContentLoaded', function () {
 
   function openRefugeEditor(refuge) {
     // Reuse drawing HUD for a consistent look
+    const beginEditing = () => { try { document.body.classList.add('editing-active'); } catch (e) {} window.__editing = true; };
+    const endEditing = () => { try { document.body.classList.remove('editing-active'); } catch (e) {} window.__editing = false; };
+    // Close any open UI panels while editing
+    try { document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show')); } catch (e) {}
+    try { typeof closeSidePanel === 'function' && closeSidePanel(); } catch (e) {}
+    beginEditing();
     const hudApi = createDrawingHud(() => {
       const hud = document.querySelector('.drawing-hud');
       hud && hud.remove();
+      endEditing();
     });
     const hud = document.querySelector('.drawing-hud');
     if (!hud) return;
@@ -180,6 +187,8 @@ window.addEventListener('DOMContentLoaded', function () {
       del.textContent = 'Delete';
       actions.appendChild(del);
       del.addEventListener('click', async () => {
+        // Hide the delete button while processing to prevent repeat clicks
+        try { del.disabled = true; del.style.display = 'none'; } catch (e) {}
         try {
           if (statusEl) statusEl.style.display = '';
           hudApi.setStatus && hudApi.setStatus('Deleting…', 'info');
@@ -188,6 +197,7 @@ window.addEventListener('DOMContentLoaded', function () {
           await loadAndRenderRefuges();
           const h = document.querySelector('.drawing-hud');
           h && h.remove();
+          endEditing();
           showUndoToast('Refuge deleted', async () => {
             if (lastDeletedRefuge) {
               try { await recreateRefuge(lastDeletedRefuge); } finally { lastDeletedRefuge = null; }
@@ -197,6 +207,8 @@ window.addEventListener('DOMContentLoaded', function () {
         } catch (e) {
           if (statusEl) statusEl.style.display = '';
           hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Delete failed', 'error');
+          // Restore the button if deletion fails
+          try { del.disabled = false; del.style.display = ''; } catch (err) {}
         }
       });
     }
@@ -345,7 +357,7 @@ window.addEventListener('DOMContentLoaded', function () {
       item.addEventListener('click', function(e) {
         e.stopPropagation();
         // Block option logic while drawing is active, except for layer panel actions
-        if (typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') {
+        if ((typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') || (window.__editing)) {
           return;
         }
         try {
@@ -364,7 +376,7 @@ window.addEventListener('DOMContentLoaded', function () {
     button.onclick = function(e) {
       e.stopPropagation();
       // Block opening option panels while drawing, except allow the layer panel
-      if (typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') {
+      if ((typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') || (window.__editing)) {
         return;
       }
       const isVisible = panel.classList.contains('show');
@@ -461,16 +473,16 @@ window.addEventListener('DOMContentLoaded', function () {
   if (fabMenu && sidePanel && sideClose && menuOverlay) {
     fabMenu.addEventListener('click', function (e) {
       e.stopPropagation();
-      if (typeof drawing !== 'undefined' && drawing) return;
+      if ((typeof drawing !== 'undefined' && drawing) || (window.__editing)) return;
       openSidePanel();
     });
     sideClose.addEventListener('click', function (e) {
       e.stopPropagation();
-      if (typeof drawing !== 'undefined' && drawing) return;
+      if ((typeof drawing !== 'undefined' && drawing) || (window.__editing)) return;
       closeSidePanel();
     });
     menuOverlay.addEventListener('click', function () {
-      if (typeof drawing !== 'undefined' && drawing) return;
+      if ((typeof drawing !== 'undefined' && drawing) || (window.__editing)) return;
       closeSidePanel();
     });
   }
@@ -500,7 +512,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
   document.querySelectorAll('.menu-item').forEach(btn => {
     btn.addEventListener('click', function () {
-      if (typeof drawing !== 'undefined' && drawing) return;
+      if ((typeof drawing !== 'undefined' && drawing) || (window.__editing)) return;
       const action = this.getAttribute('data-action');
       const handler = menuActions[action];
       if (typeof handler === 'function') handler();
