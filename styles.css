@@ -387,12 +387,6 @@ body {
   box-shadow: var(--shadow-xl);
 }
 
-/* Hide FAB while side panel is open to avoid overlap */
-.side-open .fab-menu {
-  opacity: 0;
-  pointer-events: none;
-}
-
 /* Side Panel and Overlay */
 .menu-overlay {
   position: absolute;
@@ -552,12 +546,39 @@ body {
 }
 .drawing-hud .hud-delete:hover { filter: brightness(0.95); }
 
-/* Popup content: name with rename button on the right */
+/* Popup content: show name on first line, Edit button below right */
 .refuge-popup { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
-.refuge-popup .refuge-name-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 180px; }
-.refuge-popup .refuge-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; outline: none; }
-.refuge-popup .refuge-name:focus { outline: 2px solid var(--gray-300); outline-offset: 2px; border-radius: 4px; }
-.refuge-popup .refuge-name-input { width: 100%; font-weight: 600; padding: 4px 6px; border: 1px solid var(--gray-300); border-radius: 6px; }
+.refuge-popup .refuge-name-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.refuge-popup .refuge-name { font-weight: 600; white-space: nowrap; flex: 1; }
+.refuge-popup .refuge-name-input {
+  font-weight: 600;
+  font-size: inherit;
+  font-family: inherit;
+  padding: 2px 4px;
+  border: 1px solid var(--primary-color);
+  border-radius: 4px;
+  outline: none;
+  flex: 1;
+  min-width: 100px;
+}
+.refuge-popup .refuge-rename-btn {
+  border: 1px solid var(--gray-300);
+  background: var(--white);
+  color: var(--gray-700);
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: var(--transition-fast);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.refuge-popup .refuge-rename-btn:hover { background: var(--gray-100); }
+.refuge-popup .refuge-rename-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 .refuge-popup .refuge-edit-link {
   border: 1px solid var(--gray-300);
   background: #f5f9ff;
@@ -566,6 +587,7 @@ body {
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
+  align-self: flex-end;
 }
 .refuge-popup .refuge-edit-link:hover { background: #e8f2ff; }
 
