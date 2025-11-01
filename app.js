@@ -162,14 +162,30 @@ window.addEventListener('DOMContentLoaded', function () {
     if (!hud) return;
     const titleEl = hud.querySelector('.hud-title span');
     if (titleEl) titleEl.textContent = 'Edit bar';
-    // Keep status line visible in edit mode
+    // Remove the drawing announcement in edit mode (hide status area by default)
     const statusEl = hud.querySelector('.hud-status');
-    if (statusEl) statusEl.style.display = '';
+    if (statusEl) { statusEl.innerHTML = ''; statusEl.style.display = 'none'; }
     hudApi.showNameBar && hudApi.showNameBar();
     const input = hud.querySelector('.hud-name');
     if (input) input.value = refuge.name || '';
     const ok = hud.querySelector('.hud-ok');
     if (ok) ok.textContent = 'Save';
+    // Hide Save until a change is made from the original name
+    const originalName = (refuge.name || '').trim();
+    hudApi.hideOk && hudApi.hideOk();
+    if (input) {
+      const updateOkVisibility = () => {
+        const cur = (input.value || '').trim();
+        if (cur && cur !== originalName) {
+          hudApi.showOk && hudApi.showOk();
+        } else {
+          hudApi.hideOk && hudApi.hideOk();
+        }
+      };
+      input.addEventListener('input', updateOkVisibility);
+      // Initialize based on current value
+      updateOkVisibility();
+    }
     const actions = hud.querySelector('.hud-actions');
     if (actions && !hud.querySelector('.hud-delete')) {
       const del = document.createElement('button');
@@ -200,7 +216,8 @@ window.addEventListener('DOMContentLoaded', function () {
     }
     const attemptSave = async () => {
       const newName = hudApi.getName ? hudApi.getName() : '';
-      if (!newName) { hudApi.setStatus && hudApi.setStatus('Enter a name to save.', 'info'); hudApi.focusName && hudApi.focusName(); return; }
+      if (!newName) { hudApi.setStatus && hudApi.setStatus('Enter a name to save.', 'info'); if (statusEl) statusEl.style.display = ''; hudApi.focusName && hudApi.focusName(); return; }
+      if (newName.trim() === originalName) { return; }
       try {
         if (statusEl) statusEl.style.display = '';
         hudApi.setStatus && hudApi.setStatus('Saving…', 'info');
