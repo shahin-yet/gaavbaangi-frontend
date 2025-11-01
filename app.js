@@ -313,6 +313,7 @@ window.addEventListener('DOMContentLoaded', function () {
                         input.replaceWith(replacement);
                         // Re-bind name events
                         bindNameKeyboard(replacement);
+                        try { replacement.focus(); } catch (e) {}
                       };
                       if (!commit) {
                         restoreNameEl(originalName);
@@ -339,6 +340,9 @@ window.addEventListener('DOMContentLoaded', function () {
                       } else if (e.key === 'Escape') {
                         e.preventDefault();
                         finish(false);
+                      } else if (e.key === 'Tab') {
+                        e.preventDefault();
+                        finish(true);
                       }
                     });
                     input.addEventListener('blur', () => finish(true));
@@ -347,7 +351,7 @@ window.addEventListener('DOMContentLoaded', function () {
                   const bindNameKeyboard = (el) => {
                     if (!el) return;
                     el.addEventListener('keydown', (e) => {
-                      if (e.key === 'Enter' || e.key === 'F2') {
+                      if (e.key === 'Tab' || e.key === 'Enter' || e.key === 'F2') {
                         e.preventDefault();
                         startInlineRename();
                       }
