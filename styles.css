@@ -559,15 +559,33 @@ body {
 .refuge-popup .refuge-name:focus { outline: 2px solid var(--gray-300); outline-offset: 2px; border-radius: 4px; }
 .refuge-popup .refuge-name-input { width: auto; font-weight: 600; padding: 4px 6px; border: 1px solid var(--gray-300); border-radius: 6px; }
 .refuge-popup .refuge-edit-link {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
   border: 1px solid var(--gray-300);
   background: #f5f9ff;
   color: #0b63c9;
-  padding: 6px 10px;
+  padding: 8px 12px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
+  text-align: center;
 }
 .refuge-popup .refuge-edit-link:hover { background: #e8f2ff; }
+
+/* Make Rename a tiny text link instead of a full button */
+.refuge-popup .refuge-rename-btn {
+  background: transparent;
+  border: none;
+  padding: 0 2px;
+  margin: 0;
+  color: #0b63c9;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.refuge-popup .refuge-rename-btn:hover { text-decoration: underline; }
+.refuge-popup .refuge-rename-btn:disabled { color: var(--gray-500); cursor: default; text-decoration: none; }
 
 /* Make Leaflet popup shrink-wrap when it contains our refuge popup */
 .leaflet-popup-content:has(.refuge-popup) {
