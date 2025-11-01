@@ -554,18 +554,18 @@ body {
 
 /* Popup content: name with rename button on the right */
 .refuge-popup { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
-.refuge-popup .refuge-name-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 180px; }
-.refuge-popup .refuge-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; outline: none; }
+.refuge-popup .refuge-name-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 150px; }
+.refuge-popup .refuge-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; outline: none; font-size: var(--font-size-sm); }
 .refuge-popup .refuge-name:focus { outline: 2px solid var(--gray-300); outline-offset: 2px; border-radius: 4px; }
-.refuge-popup .refuge-name-input { width: 100%; font-weight: 600; padding: 4px 6px; border: 1px solid var(--gray-300); border-radius: 6px; }
+.refuge-popup .refuge-name-input { width: 100%; font-weight: 600; padding: 2px 6px; border: 1px solid var(--gray-300); border-radius: 6px; font-size: var(--font-size-sm); }
 .refuge-popup .refuge-edit-link {
   border: 1px solid var(--gray-300);
   background: #f5f9ff;
   color: #0b63c9;
-  padding: 6px 10px;
-  border-radius: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-xs);
 }
 .refuge-popup .refuge-edit-link:hover { background: #e8f2ff; }
 
@@ -573,7 +573,7 @@ body {
 .leaflet-popup-content:has(.refuge-popup) {
   display: inline-block;
   width: auto !important;
-  margin: 8px 10px; /* keep default-ish padding */
+  margin: 6px 8px; /* compact padding */
 }
 .leaflet-popup-content-wrapper:has(.refuge-popup) {
   width: auto;
