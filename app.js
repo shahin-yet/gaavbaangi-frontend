@@ -111,6 +111,27 @@ window.addEventListener('DOMContentLoaded', function () {
     return data.refuge;
   }
 
+  async function updateRefugePolygon(refugeId, ringLatLngs) {
+    // Ensure closed ring and convert to GeoJSON lon/lat
+    const ring = ringLatLngs.map(ll => [ll.lng, ll.lat]);
+    if (ring.length >= 3) {
+      const first = ring[0];
+      const last = ring[ring.length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) ring.push(first);
+    }
+    const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges/${refugeId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ polygon: { type: 'Polygon', coordinates: [ring] } })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data || data.status !== 'success') {
+      const msg = (data && data.message) || `Failed to update (${res.status})`;
+      throw new Error(msg);
+    }
+    return data.refuge;
+  }
+
   async function deleteRefugeById(refugeId) {
     const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges/${refugeId}`, { method: 'DELETE' });
     const data = await res.json().catch(() => ({}));
@@ -248,7 +269,213 @@ window.addEventListener('DOMContentLoaded', function () {
         }
       });
     }
-    // No rename in edit mode; only Delete is available
+    // Add Undo and Save buttons beside Delete during mobile editing
+    let undoBtn = null;
+    let saveBtn = null;
+    if (actions && !hud.querySelector('.hud-undo')) {
+      undoBtn = document.createElement('button');
+      undoBtn.className = 'hud-undo';
+      undoBtn.type = 'button';
+      undoBtn.textContent = 'Undo';
+      actions.appendChild(undoBtn);
+    }
+    if (actions && !hud.querySelector('.hud-save')) {
+      saveBtn = document.createElement('button');
+      saveBtn.className = 'hud-save';
+      saveBtn.type = 'button';
+      saveBtn.textContent = 'Save';
+      actions.appendChild(saveBtn);
+    }
+
+    // Mobile-only interactive border editing
+    if (typeof isMobile !== 'undefined' && isMobile) {
+      try { window.__suppressCenterDoubleAction = true; } catch (e) {}
+      // Allow map interactions while editing
+      try { if (window.__editBlocker) window.__editBlocker.style.pointerEvents = 'none'; } catch (e) {}
+
+      const statusEl = hud.querySelector('.hud-status');
+      if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Pan to position, double tap to lock'; }
+
+      // Build editable ring from GeoJSON (first polygon ring)
+      const toLatLng = ([lng, lat]) => L.latLng(lat, lng);
+      const fromGeo = (poly) => {
+        try {
+          if (!poly || poly.type !== 'Polygon') return [];
+          const ring = (poly.coordinates && poly.coordinates[0]) || [];
+          const latlngs = ring.map(toLatLng);
+          // Drop duplicated closing point if present
+          if (latlngs.length > 1) {
+            const a = latlngs[0], b = latlngs[latlngs.length - 1];
+            if (a.lat === b.lat && a.lng === b.lng) latlngs.pop();
+          }
+          return latlngs;
+        } catch (e) { return []; }
+      };
+
+      let ring = fromGeo(refuge && refuge.polygon);
+      if (!ring || ring.length < 3) {
+        // Nothing to edit
+        return;
+      }
+
+      const editPoly = L.polygon(ring, {
+        color: '#1e90ff',
+        weight: 2,
+        fillColor: '#1e90ff',
+        fillOpacity: 0.15
+      }).addTo(refugeLayerGroup);
+      const editCursor = L.circleMarker(ring[0], { radius: 6, color: '#ff5722', fillColor: '#ff5722', fillOpacity: 0.9 }).addTo(refugeLayerGroup);
+
+      const localHandlers = [];
+      const cleanup = () => {
+        try { localHandlers.forEach(({ el, evt, fn, opts }) => el.removeEventListener(evt, fn, opts || false)); } catch (e) {}
+        try { localHandlers.length = 0; } catch (e) {}
+        try { refugeLayerGroup.removeLayer(editPoly); } catch (e) {}
+        try { refugeLayerGroup.removeLayer(editCursor); } catch (e) {}
+        try { window.__suppressCenterDoubleAction = false; } catch (e) {}
+      };
+
+      // Attach cleanup to HUD close
+      const closeHud = () => {
+        const h = document.querySelector('.drawing-hud');
+        if (h) h.remove();
+        cleanup();
+        endEditing();
+      };
+      // Replace cancel to ensure cleanup happens
+      try {
+        const cancelBtn = hud.querySelector('.hud-cancel');
+        if (cancelBtn) {
+          const clone = cancelBtn.cloneNode(true);
+          cancelBtn.parentNode.replaceChild(clone, cancelBtn);
+          clone.addEventListener('click', closeHud);
+        }
+      } catch (e) {}
+
+      // Undo stack
+      const undoStack = [];
+      const pushUndo = () => { undoStack.push(ring.map(ll => L.latLng(ll.lat, ll.lng))); if (undoBtn) undoBtn.disabled = false; };
+      const applyRing = (newRing) => { ring = newRing; editPoly.setLatLngs(ring); };
+
+      // Geometry helpers (operate in container pixel space for snapping)
+      function snapToBorder(centerLatLng) {
+        const p = map.latLngToContainerPoint(centerLatLng);
+        const pts = ring.map(ll => map.latLngToContainerPoint(ll));
+        let best = { dist2: Infinity, segIndex: -1, snap: null };
+        const n = pts.length;
+        for (let i = 0; i < n; i++) {
+          const a = pts[i];
+          const b = pts[(i + 1) % n];
+          const abx = b.x - a.x, aby = b.y - a.y;
+          const apx = p.x - a.x, apy = p.y - a.y;
+          const ab2 = abx * abx + aby * aby || 1;
+          let t = (apx * abx + apy * aby) / ab2;
+          if (t < 0) t = 0; else if (t > 1) t = 1;
+          const sx = a.x + t * abx;
+          const sy = a.y + t * aby;
+          const dx = p.x - sx, dy = p.y - sy;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < best.dist2) best = { dist2: d2, segIndex: i, snap: L.point(sx, sy) };
+        }
+        const snapLatLng = map.containerPointToLatLng(best.snap);
+        return { latlng: snapLatLng, segIndex: best.segIndex };
+      }
+
+      let draggingIndex = null; // index of vertex being adjusted live
+      let firstMoveInserted = false;
+      let touchStart = { x: 0, y: 0 };
+      let touchMoved = false;
+      const TAP_THRESHOLD = 8; // px
+
+      const container = map.getContainer();
+
+      const onMapMove = () => {
+        const { latlng, segIndex } = snapToBorder(map.getCenter());
+        editCursor.setLatLng(latlng);
+        if (draggingIndex != null) {
+          // Live adjust the vertex to follow border under the center
+          ring[draggingIndex] = latlng;
+          editPoly.setLatLngs(ring);
+        } else if (!firstMoveInserted) {
+          // Insert a new vertex on first movement after entering edit
+          pushUndo();
+          const insertAt = (segIndex + 1);
+          ring.splice(insertAt, 0, latlng);
+          draggingIndex = insertAt;
+          firstMoveInserted = true;
+          editPoly.setLatLngs(ring);
+        }
+      };
+
+      const onCenterDoubleTap = () => {
+        // Lock current dragging vertex
+        draggingIndex = null;
+        if (statusEl) statusEl.textContent = 'Pan to choose position, tap to add, double tap to lock';
+      };
+
+      const getTouchPoint = (e) => {
+        const t = (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]) || null;
+        return t ? { x: t.clientX, y: t.clientY } : null;
+      };
+      const onTouchStart = (ev) => {
+        const p = getTouchPoint(ev); if (!p) return; touchStart = p; touchMoved = false;
+      };
+      const onTouchMove = (ev) => {
+        const p = getTouchPoint(ev); if (!p) return;
+        const dx = p.x - touchStart.x, dy = p.y - touchStart.y;
+        if ((dx * dx + dy * dy) > (TAP_THRESHOLD * TAP_THRESHOLD)) touchMoved = true;
+      };
+      const onTouchEnd = (ev) => {
+        // Treat as single tap (add portable vertex) if not moved much
+        if (touchMoved) return;
+        ev.preventDefault && ev.preventDefault();
+        ev.stopPropagation && ev.stopPropagation();
+        const { latlng, segIndex } = snapToBorder(map.getCenter());
+        pushUndo();
+        const insertAt = (segIndex + 1);
+        ring.splice(insertAt, 0, latlng);
+        draggingIndex = insertAt; // start dragging this new vertex
+        editPoly.setLatLngs(ring);
+      };
+
+      map.on('move', onMapMove);
+      const dblHandler = () => onCenterDoubleTap();
+      window.addEventListener('map-center-doubletap', dblHandler);
+      container.addEventListener('touchstart', onTouchStart, { passive: false });
+      localHandlers.push({ el: container, evt: 'touchstart', fn: onTouchStart, opts: { passive: false } });
+      container.addEventListener('touchmove', onTouchMove, { passive: false });
+      localHandlers.push({ el: container, evt: 'touchmove', fn: onTouchMove, opts: { passive: false } });
+      container.addEventListener('touchend', onTouchEnd, { passive: false });
+      localHandlers.push({ el: container, evt: 'touchend', fn: onTouchEnd, opts: { passive: false } });
+
+      // Wire Undo
+      if (undoBtn) {
+        undoBtn.disabled = true;
+        undoBtn.addEventListener('click', () => {
+          if (!undoStack.length) return;
+          const prev = undoStack.pop();
+          applyRing(prev);
+          draggingIndex = null;
+          if (undoStack.length === 0) undoBtn.disabled = true;
+        });
+      }
+      // Wire Save
+      if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+          try {
+            saveBtn.disabled = true;
+            if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Saving…'; }
+            await updateRefugePolygon(refuge.id, ring);
+            await loadAndRenderRefuges();
+            closeHud();
+          } catch (e) {
+            if (statusEl) { statusEl.style.display = ''; statusEl.textContent = (e && e.message) || 'Failed to save'; }
+            saveBtn.disabled = false;
+          }
+        });
+      }
+    }
+    // No rename in edit mode; actions are Delete, Undo, Save
   }
 
   async function loadAndRenderRefuges() {
