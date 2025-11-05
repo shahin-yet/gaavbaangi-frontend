@@ -189,6 +189,8 @@ window.addEventListener('DOMContentLoaded', function () {
         }
         window.__editBlocker = null;
       } catch (e) {}
+      // Mobile snap cleanup
+      try { typeof window.__editSnapCleanup === 'function' && window.__editSnapCleanup(); } catch (e) {}
     };
     // Close any open UI panels and popups while entering edit mode
     try { document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show')); } catch (e) {}
@@ -249,6 +251,127 @@ window.addEventListener('DOMContentLoaded', function () {
       });
     }
     // No rename in edit mode; only Delete is available
+    
+    // -----------------------------
+    // Mobile-only: center red cursor + border snap/rail logic
+    // -----------------------------
+    if (isMobile) {
+      try {
+        const editCursorEl = document.querySelector('.edit-center-cursor');
+        if (editCursorEl) {
+          editCursorEl.classList.remove('snapped');
+        }
+        // Find the matching Leaflet polygon layer for this refuge
+        let targetPolygonLayer = null;
+        try {
+          refugeLayerGroup && refugeLayerGroup.eachLayer && refugeLayerGroup.eachLayer(function (layer) {
+            if (!targetPolygonLayer && layer && layer._refuge && layer._refuge.id === refuge.id && typeof layer.getLatLngs === 'function') {
+              targetPolygonLayer = layer;
+            }
+          });
+        } catch (e) {}
+        if (!targetPolygonLayer) {
+          // If polygon not found (e.g., being refreshed), skip snap logic
+          return;
+        }
+        // Gather rings (support Polygon or MultiPolygon)
+        const raw = targetPolygonLayer.getLatLngs();
+        const rings = [];
+        const pushClosedRing = (arr) => {
+          if (!Array.isArray(arr) || arr.length === 0) return;
+          const ring = arr.slice();
+          const first = ring[0];
+          const last = ring[ring.length - 1];
+          if (!(first && last && first.lat === last.lat && first.lng === last.lng)) {
+            ring.push(first);
+          }
+          rings.push(ring);
+        };
+        if (Array.isArray(raw) && raw.length > 0) {
+          // Leaflet: Polygon → [ring], MultiPolygon → [[ring], [ring], ...]
+          if (Array.isArray(raw[0]) && raw[0].length > 0 && typeof raw[0][0].lat === 'number') {
+            // Single polygon (one or more rings)
+            raw.forEach(pushClosedRing);
+          } else if (Array.isArray(raw[0]) && Array.isArray(raw[0][0])) {
+            // Multipolygon
+            raw.forEach(poly => { if (Array.isArray(poly)) poly.forEach(pushClosedRing); });
+          }
+        }
+        if (rings.length === 0) return;
+
+        const SNAP_THRESHOLD_PX = 20; // proximity in pixels to catch to border
+        let snapMarker = null;
+        const ensureSnapMarker = (latlng) => {
+          if (!snapMarker) {
+            snapMarker = L.circleMarker(latlng, { radius: 5, color: '#e53935', fillColor: '#e53935', fillOpacity: 0.95, weight: 2 }).addTo(refugeLayerGroup);
+          } else {
+            snapMarker.setLatLng(latlng);
+          }
+        };
+        const hideSnapMarker = () => {
+          if (snapMarker) {
+            try { refugeLayerGroup.removeLayer(snapMarker); } catch (e) {}
+            snapMarker = null;
+          }
+        };
+        const computeNearestOnRings = (centerLatLng) => {
+          const p = map.latLngToContainerPoint(centerLatLng);
+          let best = { dist2: Number.POSITIVE_INFINITY, latlng: null };
+          for (let r = 0; r < rings.length; r++) {
+            const ring = rings[r];
+            for (let i = 0; i < ring.length - 1; i++) {
+              const a = ring[i];
+              const b = ring[i + 1];
+              const pa = map.latLngToContainerPoint(a);
+              const pb = map.latLngToContainerPoint(b);
+              const vx = pb.x - pa.x;
+              const vy = pb.y - pa.y;
+              const wx = p.x - pa.x;
+              const wy = p.y - pa.y;
+              const vv = vx * vx + vy * vy;
+              let t = vv > 0 ? (wx * vx + wy * vy) / vv : 0;
+              if (t < 0) t = 0; else if (t > 1) t = 1;
+              const projX = pa.x + t * vx;
+              const projY = pa.y + t * vy;
+              const dx = p.x - projX;
+              const dy = p.y - projY;
+              const d2 = dx * dx + dy * dy;
+              if (d2 < best.dist2) {
+                best.dist2 = d2;
+                best.latlng = map.containerPointToLatLng(L.point(projX, projY));
+              }
+            }
+          }
+          return best;
+        };
+
+        const onMoveOrZoom = () => {
+          const center = map.getCenter();
+          const best = computeNearestOnRings(center);
+          const distPx = Math.sqrt(best.dist2);
+          if (best.latlng && distPx <= SNAP_THRESHOLD_PX) {
+            ensureSnapMarker(best.latlng);
+            if (editCursorEl) editCursorEl.classList.add('snapped');
+          } else {
+            hideSnapMarker();
+            if (editCursorEl) editCursorEl.classList.remove('snapped');
+          }
+        };
+        map.on('move', onMoveOrZoom);
+        map.on('zoomend', onMoveOrZoom);
+        // Initial update
+        onMoveOrZoom();
+
+        // Expose cleanup to endEditing
+        window.__editSnapCleanup = function () {
+          try { map.off('move', onMoveOrZoom); } catch (e) {}
+          try { map.off('zoomend', onMoveOrZoom); } catch (e) {}
+          hideSnapMarker();
+          if (editCursorEl) editCursorEl.classList.remove('snapped');
+          window.__editSnapCleanup = null;
+        };
+      } catch (e) { /* no-op */ }
+    }
   }
 
   async function loadAndRenderRefuges() {
