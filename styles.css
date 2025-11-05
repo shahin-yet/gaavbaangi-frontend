@@ -359,6 +359,29 @@ body {
   border-color: #1e90ff;
 }
 
+/* Edit mode center cursor (mobile-only) */
+.edit-center-cursor {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: #e53935; /* red */
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 6px rgba(229, 57, 53, 0.18);
+  pointer-events: none;
+  display: none;
+  z-index: 1101;
+}
+
+.mobile-ui.editing-active .edit-center-cursor { display: block; }
+.mobile-ui.editing-active .edit-center-cursor.snapped {
+  box-shadow: 0 0 0 10px rgba(229, 57, 53, 0.28);
+}
+
 /* Floating Action Button (Menu) */
 .fab-menu {
   position: absolute;
