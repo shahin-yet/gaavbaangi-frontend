@@ -552,32 +552,6 @@ body {
 }
 .drawing-hud .hud-delete:hover { filter: brightness(0.95); }
 
-/* Edit HUD: Undo and Save */
-.drawing-hud .hud-undo {
-  margin-left: 8px;
-  border: 1px solid #bdbdbd;
-  background: #f5f5f5;
-  color: #333;
-  padding: 10px 14px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 14px;
-}
-.drawing-hud .hud-undo:disabled { opacity: 0.5; cursor: default; }
-.drawing-hud .hud-undo:hover { filter: brightness(0.98); }
-
-.drawing-hud .hud-save {
-  margin-left: 8px;
-  border: 1px solid #76a7ff;
-  background: #0b63c9;
-  color: #fff;
-  padding: 10px 14px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 14px;
-}
-.drawing-hud .hud-save:hover { filter: brightness(0.95); }
-
 /* Popup content: name with rename button on the right */
 .refuge-popup { display: inline-flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; width: max-content; }
 .refuge-popup .refuge-name-row { display: inline-flex; align-items: center; gap: 8px; padding-right: 24px; }
