@@ -340,30 +340,40 @@ window.addEventListener('DOMContentLoaded', function () {
       // Initial lock: set to nearest point on ring and show active state
       if (dotEl) { try { dotEl.classList.add('snap-near'); } catch (e) {} }
       try { bodyEl && bodyEl.classList.add('editing-active'); } catch (e) {}
-      let tPos = nearestOnRing(map.getCenter());
+      let tAcc = nearestOnRing(map.getCenter()); // unbounded t for infinite wrap
       let isDraggingThumb = false;
+      let startClientY = 0;
+      let startT = tAcc;
+
+      function normalize01(t) { return (t % 1 + 1) % 1; }
 
       function setThumbFromT(t) {
         const trackH = track.clientHeight;
         const thumbH = thumb.clientHeight;
-        const y = Math.round(t * (trackH - thumbH));
+        const tN = normalize01(t);
+        const y = Math.round(tN * (trackH - thumbH));
         thumb.style.top = y + 'px';
       }
 
       function panToT(t, animate = true) {
-        tPos = Math.max(0, Math.min(1, t));
-        const target = pointAt(tPos);
+        tAcc = t;
+        const tN = normalize01(tAcc);
+        const target = pointAt(tN);
         map.panTo(target, { animate: !!animate, duration: 0.25, easeLinearity: 0.25 });
-        setThumbFromT(tPos);
+        setThumbFromT(tAcc);
       }
 
       // Set initial position
-      setThumbFromT(tPos);
-      panToT(tPos, false);
+      setThumbFromT(tAcc);
+      panToT(tAcc, false);
 
-      function localTFromEvent(e) {
+      function getClientY(e) {
+        return (e.touches && e.touches[0] ? e.touches[0].clientY : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientY : e.clientY));
+      }
+
+      function absoluteTFromEvent(e) {
         const rect = track.getBoundingClientRect();
-        const clientY = (e.touches && e.touches[0] ? e.touches[0].clientY : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientY : e.clientY));
+        const clientY = getClientY(e);
         const y = Math.max(0, Math.min(rect.height, clientY - rect.top));
         const thumbH = thumb.clientHeight;
         const pos = Math.max(0, Math.min(rect.height - thumbH, y - thumbH / 2)) / (rect.height - thumbH);
@@ -375,7 +385,13 @@ window.addEventListener('DOMContentLoaded', function () {
         e.stopPropagation && e.stopPropagation();
         isDraggingThumb = true;
         thumb.classList.add('dragging');
-        panToT(localTFromEvent(e), true);
+        // If start from track (not thumb), jump to that absolute spot first
+        if (e.target === track) {
+          const absT = absoluteTFromEvent(e);
+          panToT(absT, true);
+        }
+        startClientY = getClientY(e);
+        startT = tAcc;
         window.addEventListener('mousemove', onMove, { passive: false });
         window.addEventListener('touchmove', onMove, { passive: false });
         window.addEventListener('mouseup', onEnd, { passive: false });
@@ -385,7 +401,12 @@ window.addEventListener('DOMContentLoaded', function () {
         if (!isDraggingThumb) return;
         e.preventDefault && e.preventDefault();
         e.stopPropagation && e.stopPropagation();
-        panToT(localTFromEvent(e), false);
+        const rect = track.getBoundingClientRect();
+        const thumbH = thumb.clientHeight;
+        const usable = Math.max(1, rect.height - thumbH);
+        const dy = getClientY(e) - startClientY;
+        const deltaT = dy / usable; // dragging down increases t
+        panToT(startT + deltaT, false);
       };
       const onEnd = (e) => {
         if (!isDraggingThumb) return;
