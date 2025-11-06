@@ -243,7 +243,7 @@ window.addEventListener('DOMContentLoaded', function () {
       // Do not hide or alter the cursor; keep default until snapping occurs
       const bodyEl = document.body;
       const dotEl = document.querySelector('.map-center-dot');
-      const SNAP_THRESHOLD_PX = 16; // proximity in pixels to trigger snapping
+      const SNAP_THRESHOLD_PX = Infinity; // always snap to border; keep center locked on line
       let snappingInternal = false;
       // Prepare rings as arrays of L.LatLng
       const toLatLng = ([lng, lat]) => L.latLng(lat, lng);
