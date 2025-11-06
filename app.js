@@ -244,6 +244,9 @@ window.addEventListener('DOMContentLoaded', function () {
       const bodyEl = document.body;
       const dotEl = document.querySelector('.map-center-dot');
       const SNAP_THRESHOLD_PX = Infinity; // always snap to border; keep center locked on line
+      const LOCK_TOLERANCE_PX = 14; // prefer current segment if within this distance
+      const SWITCH_HYSTERESIS_PX = 10; // require this much improvement to switch segments
+      let activeSeg = null; // { ringIndex: number, segIndex: number }
       let snappingInternal = false;
       // Prepare rings as arrays of L.LatLng
       const toLatLng = ([lng, lat]) => L.latLng(lat, lng);
@@ -264,21 +267,22 @@ window.addEventListener('DOMContentLoaded', function () {
         const ab2 = abx * abx + aby * aby || 1;
         let t = (apx * abx + apy * aby) / ab2;
         if (t < 0) t = 0; else if (t > 1) t = 1;
-        return { x: ax.x + abx * t, y: ax.y + aby * t };
+        return { ptPx: { x: ax.x + abx * t, y: ax.y + aby * t }, t };
       }
 
       function findNearestOnBorder(centerLatLng) {
         const p = map.latLngToContainerPoint(centerLatLng);
-        let best = { ptPx: null, dist2: Infinity };
+        let best = { ptPx: null, dist2: Infinity, ringIndex: -1, segIndex: -1, t: 0 };
         for (let i = 0; i < rings.length; i++) {
           const ring = rings[i];
           for (let j = 0; j < ring.length - 1; j++) {
             const aPx = map.latLngToContainerPoint(ring[j]);
             const bPx = map.latLngToContainerPoint(ring[j + 1]);
-            const q = nearestPointOnSeg(p, aPx, bPx);
+            const res = nearestPointOnSeg(p, aPx, bPx);
+            const q = res.ptPx;
             const dx = p.x - q.x, dy = p.y - q.y;
             const d2 = dx * dx + dy * dy;
-            if (d2 < best.dist2) best = { ptPx: q, dist2: d2 };
+            if (d2 < best.dist2) best = { ptPx: q, dist2: d2, ringIndex: i, segIndex: j, t: res.t };
           }
         }
         return best;
@@ -287,20 +291,54 @@ window.addEventListener('DOMContentLoaded', function () {
       const onMoveSnap = () => {
         if (snappingInternal) return;
         const center = map.getCenter();
+        const centerPx = map.latLngToContainerPoint(center);
         const nearest = findNearestOnBorder(center);
         if (!nearest || !nearest.ptPx || nearest.dist2 === Infinity) return;
-        if (nearest.dist2 <= SNAP_THRESHOLD_PX * SNAP_THRESHOLD_PX) {
-          if (dotEl) { try { dotEl.classList.add('snap-near'); } catch (e) {} }
-          const curPx = map.latLngToContainerPoint(center);
-          const dx = curPx.x - nearest.ptPx.x;
-          const dy = curPx.y - nearest.ptPx.y;
-          if ((dx * dx + dy * dy) > 1) {
-            const target = map.containerPointToLatLng(L.point(nearest.ptPx.x, nearest.ptPx.y));
-            snappingInternal = true;
-            try { map.panTo(target, { animate: false }); } finally { setTimeout(() => { snappingInternal = false; }, 0); }
+
+        // Always show near state since we always snap
+        if (dotEl) { try { dotEl.classList.add('snap-near'); } catch (e) {} }
+
+        // Initialize active segment if not set
+        if (!activeSeg) {
+          activeSeg = { ringIndex: nearest.ringIndex, segIndex: nearest.segIndex };
+        }
+
+        // Compute projection onto the active segment
+        let usePx = nearest.ptPx;
+        if (activeSeg && activeSeg.ringIndex >= 0) {
+          const ring = rings[activeSeg.ringIndex] || [];
+          const a = ring[activeSeg.segIndex];
+          const b = ring[activeSeg.segIndex + 1];
+          if (a && b) {
+            const aPx = map.latLngToContainerPoint(a);
+            const bPx = map.latLngToContainerPoint(b);
+            const proj = nearestPointOnSeg(centerPx, aPx, bPx);
+            const adx = centerPx.x - proj.ptPx.x;
+            const ady = centerPx.y - proj.ptPx.y;
+            const distActive2 = adx * adx + ady * ady;
+
+            // Prefer staying on current segment unless the nearest is significantly better
+            if (distActive2 <= (LOCK_TOLERANCE_PX * LOCK_TOLERANCE_PX) ||
+                distActive2 <= (nearest.dist2 + SWITCH_HYSTERESIS_PX * SWITCH_HYSTERESIS_PX)) {
+              usePx = proj.ptPx;
+            } else {
+              // Switch to the newly found nearest segment
+              activeSeg = { ringIndex: nearest.ringIndex, segIndex: nearest.segIndex };
+              usePx = nearest.ptPx;
+            }
+          } else {
+            // Fallback if active seg invalid
+            activeSeg = { ringIndex: nearest.ringIndex, segIndex: nearest.segIndex };
+            usePx = nearest.ptPx;
           }
-        } else {
-          if (dotEl) { try { dotEl.classList.remove('snap-near'); } catch (e) {} }
+        }
+
+        const dx = centerPx.x - usePx.x;
+        const dy = centerPx.y - usePx.y;
+        if ((dx * dx + dy * dy) > 1) {
+          const target = map.containerPointToLatLng(L.point(usePx.x, usePx.y));
+          snappingInternal = true;
+          try { map.panTo(target, { animate: false }); } finally { setTimeout(() => { snappingInternal = false; }, 0); }
         }
       };
 
@@ -316,6 +354,7 @@ window.addEventListener('DOMContentLoaded', function () {
         try { map.off('move', onMoveSnap); map.off('zoomend', onMoveSnap); } catch (e) {}
         try { map && map.getContainer && (map.getContainer().style.cursor = ''); } catch (e) {}
         if (dotEl) { try { dotEl.classList.remove('snap-near'); } catch (e) {} }
+        activeSeg = null;
       });
     }
   }
