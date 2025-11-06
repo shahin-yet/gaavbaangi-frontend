@@ -258,9 +258,9 @@ window.addEventListener('DOMContentLoaded', function () {
     }
     // No rename in edit mode; only Delete is available
     
-    // Mobile-only: show circular cursor (center dot) with red ring and snap to refuge border while panning
+    // Mobile-only: snap to refuge border while panning; show red ring only when near
     if (isMobile && refuge && refuge.polygon) {
-      try { map && map.getContainer && (map.getContainer().style.cursor = 'none'); } catch (e) {}
+      // Do not hide or alter the cursor; keep default until snapping occurs
       const bodyEl = document.body;
       const dotEl = document.querySelector('.map-center-dot');
       const SNAP_THRESHOLD_PX = 16; // proximity in pixels to trigger snapping
