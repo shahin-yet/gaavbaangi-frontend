@@ -359,8 +359,8 @@ body {
   border-color: #1e90ff;
 }
 
-/* Mobile edit mode: make center cursor ring red */
-.mobile-ui.editing-active .map-center-dot {
+/* Mobile edit mode: make center cursor ring red only when near snapping */
+.mobile-ui.editing-active .map-center-dot.snap-near {
   border-color: #ff2d2d;
 }
 
