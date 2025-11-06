@@ -491,7 +491,7 @@ body {
   position: absolute;
   right: 20px;
   bottom: calc(24px + 56px + 14px); /* above FAB with spacing */
-  width: 44px;
+  width: 64px;
   height: 20vh; /* shortened by one-third */
   min-height: 108px; /* 2/3 of 160px */
   max-height: 30vh; /* ~2/3 of previous cap */
@@ -512,29 +512,59 @@ body {
 
 .vertical-scroll-pad .vsp-track {
   position: relative;
-  width: 44px; /* circular dial */
-  height: 44px;
+  width: 60px; /* circular dial */
+  height: 60px;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at center, #ffffff 58%, transparent 60%),
-    repeating-conic-gradient(
-      from 0deg,
-      #d0d0d0 0deg 2deg,
-      transparent 2deg 28deg
-    ); /* degree-like ticks every ~30deg */
+  background: radial-gradient(circle at center, #ffffff 55%, transparent 56%);
   border: 2px solid var(--gray-300);
   margin: auto;
+}
+
+.vertical-scroll-pad .vsp-wheel {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    repeating-conic-gradient(
+      from 0deg,
+      #bbbbbb 0deg 2deg,
+      transparent 2deg 14deg
+    ),
+    radial-gradient(circle at center, transparent 52%, rgba(0,0,0,0.06) 53%);
+}
+
+.vertical-scroll-pad .vsp-indicator {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff2d2d;
+  box-shadow: 0 0 0 4px rgba(255,45,45,0.12);
+}
+
+.vertical-scroll-pad .vsp-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 11px;
+  color: #2a2a2a;
+  user-select: none;
+  pointer-events: none;
 }
 
 .vertical-scroll-pad .vsp-thumb {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 10px;
-  height: 10px;
+  width: 0px; /* hidden in dial mode */
+  height: 0px;
   border-radius: 50%;
-  background: var(--primary-color);
-  box-shadow: var(--shadow-md);
+  background: transparent;
+  box-shadow: none;
   transform: translate(-50%, -50%);
   touch-action: none;
   cursor: grab;
