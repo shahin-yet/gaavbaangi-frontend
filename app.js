@@ -238,123 +238,191 @@ window.addEventListener('DOMContentLoaded', function () {
     }
     // No rename in edit mode; only Delete is available
     
-    // Mobile-only: snap to refuge border while panning; show red ring only when near
+    // Mobile: right-thumb vertical scroll control above FAB (visual only, no behavior)
+    if (isMobile) {
+      const containerWrap = document.querySelector('.map-container') || (map && map.getContainer && map.getContainer().parentElement) || document.body;
+      const vsp = document.createElement('div');
+      vsp.className = 'vertical-scroll-pad';
+      vsp.innerHTML = '<div class="vsp-track"><div class="vsp-thumb"></div></div>';
+      try { containerWrap.appendChild(vsp); } catch (e) {}
+
+      cleanupFns.push(() => {
+        try { vsp && vsp.parentNode && vsp.parentNode.removeChild(vsp); } catch (e) {}
+      });
+    }
+
+    // Mobile-only: rail along refuge border, controlled by vertical scroll pad
     if (isMobile && refuge && refuge.polygon) {
-      // Do not hide or alter the cursor; keep default until snapping occurs
       const bodyEl = document.body;
       const dotEl = document.querySelector('.map-center-dot');
-      const SNAP_THRESHOLD_PX = Infinity; // always snap to border; keep center locked on line
-      const LOCK_TOLERANCE_PX = 14; // prefer current segment if within this distance
-      const SWITCH_HYSTERESIS_PX = 10; // require this much improvement to switch segments
-      let activeSeg = null; // { ringIndex: number, segIndex: number }
-      let snappingInternal = false;
-      // Prepare rings as arrays of L.LatLng
+      // Choose the longest ring to rail on (outer boundary)
       const toLatLng = ([lng, lat]) => L.latLng(lat, lng);
       const geo = refuge.polygon;
       const rings = [];
       if (geo && geo.type === 'Polygon') {
         (geo.coordinates || []).forEach(r => rings.push((r || []).map(toLatLng)));
       } else if (geo && geo.type === 'MultiPolygon') {
-        (geo.coordinates || []).forEach(poly => {
-          (poly || []).forEach(r => rings.push((r || []).map(toLatLng)));
-        });
+        (geo.coordinates || []).forEach(poly => { (poly || []).forEach(r => rings.push((r || []).map(toLatLng))); });
+      }
+      if (!rings.length) return;
+
+      // Pick longest ring by geodesic length
+      function ringLength(latlngs) {
+        let len = 0;
+        for (let i = 0; i < latlngs.length - 1; i++) len += map.distance(latlngs[i], latlngs[i + 1]);
+        return len;
+      }
+      let railRing = rings[0];
+      let maxLen = ringLength(railRing);
+      for (let i = 1; i < rings.length; i++) {
+        const Llen = ringLength(rings[i]);
+        if (Llen > maxLen) { maxLen = Llen; railRing = rings[i]; }
+      }
+      if (!railRing || railRing.length < 2) return;
+
+      // Cumulative lengths for interpolation
+      const segLens = [];
+      const cumLens = [0];
+      for (let i = 0; i < railRing.length - 1; i++) {
+        const d = map.distance(railRing[i], railRing[i + 1]);
+        segLens.push(d);
+        cumLens.push(cumLens[cumLens.length - 1] + d);
+      }
+      const totalLen = cumLens[cumLens.length - 1] || 1;
+
+      function pointAt(t) {
+        const target = Math.max(0, Math.min(1, t)) * totalLen;
+        // find segment index
+        let idx = 0;
+        while (idx < segLens.length && cumLens[idx + 1] < target) idx++;
+        const segStart = cumLens[idx];
+        const segLen = segLens[idx] || 1;
+        const localT = Math.max(0, Math.min(1, (target - segStart) / segLen));
+        const a = railRing[idx];
+        const b = railRing[idx + 1] || a;
+        return L.latLng(
+          a.lat + (b.lat - a.lat) * localT,
+          a.lng + (b.lng - a.lng) * localT
+        );
       }
 
-      // Compute nearest point on a segment in pixel space
-      function nearestPointOnSeg(px, ax, bx) {
-        const apx = px.x - ax.x, apy = px.y - ax.y;
-        const abx = bx.x - ax.x, aby = bx.y - ax.y;
-        const ab2 = abx * abx + aby * aby || 1;
-        let t = (apx * abx + apy * aby) / ab2;
-        if (t < 0) t = 0; else if (t > 1) t = 1;
-        return { ptPx: { x: ax.x + abx * t, y: ax.y + aby * t }, t };
-      }
-
-      function findNearestOnBorder(centerLatLng) {
+      // Helper: nearest on a single ring (pixel-space projection)
+      function nearestOnRing(centerLatLng) {
         const p = map.latLngToContainerPoint(centerLatLng);
-        let best = { ptPx: null, dist2: Infinity, ringIndex: -1, segIndex: -1, t: 0 };
-        for (let i = 0; i < rings.length; i++) {
-          const ring = rings[i];
-          for (let j = 0; j < ring.length - 1; j++) {
-            const aPx = map.latLngToContainerPoint(ring[j]);
-            const bPx = map.latLngToContainerPoint(ring[j + 1]);
-            const res = nearestPointOnSeg(p, aPx, bPx);
-            const q = res.ptPx;
-            const dx = p.x - q.x, dy = p.y - q.y;
-            const d2 = dx * dx + dy * dy;
-            if (d2 < best.dist2) best = { ptPx: q, dist2: d2, ringIndex: i, segIndex: j, t: res.t };
-          }
+        let best = { segIndex: -1, t: 0, dist2: Infinity };
+        for (let j = 0; j < railRing.length - 1; j++) {
+          const aPx = map.latLngToContainerPoint(railRing[j]);
+          const bPx = map.latLngToContainerPoint(railRing[j + 1]);
+          const apx = p.x - aPx.x, apy = p.y - aPx.y;
+          const abx = bPx.x - aPx.x, aby = bPx.y - aPx.y;
+          const ab2 = abx * abx + aby * aby || 1;
+          let t = (apx * abx + apy * aby) / ab2; if (t < 0) t = 0; else if (t > 1) t = 1;
+          const qx = aPx.x + abx * t, qy = aPx.y + aby * t;
+          const dx = p.x - qx, dy = p.y - qy;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < best.dist2) best = { segIndex: j, t, dist2: d2 };
         }
-        return best;
+        const segStart = cumLens[best.segIndex];
+        const segLen = segLens[best.segIndex] || 1;
+        const along = (segStart + best.t * segLen) / totalLen;
+        return Math.max(0, Math.min(1, along));
       }
 
-      const onMoveSnap = () => {
-        if (snappingInternal) return;
-        const center = map.getCenter();
-        const centerPx = map.latLngToContainerPoint(center);
-        const nearest = findNearestOnBorder(center);
-        if (!nearest || !nearest.ptPx || nearest.dist2 === Infinity) return;
+      // Interactive vertical scroll pad controls the parameter t ∈ [0,1]
+      const vsp = document.querySelector('.vertical-scroll-pad');
+      const track = vsp && vsp.querySelector('.vsp-track');
+      const thumb = vsp && vsp.querySelector('.vsp-thumb');
+      if (!vsp || !track || !thumb) return;
 
-        // Always show near state since we always snap
-        if (dotEl) { try { dotEl.classList.add('snap-near'); } catch (e) {} }
+      // Disable map dragging to prevent conflicting input during rail edit
+      try { map.dragging && map.dragging.disable && map.dragging.disable(); } catch (e) {}
 
-        // Initialize active segment if not set
-        if (!activeSeg) {
-          activeSeg = { ringIndex: nearest.ringIndex, segIndex: nearest.segIndex };
-        }
+      // Initial lock: set to nearest point on ring and show active state
+      if (dotEl) { try { dotEl.classList.add('snap-near'); } catch (e) {} }
+      try { bodyEl && bodyEl.classList.add('editing-active'); } catch (e) {}
+      let tPos = nearestOnRing(map.getCenter());
+      let isDraggingThumb = false;
 
-        // Compute projection onto the active segment
-        let usePx = nearest.ptPx;
-        if (activeSeg && activeSeg.ringIndex >= 0) {
-          const ring = rings[activeSeg.ringIndex] || [];
-          const a = ring[activeSeg.segIndex];
-          const b = ring[activeSeg.segIndex + 1];
-          if (a && b) {
-            const aPx = map.latLngToContainerPoint(a);
-            const bPx = map.latLngToContainerPoint(b);
-            const proj = nearestPointOnSeg(centerPx, aPx, bPx);
-            const adx = centerPx.x - proj.ptPx.x;
-            const ady = centerPx.y - proj.ptPx.y;
-            const distActive2 = adx * adx + ady * ady;
+      function setThumbFromT(t) {
+        const trackH = track.clientHeight;
+        const thumbH = thumb.clientHeight;
+        const y = Math.round(t * (trackH - thumbH));
+        thumb.style.top = y + 'px';
+      }
 
-            // Prefer staying on current segment unless the nearest is significantly better
-            if (distActive2 <= (LOCK_TOLERANCE_PX * LOCK_TOLERANCE_PX) ||
-                distActive2 <= (nearest.dist2 + SWITCH_HYSTERESIS_PX * SWITCH_HYSTERESIS_PX)) {
-              usePx = proj.ptPx;
-            } else {
-              // Switch to the newly found nearest segment
-              activeSeg = { ringIndex: nearest.ringIndex, segIndex: nearest.segIndex };
-              usePx = nearest.ptPx;
-            }
-          } else {
-            // Fallback if active seg invalid
-            activeSeg = { ringIndex: nearest.ringIndex, segIndex: nearest.segIndex };
-            usePx = nearest.ptPx;
-          }
-        }
+      function panToT(t, animate = true) {
+        tPos = Math.max(0, Math.min(1, t));
+        const target = pointAt(tPos);
+        map.panTo(target, { animate: !!animate, duration: 0.25, easeLinearity: 0.25 });
+        setThumbFromT(tPos);
+      }
 
-        const dx = centerPx.x - usePx.x;
-        const dy = centerPx.y - usePx.y;
-        if ((dx * dx + dy * dy) > 1) {
-          const target = map.containerPointToLatLng(L.point(usePx.x, usePx.y));
-          snappingInternal = true;
-          try { map.panTo(target, { animate: false }); } finally { setTimeout(() => { snappingInternal = false; }, 0); }
-        }
+      // Set initial position
+      setThumbFromT(tPos);
+      panToT(tPos, false);
+
+      function localTFromEvent(e) {
+        const rect = track.getBoundingClientRect();
+        const clientY = (e.touches && e.touches[0] ? e.touches[0].clientY : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientY : e.clientY));
+        const y = Math.max(0, Math.min(rect.height, clientY - rect.top));
+        const thumbH = thumb.clientHeight;
+        const pos = Math.max(0, Math.min(rect.height - thumbH, y - thumbH / 2)) / (rect.height - thumbH);
+        return isFinite(pos) ? Math.max(0, Math.min(1, pos)) : 0;
+      }
+
+      const onStart = (e) => {
+        e.preventDefault && e.preventDefault();
+        e.stopPropagation && e.stopPropagation();
+        isDraggingThumb = true;
+        thumb.classList.add('dragging');
+        panToT(localTFromEvent(e), true);
+        window.addEventListener('mousemove', onMove, { passive: false });
+        window.addEventListener('touchmove', onMove, { passive: false });
+        window.addEventListener('mouseup', onEnd, { passive: false });
+        window.addEventListener('touchend', onEnd, { passive: false });
+      };
+      const onMove = (e) => {
+        if (!isDraggingThumb) return;
+        e.preventDefault && e.preventDefault();
+        e.stopPropagation && e.stopPropagation();
+        panToT(localTFromEvent(e), false);
+      };
+      const onEnd = (e) => {
+        if (!isDraggingThumb) return;
+        e.preventDefault && e.preventDefault();
+        e.stopPropagation && e.stopPropagation();
+        isDraggingThumb = false;
+        thumb.classList.remove('dragging');
+        // snap final animate for a subtle finish
+        panToT(tPos, true);
+        window.removeEventListener('mousemove', onMove, { passive: false });
+        window.removeEventListener('touchmove', onMove, { passive: false });
+        window.removeEventListener('mouseup', onEnd, { passive: false });
+        window.removeEventListener('touchend', onEnd, { passive: false });
       };
 
-      // Activate snapping visuals and listeners
-      try { bodyEl && bodyEl.classList.add('editing-active'); } catch (e) {}
-      map.on('move', onMoveSnap);
-      map.on('zoomend', onMoveSnap);
-      // Initial evaluation
-      onMoveSnap();
+      // Click/press track jumps
+      track.addEventListener('mousedown', onStart, { passive: false });
+      track.addEventListener('touchstart', onStart, { passive: false });
+      thumb.addEventListener('mousedown', onStart, { passive: false });
+      thumb.addEventListener('touchstart', onStart, { passive: false });
 
-      // Register cleanup to be executed when editing ends
+      // Cleanup: re-enable dragging and remove listeners
       cleanupFns.push(() => {
-        try { map.off('move', onMoveSnap); map.off('zoomend', onMoveSnap); } catch (e) {}
-        try { map && map.getContainer && (map.getContainer().style.cursor = ''); } catch (e) {}
+        try { map.dragging && map.dragging.enable && map.dragging.enable(); } catch (e) {}
         if (dotEl) { try { dotEl.classList.remove('snap-near'); } catch (e) {} }
-        activeSeg = null;
+        try {
+          track.removeEventListener('mousedown', onStart, { passive: false });
+          track.removeEventListener('touchstart', onStart, { passive: false });
+          thumb.removeEventListener('mousedown', onStart, { passive: false });
+          thumb.removeEventListener('touchstart', onStart, { passive: false });
+        } catch (e) {}
+        try {
+          window.removeEventListener('mousemove', onMove, { passive: false });
+          window.removeEventListener('touchmove', onMove, { passive: false });
+          window.removeEventListener('mouseup', onEnd, { passive: false });
+          window.removeEventListener('touchend', onEnd, { passive: false });
+        } catch (e) {}
       });
     }
   }
