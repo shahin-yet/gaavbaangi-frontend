@@ -157,28 +157,8 @@ window.addEventListener('DOMContentLoaded', function () {
     const beginEditing = () => {
       try { document.body.classList.add('editing-active'); } catch (e) {}
       window.__editing = true;
-      // Add a transparent blocker to capture all pointer events beneath the HUD
-      try {
-        const blocker = document.createElement('div');
-        blocker.className = 'ui-edit-blocker';
-        blocker.style.position = 'fixed';
-        blocker.style.left = '0';
-        blocker.style.top = '0';
-        blocker.style.right = '0';
-        blocker.style.bottom = '0';
-        blocker.style.background = 'transparent';
-        blocker.style.zIndex = '1150'; // between toolbar/leaflet popups and HUD (1200)
-        blocker.style.pointerEvents = 'auto';
-        // Prevent context menu or accidental interactions
-        blocker.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
-        blocker.addEventListener('mousedown', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
-        blocker.addEventListener('mouseup', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
-        blocker.addEventListener('touchstart', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true, passive: false });
-        blocker.addEventListener('touchend', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true, passive: false });
-        blocker.addEventListener('wheel', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
-        document.body.appendChild(blocker);
-        window.__editBlocker = blocker;
-      } catch (e) {}
+      // Do not block map interactions; no fullscreen overlay
+      window.__editBlocker = null;
     };
     const cleanupFns = [];
     const endEditing = () => {
