@@ -493,13 +493,38 @@ window.addEventListener('DOMContentLoaded', function () {
       thumb.addEventListener('mousedown', onStart, { passive: false });
       thumb.addEventListener('touchstart', onStart, { passive: false });
 
-      // Wheel scroll support (like zoom wheel stepping)
+      // Wheel scroll support (normalize trackpad vs mouse wheel)
+      let wheelAccumPx = 0;
+      // Separate accumulator for dial visuals when using wheel-to-zoom
+      let dialTAccVisual = tAcc;
       const onWheel = (e) => {
         e.preventDefault();
-        const delta = e.deltaY || 0;
-        // typical wheel steps ~100; map to small turn increments
-        const stepTurns = -delta / 2400; // negative to make down = clockwise
-        panToT(tAcc + stepTurns, false);
+        // Normalize delta to pixels
+        let dy = e.deltaY || 0;
+        if (e.deltaMode === 1) { // lines
+          dy *= 16;
+        } else if (e.deltaMode === 2) { // pages
+          dy *= 800;
+        }
+        // Accumulate and emit discrete steps like a mouse wheel notch (~100px)
+        wheelAccumPx += dy;
+        const STEP_PX = 100;
+        const steps = Math.trunc(wheelAccumPx / STEP_PX);
+        if (steps !== 0) {
+          // Zoom map like a mouse wheel: positive dy (down) => zoom out
+          const currentZoom = typeof map.getZoom === 'function' ? map.getZoom() : 0;
+          const minZoom = typeof map.getMinZoom === 'function' ? map.getMinZoom() : 0;
+          const maxZoom = typeof map.getMaxZoom === 'function' ? map.getMaxZoom() : 22;
+          let targetZoom = currentZoom - steps;
+          if (targetZoom < minZoom) targetZoom = minZoom;
+          if (targetZoom > maxZoom) targetZoom = maxZoom;
+          try { map.setZoom(targetZoom, { animate: true }); } catch (err) { try { map.setZoom(targetZoom); } catch (e2) {} }
+          // Keep dial visuals rotating to reflect action without altering rail position state
+          const stepTurnsVisual = -(steps * STEP_PX) / 2400; // down = clockwise
+          dialTAccVisual += stepTurnsVisual;
+          setDialFromT(dialTAccVisual);
+          wheelAccumPx -= steps * STEP_PX;
+        }
       };
       vsp.addEventListener('wheel', onWheel, { passive: false });
 
