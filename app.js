@@ -332,6 +332,12 @@ window.addEventListener('DOMContentLoaded', function () {
       const vsp = document.querySelector('.vertical-scroll-pad');
       const track = vsp && vsp.querySelector('.vsp-track');
       const thumb = vsp && vsp.querySelector('.vsp-thumb');
+      // Upgrade to dial UI if not already present
+      if (vsp && track && !track.querySelector('.vsp-wheel')) {
+        track.innerHTML = '<div class="vsp-wheel"></div><div class="vsp-indicator"></div><div class="vsp-label"></div>';
+      }
+      const wheel = vsp && vsp.querySelector('.vsp-wheel');
+      const label = vsp && vsp.querySelector('.vsp-label');
       if (!vsp || !track || !thumb) return;
 
       // Disable map dragging to prevent conflicting input during rail edit
@@ -349,14 +355,15 @@ window.addEventListener('DOMContentLoaded', function () {
 
       function normalize01(t) { return (t % 1 + 1) % 1; }
 
-      function setThumbFromT(t) {
-        const size = Math.min(track.clientWidth || 0, track.clientHeight || 0);
-        if (!size) return;
+      function setDialFromT(t) {
         const tN = normalize01(t);
-        const angle = tN * Math.PI * 2; // radians
-        const radius = Math.max(0, (size / 2) - 8);
-        // Position the pointer on the circumference using rotate/translate
-        thumb.style.transform = `translate(-50%, -50%) rotate(${angle}rad) translate(${radius}px) rotate(${-angle}rad)`;
+        const angleDeg = tN * 360;
+        if (wheel) wheel.style.transform = `rotate(${angleDeg}deg)`;
+        if (label) {
+          // Show a zoom-like value for familiar look (no real zoom applied)
+          const val = (1 + tN * 4).toFixed(1) + 'x';
+          label.textContent = val;
+        }
       }
 
       function panToT(t, animate = true) {
@@ -364,11 +371,11 @@ window.addEventListener('DOMContentLoaded', function () {
         const tN = normalize01(tAcc);
         const target = pointAt(tN);
         map.panTo(target, { animate: !!animate, duration: 0.25, easeLinearity: 0.25 });
-        setThumbFromT(tAcc);
+        setDialFromT(tAcc);
       }
 
       // Set initial position
-      setThumbFromT(tAcc);
+      setDialFromT(tAcc);
       panToT(tAcc, false);
 
       function getClientXY(e) {
@@ -426,6 +433,8 @@ window.addEventListener('DOMContentLoaded', function () {
         window.addEventListener('mouseup', onEnd, { passive: false });
         window.addEventListener('touchend', onEnd, { passive: false });
       };
+      let lastTimeMs = 0;
+      let velTurnsPerMs = 0; // for inertia
       const onMove = (e) => {
         if (!isDraggingThumb) return;
         e.preventDefault && e.preventDefault();
@@ -433,8 +442,30 @@ window.addEventListener('DOMContentLoaded', function () {
         const a = angleAtEvent(e);
         const d = unwrapDelta(a, lastAngle);
         lastAngle = a;
-        accumTurns += d / (Math.PI * 2);
+        const now = performance.now();
+        const dt = lastTimeMs ? Math.max(1, now - lastTimeMs) : 16;
+        lastTimeMs = now;
+        const dTurns = d / (Math.PI * 2);
+        accumTurns += dTurns;
+        velTurnsPerMs = dTurns / dt;
         panToT(startT + accumTurns, false);
+      };
+      let inertiaRaf = 0;
+      const runInertia = () => {
+        const decay = 0.92;
+        const stopThreshold = 0.00002; // turns/ms
+        let prev = performance.now();
+        const step = () => {
+          const now = performance.now();
+          const dt = Math.max(1, now - prev);
+          prev = now;
+          if (Math.abs(velTurnsPerMs) < stopThreshold) { inertiaRaf = 0; return; }
+          tAcc += velTurnsPerMs * dt;
+          panToT(tAcc, false);
+          velTurnsPerMs *= decay;
+          inertiaRaf = requestAnimationFrame(step);
+        };
+        inertiaRaf = requestAnimationFrame(step);
       };
       const onEnd = (e) => {
         if (!isDraggingThumb) return;
@@ -442,8 +473,12 @@ window.addEventListener('DOMContentLoaded', function () {
         e.stopPropagation && e.stopPropagation();
         isDraggingThumb = false;
         thumb.classList.remove('dragging');
-        // snap final animate for a subtle finish
-        panToT(tPos, true);
+        // inertia if moving fast
+        if (Math.abs(velTurnsPerMs) > 0.00005) {
+          runInertia();
+        } else {
+          panToT(tAcc, true);
+        }
         window.removeEventListener('mousemove', onMove, { passive: false });
         window.removeEventListener('touchmove', onMove, { passive: false });
         window.removeEventListener('mouseup', onEnd, { passive: false });
@@ -453,8 +488,20 @@ window.addEventListener('DOMContentLoaded', function () {
       // Click/press track jumps
       track.addEventListener('mousedown', onStart, { passive: false });
       track.addEventListener('touchstart', onStart, { passive: false });
+      wheel && wheel.addEventListener('mousedown', onStart, { passive: false });
+      wheel && wheel.addEventListener('touchstart', onStart, { passive: false });
       thumb.addEventListener('mousedown', onStart, { passive: false });
       thumb.addEventListener('touchstart', onStart, { passive: false });
+
+      // Wheel scroll support (like zoom wheel stepping)
+      const onWheel = (e) => {
+        e.preventDefault();
+        const delta = e.deltaY || 0;
+        // typical wheel steps ~100; map to small turn increments
+        const stepTurns = -delta / 2400; // negative to make down = clockwise
+        panToT(tAcc + stepTurns, false);
+      };
+      vsp.addEventListener('wheel', onWheel, { passive: false });
 
       // Cleanup: re-enable dragging and remove listeners
       cleanupFns.push(() => {
@@ -463,6 +510,8 @@ window.addEventListener('DOMContentLoaded', function () {
         try {
           track.removeEventListener('mousedown', onStart, { passive: false });
           track.removeEventListener('touchstart', onStart, { passive: false });
+          wheel && wheel.removeEventListener('mousedown', onStart, { passive: false });
+          wheel && wheel.removeEventListener('touchstart', onStart, { passive: false });
           thumb.removeEventListener('mousedown', onStart, { passive: false });
           thumb.removeEventListener('touchstart', onStart, { passive: false });
         } catch (e) {}
@@ -472,6 +521,8 @@ window.addEventListener('DOMContentLoaded', function () {
           window.removeEventListener('mouseup', onEnd, { passive: false });
           window.removeEventListener('touchend', onEnd, { passive: false });
         } catch (e) {}
+        try { vsp.removeEventListener('wheel', onWheel, { passive: false }); } catch (e) {}
+        try { inertiaRaf && cancelAnimationFrame(inertiaRaf); } catch (e) {}
       });
     }
   }
