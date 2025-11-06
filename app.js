@@ -342,17 +342,21 @@ window.addEventListener('DOMContentLoaded', function () {
       try { bodyEl && bodyEl.classList.add('editing-active'); } catch (e) {}
       let tAcc = nearestOnRing(map.getCenter()); // unbounded t for infinite wrap
       let isDraggingThumb = false;
-      let startClientY = 0;
+      let startAngle = 0; // radians
+      let lastAngle = 0;  // radians
+      let accumTurns = 0; // accumulated rotations in turns
       let startT = tAcc;
 
       function normalize01(t) { return (t % 1 + 1) % 1; }
 
       function setThumbFromT(t) {
-        const trackH = track.clientHeight;
-        const thumbH = thumb.clientHeight;
+        const size = Math.min(track.clientWidth || 0, track.clientHeight || 0);
+        if (!size) return;
         const tN = normalize01(t);
-        const y = Math.round(tN * (trackH - thumbH));
-        thumb.style.top = y + 'px';
+        const angle = tN * Math.PI * 2; // radians
+        const radius = Math.max(0, (size / 2) - 8);
+        // Position the pointer on the circumference using rotate/translate
+        thumb.style.transform = `translate(-50%, -50%) rotate(${angle}rad) translate(${radius}px) rotate(${-angle}rad)`;
       }
 
       function panToT(t, animate = true) {
@@ -367,17 +371,40 @@ window.addEventListener('DOMContentLoaded', function () {
       setThumbFromT(tAcc);
       panToT(tAcc, false);
 
-      function getClientY(e) {
-        return (e.touches && e.touches[0] ? e.touches[0].clientY : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientY : e.clientY));
+      function getClientXY(e) {
+        const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
+        return { x: t.clientX, y: t.clientY };
       }
 
-      function absoluteTFromEvent(e) {
+      function angleAtEvent(e) {
         const rect = track.getBoundingClientRect();
-        const clientY = getClientY(e);
-        const y = Math.max(0, Math.min(rect.height, clientY - rect.top));
-        const thumbH = thumb.clientHeight;
-        const pos = Math.max(0, Math.min(rect.height - thumbH, y - thumbH / 2)) / (rect.height - thumbH);
-        return isFinite(pos) ? Math.max(0, Math.min(1, pos)) : 0;
+        // center of the circular dial
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.width / 2; // track is square
+        const { x, y } = getClientXY(e);
+        const dx = x - cx;
+        const dy = y - cy;
+        const a = Math.atan2(dy, dx); // [-pi, pi], 0 at +X, CCW positive
+        // Convert to 0 at top (negative Y) and clockwise positive
+        let cwFromTop = (-a + Math.PI / 2);
+        // normalize to [-pi, 3pi) for stability; we'll unwrap later
+        while (cwFromTop < -Math.PI) cwFromTop += Math.PI * 2;
+        while (cwFromTop >= Math.PI * 3) cwFromTop -= Math.PI * 2;
+        return cwFromTop;
+      }
+
+      function unwrapDelta(curr, prev) {
+        let d = curr - prev;
+        if (d > Math.PI) d -= Math.PI * 2;
+        if (d < -Math.PI) d += Math.PI * 2;
+        return d;
+      }
+
+      function angleToT(a) {
+        // a is clockwise from top in radians
+        const twoPi = Math.PI * 2;
+        let n = a % twoPi; if (n < 0) n += twoPi;
+        return n / twoPi;
       }
 
       const onStart = (e) => {
@@ -386,11 +413,13 @@ window.addEventListener('DOMContentLoaded', function () {
         isDraggingThumb = true;
         thumb.classList.add('dragging');
         // If start from track (not thumb), jump to that absolute spot first
+        const a0 = angleAtEvent(e);
         if (e.target === track) {
-          const absT = absoluteTFromEvent(e);
-          panToT(absT, true);
+          panToT(angleToT(a0), true);
         }
-        startClientY = getClientY(e);
+        startAngle = a0;
+        lastAngle = a0;
+        accumTurns = 0;
         startT = tAcc;
         window.addEventListener('mousemove', onMove, { passive: false });
         window.addEventListener('touchmove', onMove, { passive: false });
@@ -401,12 +430,11 @@ window.addEventListener('DOMContentLoaded', function () {
         if (!isDraggingThumb) return;
         e.preventDefault && e.preventDefault();
         e.stopPropagation && e.stopPropagation();
-        const rect = track.getBoundingClientRect();
-        const thumbH = thumb.clientHeight;
-        const usable = Math.max(1, rect.height - thumbH);
-        const dy = getClientY(e) - startClientY;
-        const deltaT = dy / usable; // dragging down increases t
-        panToT(startT + deltaT, false);
+        const a = angleAtEvent(e);
+        const d = unwrapDelta(a, lastAngle);
+        lastAngle = a;
+        accumTurns += d / (Math.PI * 2);
+        panToT(startT + accumTurns, false);
       };
       const onEnd = (e) => {
         if (!isDraggingThumb) return;
