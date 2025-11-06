@@ -505,28 +505,37 @@ body {
   align-items: center;
   justify-content: center;
   pointer-events: auto; /* interactive: used to control border rail */
+  transform: translateY(-100%); /* lift by its own height */
 }
 
 .mobile-ui.editing-active .vertical-scroll-pad { display: flex; }
 
 .vertical-scroll-pad .vsp-track {
   position: relative;
-  width: 12px;
-  height: 100%;
-  background: var(--gray-100);
-  border-radius: 8px;
+  width: 44px; /* circular dial */
+  height: 44px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, #ffffff 58%, transparent 60%),
+    repeating-conic-gradient(
+      from 0deg,
+      #d0d0d0 0deg 2deg,
+      transparent 2deg 28deg
+    ); /* degree-like ticks every ~30deg */
+  border: 2px solid var(--gray-300);
+  margin: auto;
 }
 
 .vertical-scroll-pad .vsp-thumb {
   position: absolute;
   left: 50%;
-  transform: translateX(-50%);
-  width: 24px;
-  height: 24px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--primary-color);
   box-shadow: var(--shadow-md);
-  top: calc(50% - 12px);
+  transform: translate(-50%, -50%);
   touch-action: none;
   cursor: grab;
 }
