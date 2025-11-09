@@ -156,6 +156,8 @@ window.addEventListener('DOMContentLoaded', function () {
     // Reuse drawing HUD for a consistent look
     const beginEditing = () => {
       try { document.body.classList.add('editing-active'); } catch (e) {}
+      // Mark editing state to selectively disable other UI while allowing Layer/Center
+      window.__editing = true;
     };
     const endEditing = () => {
       try { document.body.classList.remove('editing-active'); } catch (e) {}
@@ -371,7 +373,7 @@ window.addEventListener('DOMContentLoaded', function () {
       item.addEventListener('click', function(e) {
         e.stopPropagation();
         // Block option logic while drawing is active, except for layer panel actions
-        if ((typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') || (window.__editing)) {
+        if ((buttonId !== 'btn-layer') && (((typeof drawing !== 'undefined') && drawing) || (window.__editing))) {
           return;
         }
         // Close any open name popups
@@ -392,7 +394,7 @@ window.addEventListener('DOMContentLoaded', function () {
     button.onclick = function(e) {
       e.stopPropagation();
       // Block opening option panels while drawing, except allow the layer panel
-      if ((typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') || (window.__editing)) {
+      if ((buttonId !== 'btn-layer') && (((typeof drawing !== 'undefined') && drawing) || (window.__editing))) {
         return;
       }
       // Close any open name popups when interacting with toolbar
