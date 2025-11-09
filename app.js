@@ -271,101 +271,20 @@ window.addEventListener('DOMContentLoaded', function () {
                 });
                 polygon._refuge = { id: r.id, name: r.name, polygon: r.polygon };
                 const popupId = `ref-edit-${r.id}`;
-                const renameId = `ref-rename-${r.id}`;
-                const nameId = `ref-name-${r.id}`;
                 const popupHtml = `
                   <div class="refuge-popup">
-                    <div class="refuge-name-row">
-                      <span id="${nameId}" class="refuge-name">${escapeHtml(r.name || 'Refuge')}</span>
-                      <button id="${renameId}" class="refuge-rename-btn" type="button" title="Rename">Rename</button>
-                    </div>
+                    <div class="refuge-name">${escapeHtml(r.name || 'Refuge')}</div>
                     <button id="${popupId}" class="refuge-edit-link" type="button">Edit</button>
                   </div>
                 `;
                 polygon.addTo(refugeLayerGroup).bindPopup(popupHtml);
                 polygon.on('popupopen', () => {
-                  const editBtn = document.getElementById(popupId);
-                  const renameBtn = document.getElementById(renameId);
-                  const nameEl = document.getElementById(nameId);
-                  
-                  if (editBtn) {
-                    editBtn.onclick = (ev) => {
+                  const btn = document.getElementById(popupId);
+                  if (btn) {
+                    btn.onclick = (ev) => {
                       ev && ev.stopPropagation && ev.stopPropagation();
                       try { polygon.closePopup(); } catch (e) {}
                       openRefugeEditor(polygon._refuge);
-                    };
-                  }
-                  
-                  if (renameBtn && nameEl) {
-                    let isEditing = false;
-                    let originalName = r.name || 'Refuge';
-                    
-                    renameBtn.onclick = async (ev) => {
-                      ev && ev.stopPropagation && ev.stopPropagation();
-                      
-                      if (!isEditing) {
-                        // Switch to edit mode
-                        isEditing = true;
-                        const input = document.createElement('input');
-                        input.type = 'text';
-                        input.className = 'refuge-name-input';
-                        input.value = originalName;
-                        nameEl.parentNode.replaceChild(input, nameEl);
-                        input.focus();
-                        input.select();
-                        renameBtn.textContent = 'Save';
-                        renameBtn.title = 'Save name';
-                        
-                        // Allow Enter key to save
-                        input.onkeydown = (e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            renameBtn.click();
-                          } else if (e.key === 'Escape') {
-                            e.preventDefault();
-                            // Restore original name and cancel
-                            input.parentNode.replaceChild(nameEl, input);
-                            isEditing = false;
-                            renameBtn.textContent = 'Rename';
-                            renameBtn.title = 'Rename';
-                          }
-                        };
-                      } else {
-                        // Save mode
-                        const input = nameEl.parentNode.querySelector('.refuge-name-input');
-                        if (!input) return;
-                        
-                        const newName = input.value.trim();
-                        if (!newName) {
-                          alert('Name cannot be empty');
-                          return;
-                        }
-                        
-                        try {
-                          renameBtn.disabled = true;
-                          renameBtn.textContent = 'Saving...';
-                          await updateRefugeName(r.id, newName);
-                          
-                          // Update the stored name and UI
-                          originalName = newName;
-                          r.name = newName;
-                          polygon._refuge.name = newName;
-                          nameEl.textContent = newName;
-                          
-                          // Restore view mode
-                          input.parentNode.replaceChild(nameEl, input);
-                          isEditing = false;
-                          renameBtn.textContent = 'Rename';
-                          renameBtn.title = 'Rename';
-                          renameBtn.disabled = false;
-                          
-                          // Don't close popup - keep it open
-                        } catch (e) {
-                          alert('Failed to save name: ' + (e.message || 'Unknown error'));
-                          renameBtn.textContent = 'Save';
-                          renameBtn.disabled = false;
-                        }
-                      }
                     };
                   }
                 });
