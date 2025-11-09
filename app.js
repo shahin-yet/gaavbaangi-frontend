@@ -250,12 +250,10 @@ window.addEventListener('DOMContentLoaded', function () {
       try {
         const titleEl2 = hud.querySelector('.hud-title span');
         const runName = titleEl2 && titleEl2.textContent ? titleEl2.textContent.trim() : '';
-        const h = document.querySelector('.drawing-hud');
-        h && h.remove();
         try { clearRefugeDimming(); } catch (e) {}
-        endEditing();
+        try { endEditing(); } catch (e) {}
         if (typeof window.startCopyRefugeDrawing === 'function') {
-          window.startCopyRefugeDrawing(runName);
+          window.startCopyRefugeDrawing(runName, (refuge && refuge.id) ? refuge.id : null);
         }
       } catch (e) {}
     }, 0);
@@ -1499,7 +1497,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
   // expose for other modules if needed
   window.startRefugeDrawing = startRefugeDrawing;
-  window.startCopyRefugeDrawing = function startCopyRefugeDrawing(nameFromTitle) {
+  window.startCopyRefugeDrawing = function startCopyRefugeDrawing(nameFromTitle, refugeIdForDelete) {
     __drawingTitle = (typeof nameFromTitle === 'string' && nameFromTitle.trim()) ? nameFromTitle.trim() : 'Copy refuge';
     __drawingSaveOptions = {
       requireIntersect: true,
@@ -1519,6 +1517,38 @@ window.addEventListener('DOMContentLoaded', function () {
       }
     };
     startRefugeDrawing();
+    try {
+      const hud = document.querySelector('.drawing-hud');
+      const statusEl = hud ? hud.querySelector('.hud-status') : null;
+      const actions = hud ? hud.querySelector('.hud-actions') : null;
+      if (hud && actions && refugeIdForDelete && !hud.querySelector('.hud-delete')) {
+        const del = document.createElement('button');
+        del.className = 'hud-delete';
+        del.type = 'button';
+        del.textContent = 'Delete';
+        actions.appendChild(del);
+        del.addEventListener('click', async () => {
+          try { del.disabled = true; } catch (e) {}
+          try { if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Deleting…'; statusEl.className = 'hud-status status-info'; } } catch (e) {}
+          try {
+            const deleted = await deleteRefugeById(refugeIdForDelete);
+            await loadAndRenderRefuges();
+            if (typeof showUndoToast === 'function') {
+              showUndoToast('Refuge deleted', async () => {
+                if (deleted) {
+                  try { await recreateRefuge(deleted); } catch (e) {}
+                }
+              }, 12000);
+            }
+          } catch (e) {
+            try {
+              if (statusEl) { statusEl.style.display = ''; statusEl.textContent = (e && e.message) || 'Delete failed'; statusEl.className = 'hud-status status-error'; }
+              del.disabled = false;
+            } catch (err) {}
+          }
+        });
+      }
+    } catch (e) {}
   };
 
 });
