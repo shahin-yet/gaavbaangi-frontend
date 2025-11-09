@@ -222,9 +222,9 @@ window.addEventListener('DOMContentLoaded', function () {
     if (!hud) return;
     const titleEl = hud.querySelector('.hud-title span');
     if (titleEl) titleEl.textContent = 'Edit bar';
-    // Remove the drawing announcement in edit mode (hide status area by default)
+    // Keep the drawing helper/status area visible in edit mode
     const statusEl = hud.querySelector('.hud-status');
-    if (statusEl) { statusEl.innerHTML = ''; statusEl.style.display = 'none'; }
+    if (statusEl) { statusEl.innerHTML = 'Draw overlays to modify refuge'; statusEl.style.display = ''; }
     // Remove name input and Save button entirely in edit mode; keep actions area visible
     const controls = hud.querySelector('.hud-controls');
     const inputEl = hud.querySelector('.hud-name');
@@ -315,8 +315,31 @@ window.addEventListener('DOMContentLoaded', function () {
       startOverlayLoop();
     }
     if (actions && !hud.querySelector('.hud-delete')) {
-      // Clear existing content and create left/right containers
+      // Clear existing content and create structure
       actions.innerHTML = '';
+      
+      // Create operation buttons row (Adjoin and Subtract)
+      const operationRow = document.createElement('div');
+      operationRow.className = 'hud-operations';
+      
+      const adjoinBtn = document.createElement('button');
+      adjoinBtn.className = 'hud-operation-btn hud-adjoin';
+      adjoinBtn.type = 'button';
+      adjoinBtn.textContent = 'Adjoin';
+      operationRow.appendChild(adjoinBtn);
+      
+      const subtractBtn = document.createElement('button');
+      subtractBtn.className = 'hud-operation-btn hud-subtract';
+      subtractBtn.type = 'button';
+      subtractBtn.textContent = 'Subtract';
+      operationRow.appendChild(subtractBtn);
+      
+      actions.appendChild(operationRow);
+      
+      // Create main action row (Delete, Undo, Save)
+      const mainActionsRow = document.createElement('div');
+      mainActionsRow.className = 'hud-actions-row';
+      
       const leftContainer = document.createElement('div');
       leftContainer.className = 'hud-actions-left';
       const rightContainer = document.createElement('div');
@@ -343,9 +366,11 @@ window.addEventListener('DOMContentLoaded', function () {
       saveBtn.textContent = 'Save';
       rightContainer.appendChild(saveBtn);
       
-      // Append containers to actions
-      actions.appendChild(leftContainer);
-      actions.appendChild(rightContainer);
+      // Append containers to main actions row
+      mainActionsRow.appendChild(leftContainer);
+      mainActionsRow.appendChild(rightContainer);
+      
+      actions.appendChild(mainActionsRow);
       
       // Add delete functionality
       del.addEventListener('click', async () => {
