@@ -436,7 +436,20 @@ window.addEventListener('DOMContentLoaded', function () {
                   </div>
                 `;
                 polygon.addTo(refugeLayerGroup).bindPopup(popupHtml);
+                // Block popups from opening while in edit mode
+                polygon.on('click', (e) => {
+                  if (window.__editing) {
+                    L.DomEvent.stopPropagation(e);
+                    e.target.closePopup();
+                    return false;
+                  }
+                });
                 polygon.on('popupopen', () => {
+                  // Close popup immediately if editing mode is active
+                  if (window.__editing) {
+                    polygon.closePopup();
+                    return;
+                  }
                   const editBtn = document.getElementById(popupId);
                   const renameBtn = document.getElementById(renameId);
                   const nameEl = document.getElementById(nameId);
