@@ -570,7 +570,7 @@ body {
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
-  text-align: left;
+  text-align: center;
 }
 .refuge-popup .refuge-edit-link:hover { background: #e8f2ff; }
 
@@ -592,7 +592,7 @@ body {
 .leaflet-popup-content:has(.refuge-popup) {
   display: inline-block;
   width: auto !important;
-  margin: 8px 10px; /* keep default-ish padding */
+  margin: 3px 3px; /* reduced to ~one-third */
 }
 .leaflet-popup-content-wrapper:has(.refuge-popup) {
   width: auto;
