@@ -64,17 +64,6 @@ window.addEventListener('DOMContentLoaded', function () {
     zoom: 5,
     zoomControl: true
   });
-  // Layer to hold unsaved edit-draft polygons
-  const draftLayerGroup = L.layerGroup().addTo(map);
-  // Persistent in-page cache for draft polygons (not sent to backend)
-  window.__editDraftsCache = window.__editDraftsCache || [];
-  // Suppress any map popups while Edit bar or drawing HUD is active
-  map.on('popupopen', function () {
-    try {
-      const suppress = (window.__editing === true) || document.body.classList.contains('drawing-active');
-      if (suppress) map.closePopup();
-    } catch (e) {}
-  });
 
   // Terrain layer (OpenTopoMap)
   const terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
@@ -96,54 +85,6 @@ window.addEventListener('DOMContentLoaded', function () {
   // -----------------------------
   const refugeLayerGroup = L.layerGroup().addTo(map);
   let lastDeletedRefuge = null; // for Undo restore
-  // Editing dimming helpers
-  function setRefugeDimming(activeRefugeId) {
-    try {
-      refugeLayerGroup.eachLayer(function (layer) {
-        try {
-          if (!layer || typeof layer.setStyle !== 'function') return;
-          const r = layer._refuge;
-          if (!r || typeof r.id !== 'number') return;
-          if (!layer._savedStyle) {
-            const opts = layer.options || {};
-            layer._savedStyle = {
-              color: opts.color,
-              weight: opts.weight,
-              fillColor: opts.fillColor,
-              fillOpacity: opts.fillOpacity,
-              opacity: opts.opacity
-            };
-          }
-          if (r.id !== activeRefugeId) {
-            layer.setStyle({ opacity: 0.15, fillOpacity: 0.04 });
-          } else {
-            // Slightly emphasize the active one if desired
-            layer.setStyle({ opacity: 0.9, weight: 3 });
-          }
-        } catch (e) {}
-      });
-    } catch (e) {}
-  }
-  function clearRefugeDimming() {
-    try {
-      refugeLayerGroup.eachLayer(function (layer) {
-        try {
-          if (!layer || typeof layer.setStyle !== 'function') return;
-          const saved = layer._savedStyle;
-          if (saved) {
-            layer.setStyle({
-              color: saved.color,
-              weight: saved.weight,
-              fillColor: saved.fillColor,
-              fillOpacity: saved.fillOpacity,
-              opacity: saved.opacity
-            });
-            layer._savedStyle = null;
-          }
-        } catch (e) {}
-      });
-    } catch (e) {}
-  }
 
   function escapeHtml(str) {
     try {
@@ -215,14 +156,33 @@ window.addEventListener('DOMContentLoaded', function () {
     // Reuse drawing HUD for a consistent look
     const beginEditing = () => {
       try { document.body.classList.add('editing-active'); } catch (e) {}
-      // Mark editing state to selectively disable other UI while allowing Layer/Center
       window.__editing = true;
-      window.__editBarOpen = true;
+      // Add a transparent blocker to capture all pointer events beneath the HUD
+      try {
+        const blocker = document.createElement('div');
+        blocker.className = 'ui-edit-blocker';
+        blocker.style.position = 'fixed';
+        blocker.style.left = '0';
+        blocker.style.top = '0';
+        blocker.style.right = '0';
+        blocker.style.bottom = '0';
+        blocker.style.background = 'transparent';
+        blocker.style.zIndex = '1150'; // between toolbar/leaflet popups and HUD (1200)
+        blocker.style.pointerEvents = 'auto';
+        // Prevent context menu or accidental interactions
+        blocker.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
+        blocker.addEventListener('mousedown', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
+        blocker.addEventListener('mouseup', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
+        blocker.addEventListener('touchstart', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true, passive: false });
+        blocker.addEventListener('touchend', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true, passive: false });
+        blocker.addEventListener('wheel', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
+        document.body.appendChild(blocker);
+        window.__editBlocker = blocker;
+      } catch (e) {}
     };
     const endEditing = () => {
       try { document.body.classList.remove('editing-active'); } catch (e) {}
       window.__editing = false;
-      window.__editBarOpen = false;
       try {
         if (window.__editBlocker && window.__editBlocker.parentNode) {
           window.__editBlocker.parentNode.removeChild(window.__editBlocker);
@@ -235,12 +195,9 @@ window.addEventListener('DOMContentLoaded', function () {
     try { typeof closeSidePanel === 'function' && closeSidePanel(); } catch (e) {}
     try { map && map.closePopup && map.closePopup(); } catch (e) {}
     beginEditing();
-    // Dim all other refuges while this one is being edited
-    try { setRefugeDimming(refuge.id); } catch (e) {}
     const hudApi = createDrawingHud(() => {
       const hud = document.querySelector('.drawing-hud');
       hud && hud.remove();
-      try { clearRefugeDimming(); } catch (e) {}
       endEditing();
     });
     const hud = document.querySelector('.drawing-hud');
@@ -258,18 +215,6 @@ window.addEventListener('DOMContentLoaded', function () {
     if (okBtn) { try { okBtn.remove(); } catch (e) {} }
     if (controls) { controls.style.display = ''; }
     const actions = hud.querySelector('.hud-actions');
-    // Auto-run copy flow immediately upon opening Edit bar, no extra buttons
-    setTimeout(() => {
-      try {
-        const titleEl2 = hud.querySelector('.hud-title span');
-        const runName = titleEl2 && titleEl2.textContent ? titleEl2.textContent.trim() : '';
-        try { clearRefugeDimming(); } catch (e) {}
-        try { endEditing(); } catch (e) {}
-        if (typeof window.startCopyRefugeDrawing === 'function') {
-          window.startCopyRefugeDrawing(runName, (refuge && refuge.id) ? refuge.id : null);
-        }
-      } catch (e) {}
-    }, 0);
     if (actions && !hud.querySelector('.hud-delete')) {
       const del = document.createElement('button');
       del.className = 'hud-delete';
@@ -287,9 +232,9 @@ window.addEventListener('DOMContentLoaded', function () {
           await loadAndRenderRefuges();
           const h = document.querySelector('.drawing-hud');
           h && h.remove();
-          try { clearRefugeDimming(); } catch (e) {}
           endEditing();
-          showUndoToast('Refuge deleted', async () => {
+          const deletedName = (deleted && typeof deleted.name === 'string' && deleted.name.trim()) ? deleted.name : 'Refuge';
+          showUndoToast(`${deletedName} deleted`, async () => {
             if (lastDeletedRefuge) {
               try { await recreateRefuge(lastDeletedRefuge); } finally { lastDeletedRefuge = null; }
               await loadAndRenderRefuges();
@@ -328,24 +273,22 @@ window.addEventListener('DOMContentLoaded', function () {
                 polygon._refuge = { id: r.id, name: r.name, polygon: r.polygon };
                 const popupId = `ref-edit-${r.id}`;
                 const renameId = `ref-rename-${r.id}`;
-                const nameInputId = `ref-name-input-${r.id}`;
+                const nameId = `ref-name-${r.id}`;
                 const popupHtml = `
                   <div class="refuge-popup">
                     <div class="refuge-name-row">
-                      <div class="refuge-name">${escapeHtml(r.name || 'Refuge')}</div>
-                      <button id="${renameId}" class="refuge-rename-btn" type="button">rename</button>
+                      <span id="${nameId}" class="refuge-name">${escapeHtml(r.name || 'Refuge')}</span>
+                      <button id="${renameId}" class="refuge-rename-btn" type="button" title="Rename">Rename</button>
                     </div>
                     <button id="${popupId}" class="refuge-edit-link" type="button">Edit</button>
                   </div>
                 `;
                 polygon.addTo(refugeLayerGroup).bindPopup(popupHtml);
                 polygon.on('popupopen', () => {
-                  // Block name popup UI while edit bar/drawing is active
-                  if ((window.__editing === true) || document.body.classList.contains('drawing-active')) {
-                    try { polygon.closePopup(); } catch (e) {}
-                    return;
-                  }
                   const editBtn = document.getElementById(popupId);
+                  const renameBtn = document.getElementById(renameId);
+                  const nameEl = document.getElementById(nameId);
+                  
                   if (editBtn) {
                     editBtn.onclick = (ev) => {
                       ev && ev.stopPropagation && ev.stopPropagation();
@@ -353,73 +296,81 @@ window.addEventListener('DOMContentLoaded', function () {
                       openRefugeEditor(polygon._refuge);
                     };
                   }
-                  const renameBtn = document.getElementById(renameId);
-                  const popupRoot = renameBtn ? renameBtn.closest('.refuge-popup') : null;
-                  const nameEl = popupRoot ? popupRoot.querySelector('.refuge-name') : null;
-                  let renaming = false;
-                  const enterHandler = async (e) => {
-                    if (e && (e.key === 'Enter' || e.keyCode === 13)) {
-                      e.preventDefault();
-                      await doSave();
-                    } else if (e && (e.key === 'Escape' || e.keyCode === 27)) {
-                      // cancel rename: restore label
-                      exitRename(false);
-                    }
-                  };
-                  const exitRename = (updated, newName) => {
-                    if (!popupRoot) return;
-                    const input = popupRoot.querySelector(`#${nameInputId}`);
-                    if (input && input.removeEventListener) input.removeEventListener('keydown', enterHandler);
-                    if (nameEl) {
-                      if (updated && typeof newName === 'string') {
-                        nameEl.textContent = newName;
-                      }
-                      nameEl.style.display = '';
-                    }
-                    const existingInput = popupRoot.querySelector(`#${nameInputId}`);
-                    if (existingInput && existingInput.parentNode) {
-                      existingInput.parentNode.removeChild(existingInput);
-                    }
-                    if (renameBtn) {
-                      renameBtn.disabled = false;
-                      renameBtn.textContent = 'rename';
-                    }
-                    renaming = false;
-                  };
-                  const doSave = async () => {
-                    if (!popupRoot) return;
-                    const input = popupRoot.querySelector(`#${nameInputId}`);
-                    const val = input && typeof input.value === 'string' ? input.value.trim() : '';
-                    if (!val) { exitRename(false); return; }
-                    try {
-                      if (renameBtn) renameBtn.disabled = true;
-                      const updated = await updateRefugeName(polygon._refuge.id, val);
-                      polygon._refuge.name = updated && updated.name ? updated.name : val;
-                      exitRename(true, polygon._refuge.name);
-                    } catch (err) {
-                      alert((err && err.message) || 'Failed to rename');
-                      if (renameBtn) renameBtn.disabled = false;
-                    }
-                  };
+                  
                   if (renameBtn && nameEl) {
-                    renameBtn.onclick = async (e) => {
-                      e && e.stopPropagation && e.stopPropagation();
-                      if (!renaming) {
-                        // enter rename mode
-                        renaming = true;
-                        // hide label, insert input
-                        nameEl.style.display = 'none';
+                    let isEditing = false;
+                    let originalName = r.name || 'Refuge';
+                    
+                    renameBtn.onclick = async (ev) => {
+                      ev && ev.stopPropagation && ev.stopPropagation();
+                      
+                      if (!isEditing) {
+                        // Switch to edit mode
+                        isEditing = true;
                         const input = document.createElement('input');
                         input.type = 'text';
-                        input.id = nameInputId;
                         input.className = 'refuge-name-input';
-                        input.value = nameEl.textContent || '';
-                        nameEl.parentNode && nameEl.parentNode.insertBefore(input, renameBtn);
-                        try { input.focus(); input.select && input.select(); } catch (e) {}
-                        input.addEventListener('keydown', enterHandler);
+                        input.value = originalName;
+                        // Size input to content length and keep it updated
+                        try { input.size = Math.max(1, (originalName || '').length + 1); } catch (e) {}
+                        nameEl.parentNode.replaceChild(input, nameEl);
+                        input.focus();
+                        input.select();
                         renameBtn.textContent = 'Save';
+                        renameBtn.title = 'Save name';
+                        input.addEventListener('input', () => {
+                          try { input.size = Math.max(1, (input.value || '').length + 1); } catch (e) {}
+                        });
+                        
+                        // Allow Enter key to save
+                        input.onkeydown = (e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            renameBtn.click();
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            // Restore original name and cancel
+                            input.parentNode.replaceChild(nameEl, input);
+                            isEditing = false;
+                            renameBtn.textContent = 'Rename';
+                            renameBtn.title = 'Rename';
+                          }
+                        };
                       } else {
-                        await doSave();
+                        // Save mode
+                        const input = (renameBtn.closest('.refuge-popup') || document).querySelector('.refuge-name-input');
+                        if (!input) return;
+                        
+                        const newName = input.value.trim();
+                        if (!newName) {
+                          alert('Name cannot be empty');
+                          return;
+                        }
+                        
+                        try {
+                          renameBtn.disabled = true;
+                          renameBtn.textContent = 'Saving...';
+                          await updateRefugeName(r.id, newName);
+                          
+                          // Update the stored name and UI
+                          originalName = newName;
+                          r.name = newName;
+                          polygon._refuge.name = newName;
+                          nameEl.textContent = newName;
+                          
+                          // Restore view mode
+                          input.parentNode.replaceChild(nameEl, input);
+                          isEditing = false;
+                          renameBtn.textContent = 'Rename';
+                          renameBtn.title = 'Rename';
+                          renameBtn.disabled = false;
+                          
+                          // Don't close popup - keep it open
+                        } catch (e) {
+                          alert('Failed to save name: ' + (e.message || 'Unknown error'));
+                          renameBtn.textContent = 'Save';
+                          renameBtn.disabled = false;
+                        }
                       }
                     };
                   }
@@ -530,7 +481,7 @@ window.addEventListener('DOMContentLoaded', function () {
       item.addEventListener('click', function(e) {
         e.stopPropagation();
         // Block option logic while drawing is active, except for layer panel actions
-        if ((buttonId !== 'btn-layer') && (((typeof drawing !== 'undefined') && drawing) || (window.__editing))) {
+        if ((typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') || (window.__editing)) {
           return;
         }
         // Close any open name popups
@@ -551,7 +502,7 @@ window.addEventListener('DOMContentLoaded', function () {
     button.onclick = function(e) {
       e.stopPropagation();
       // Block opening option panels while drawing, except allow the layer panel
-      if ((buttonId !== 'btn-layer') && (((typeof drawing !== 'undefined') && drawing) || (window.__editing))) {
+      if ((typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') || (window.__editing)) {
         return;
       }
       // Close any open name popups when interacting with toolbar
@@ -706,11 +657,8 @@ window.addEventListener('DOMContentLoaded', function () {
   // Refuge drawing logic
   // -----------------------------
   let drawing = null; // state holder when active
-  // Optional per-session drawing configuration
-  let __drawingSaveOptions = null; // e.g., { requireIntersect: true, intersectWith: <GeoJSON>, intersectLabel: 'Maine polygon' }
-  let __drawingTitle = null; // override HUD title when set
 
-  function createDrawingHud(onCancel, titleText) {
+  function createDrawingHud(onCancel) {
     let hud = document.querySelector('.drawing-hud');
     if (hud) hud.remove();
     hud = document.createElement('div');
@@ -732,13 +680,6 @@ window.addEventListener('DOMContentLoaded', function () {
       </div>
     `;
     document.body.appendChild(hud);
-    // Override title if provided
-    try {
-      const titleEl = hud.querySelector('.hud-title span');
-      if (titleEl && typeof titleText === 'string' && titleText.trim()) {
-        titleEl.textContent = titleText.trim();
-      }
-    } catch (e) {}
     hud.querySelector('.hud-cancel').addEventListener('click', () => { onCancel && onCancel(); });
     const statusEl = hud.querySelector('.hud-status');
     const controlsEl = hud.querySelector('.hud-controls');
@@ -806,9 +747,6 @@ window.addEventListener('DOMContentLoaded', function () {
     if (dot) dot.classList.remove('near-first');
     // Re-enable bottom UI interactions
     try { document.body.classList.remove('drawing-active'); } catch (e) {}
-    // Reset per-session config
-    __drawingSaveOptions = null;
-    __drawingTitle = null;
     drawing = null;
   }
 
@@ -832,7 +770,7 @@ window.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  async function saveRefugePolygon(latlngs, name, setStatus, options = null) {
+  async function saveRefugePolygon(latlngs, name, setStatus) {
     // Ensure closed ring and convert to GeoJSON lon/lat
     const ring = latlngs.map(ll => [ll.lng, ll.lat]);
     // Block saving with fewer than 3 vertices (no area with two angles)
@@ -848,35 +786,6 @@ window.addEventListener('DOMContentLoaded', function () {
     if (!name || !name.trim()) {
       setStatus && setStatus('Enter a name in the bar to save.', 'info');
       return false;
-    }
-    // Optional overlap validation (e.g., against Maine polygon)
-    if (options && options.requireIntersect) {
-      const aoi = options.intersectWith || null;
-      const label = (options.intersectLabel || 'required area');
-      if (!aoi) {
-        setStatus && setStatus(`${label} is not configured.`, 'error');
-        return false;
-      }
-      try {
-        if (!(window.turf && typeof window.turf.booleanIntersects === 'function')) {
-          setStatus && setStatus('Geometry engine unavailable.', 'error');
-          return false;
-        }
-        const drawn = window.turf.polygon([ring]);
-        const aoiGeom = (aoi.type ? aoi : (aoi.geometry || null));
-        if (!aoiGeom || !aoiGeom.type) {
-          setStatus && setStatus(`${label} is invalid.`, 'error');
-          return false;
-        }
-        const intersects = window.turf.booleanIntersects(drawn, aoiGeom);
-        if (!intersects) {
-          setStatus && setStatus(`Polygon must overlap the ${label}.`, 'error');
-          return false;
-        }
-      } catch (e) {
-        setStatus && setStatus('Failed to validate overlap.', 'error');
-        return false;
-      }
     }
     try {
       setStatus && setStatus('Saving…', 'info');
@@ -906,53 +815,6 @@ window.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  // Save polygon locally (draft mode) instead of backend persistence
-  function saveDraftPolygon(latlngs, setStatus, options = null) {
-    try {
-      const ring = latlngs.map(ll => [ll.lng, ll.lat]);
-      if (ring.length < 3) {
-        setStatus && setStatus('Need at least 3 points', 'error');
-        return false;
-      }
-      if (ring.length >= 3) {
-        const first = ring[0];
-        const last = ring[ring.length - 1];
-        if (first[0] !== last[0] || first[1] !== last[1]) ring.push(first);
-      }
-      // Optional overlap validation if configured and requested
-      if (options && options.requireIntersect) {
-        const aoi = options.intersectWith || null;
-        if (aoi && window.turf && typeof window.turf.booleanIntersects === 'function') {
-          const drawn = window.turf.polygon([ring]);
-          const aoiGeom = (aoi.type ? aoi : (aoi.geometry || null));
-          if (aoiGeom && aoiGeom.type) {
-            const intersects = window.turf.booleanIntersects(drawn, aoiGeom);
-            if (!intersects) {
-              setStatus && setStatus(`Polygon must overlap the ${options.intersectLabel || 'required area'}.`, 'error');
-              return false;
-            }
-          }
-        }
-      }
-      // Add to local cache and render on map
-      const draftGeo = { type: 'Polygon', coordinates: [ring] };
-      window.__editDraftsCache.push({ polygon: draftGeo, createdAt: Date.now() });
-      const latlngsClosed = ring.map(([lng, lat]) => L.latLng(lat, lng));
-      const polygon = L.polygon(latlngsClosed, {
-        color: '#1e90ff',
-        weight: 2,
-        fillColor: '#1e90ff',
-        fillOpacity: 0.15
-      });
-      polygon.addTo(draftLayerGroup);
-      setStatus && setStatus('Saved locally.', 'success');
-      return true;
-    } catch (e) {
-      setStatus && setStatus('Failed to save locally.', 'error');
-      return false;
-    }
-  }
-
   function startRefugeDrawing() {
     if (drawing) teardownDrawing();
     // Disable bottom UI interactions while drawing
@@ -962,7 +824,7 @@ window.addEventListener('DOMContentLoaded', function () {
       try { document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show')); } catch (e) {}
       try { typeof closeSidePanel === 'function' && closeSidePanel(); } catch (e) {}
     } catch (e) {}
-    const hudApi = createDrawingHud(() => teardownDrawing(), (__drawingTitle || undefined));
+    const hudApi = createDrawingHud(() => teardownDrawing());
 
     const state = {
       // Use mobile-vs-desktop to decide interaction model, independent of Telegram
@@ -1008,45 +870,17 @@ window.addEventListener('DOMContentLoaded', function () {
       if (!state.closedPreview) {
         showClosedPreview();
       }
-      let ok = false;
-      const isDraftMode = !!(__drawingSaveOptions && __drawingSaveOptions.draftMode);
-      if (isDraftMode) {
-        ok = !!saveDraftPolygon(state.vertices, state.setStatus, (__drawingSaveOptions || null));
-      } else {
-        let name = state.getName ? state.getName() : '';
-        // For copy mode: auto-generate a name and avoid showing controls
-        if (!name && (__drawingSaveOptions && (__drawingSaveOptions.autoName !== undefined))) {
-          try {
-            name = (typeof __drawingSaveOptions.autoName === 'function')
-              ? __drawingSaveOptions.autoName()
-              : String(__drawingSaveOptions.autoName || '').trim();
-          } catch (e) {
-            name = '';
-          }
-        }
-        if (!name) {
-          state.showNameBar && state.showNameBar();
-          state.setStatus && state.setStatus('Enter a name to save.', 'info');
-          state.focusName && state.focusName();
-          return;
-        }
-        hudApi.hideOk && hudApi.hideOk();
-        ok = await saveRefugePolygon(state.vertices, name, state.setStatus, (__drawingSaveOptions || null));
+      const name = state.getName ? state.getName() : '';
+      if (!name) {
+        state.showNameBar && state.showNameBar();
+        state.setStatus && state.setStatus('Enter a name to save.', 'info');
+        state.focusName && state.focusName();
+        return;
       }
+      hudApi.hideOk && hudApi.hideOk();
+      const ok = await saveRefugePolygon(state.vertices, name, state.setStatus);
       if (ok) {
-        // Capture restart intent/details before teardown resets globals
-        const shouldRestart = !!(__drawingSaveOptions && __drawingSaveOptions.restartAfterSave);
-        const restartTitle = __drawingTitle;
-        const restartDeleteId = (typeof window.__copyRefugeDeleteId !== 'undefined') ? window.__copyRefugeDeleteId : null;
         teardownDrawing();
-        // For edit bar copy-drawing flow: immediately start a new drawing
-        if (shouldRestart && typeof window.startCopyRefugeDrawing === 'function') {
-          try {
-            setTimeout(() => {
-              try { window.startCopyRefugeDrawing(restartTitle, restartDeleteId); } catch (e) {}
-            }, 0);
-          } catch (e) {}
-        }
       } else {
         hudApi.showOk && hudApi.showOk();
       }
@@ -1580,78 +1414,5 @@ window.addEventListener('DOMContentLoaded', function () {
 
   // expose for other modules if needed
   window.startRefugeDrawing = startRefugeDrawing;
-  window.startCopyRefugeDrawing = function startCopyRefugeDrawing(nameFromTitle, refugeIdForDelete) {
-    __drawingTitle = (typeof nameFromTitle === 'string' && nameFromTitle.trim()) ? nameFromTitle.trim() : 'Copy refuge';
-    const aoiShape = (window.MAINE_POLYGON || window.AOI_POLYGON || null);
-    __drawingSaveOptions = {
-      // Only require intersection when an AOI is actually configured
-      requireIntersect: !!aoiShape,
-      intersectWith: aoiShape,
-      intersectLabel: 'Maine polygon',
-      // Auto-continue drawing new polygons after each save in edit bar flow
-      restartAfterSave: true,
-      // Draft mode: do not prompt for name or send to backend
-      draftMode: true,
-      autoName: function () {
-        if (typeof nameFromTitle === 'string' && nameFromTitle.trim()) {
-          return nameFromTitle.trim();
-        }
-        try {
-          const ts = new Date().toISOString().replace(/[:.]/g, '-');
-          const rand = Math.random().toString(36).slice(2, 7);
-          return `Copy ${ts}-${rand}`;
-        } catch (e) {
-          return `Copy ${Date.now()}`;
-        }
-      }
-    };
-    // Remember the delete-id for subsequent auto-restart sessions
-    try { window.__copyRefugeDeleteId = refugeIdForDelete || null; } catch (e) {}
-    startRefugeDrawing();
-    try {
-      const hud = document.querySelector('.drawing-hud');
-      const statusEl = hud ? hud.querySelector('.hud-status') : null;
-      if (hud && refugeIdForDelete && !hud.querySelector('.hud-delete')) {
-        let footer = hud.querySelector('.hud-footer-left');
-        if (!footer) {
-          footer = document.createElement('div');
-          footer.className = 'hud-footer-left';
-          footer.style.display = 'flex';
-          footer.style.justifyContent = 'flex-start';
-          footer.style.marginTop = '8px';
-          if (statusEl && statusEl.parentNode === hud) {
-            hud.insertBefore(footer, statusEl.nextSibling);
-          } else {
-            hud.appendChild(footer);
-          }
-        }
-        const del = document.createElement('button');
-        del.className = 'hud-delete';
-        del.type = 'button';
-        del.textContent = 'Delete';
-        footer.appendChild(del);
-        del.addEventListener('click', async () => {
-          try { del.disabled = true; } catch (e) {}
-          try { if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Deleting…'; statusEl.className = 'hud-status status-info'; } } catch (e) {}
-          try {
-            const deleted = await deleteRefugeById(refugeIdForDelete);
-            await loadAndRenderRefuges();
-            if (typeof showUndoToast === 'function') {
-              showUndoToast('Refuge deleted', async () => {
-                if (deleted) {
-                  try { await recreateRefuge(deleted); } catch (e) {}
-                }
-              }, 12000);
-            }
-          } catch (e) {
-            try {
-              if (statusEl) { statusEl.style.display = ''; statusEl.textContent = (e && e.message) || 'Delete failed'; statusEl.className = 'hud-status status-error'; }
-              del.disabled = false;
-            } catch (err) {}
-          }
-        });
-      }
-    } catch (e) {}
-  };
 
 });
