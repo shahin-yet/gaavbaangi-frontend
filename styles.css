@@ -536,7 +536,7 @@ body {
 /* HUD controls layout */
 .drawing-hud .hud-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .drawing-hud .hud-operations { display: flex; gap: 8px; justify-content: center; }
-.drawing-hud .hud-actions-row { display: flex; justify-content: space-between; align-items: center; }
+.drawing-hud .hud-actions-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .drawing-hud .hud-actions-left { display: flex; gap: 8px; }
 .drawing-hud .hud-actions-right { display: flex; gap: 1px; }
 .drawing-hud .hud-name { width: 100%; }
@@ -548,10 +548,11 @@ body {
   border: 1px solid #e57373;
   background: #e53935;
   color: #fff;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 10px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
+  min-width: 60px;
 }
 .drawing-hud .hud-delete:hover { filter: brightness(0.95); }
 
@@ -559,10 +560,11 @@ body {
   border: 1px solid #64b5f6;
   background: #2196f3;
   color: #fff;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 10px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
+  min-width: 60px;
 }
 .drawing-hud .hud-undo:hover { filter: brightness(0.95); }
 
@@ -570,10 +572,11 @@ body {
   border: 1px solid var(--gray-300);
   background: var(--primary, #1b7f39);
   color: #fff;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 10px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
+  min-width: 60px;
 }
 .drawing-hud .hud-save:hover { filter: brightness(0.95); }
 
