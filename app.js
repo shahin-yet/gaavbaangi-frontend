@@ -195,6 +195,25 @@ window.addEventListener('DOMContentLoaded', function () {
     if (controls) { controls.style.display = ''; }
     const actions = hud.querySelector('.hud-actions');
     if (actions && !hud.querySelector('.hud-delete')) {
+      // Add Copy button to launch copy-drawing flow
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'hud-copy';
+      copyBtn.type = 'button';
+      copyBtn.textContent = 'Copy refuge';
+      actions.insertBefore(copyBtn, actions.firstChild || null);
+      copyBtn.addEventListener('click', () => {
+        // Exit edit mode HUD before starting drawing
+        const h = document.querySelector('.drawing-hud');
+        h && h.remove();
+        endEditing();
+        try { map && map.closePopup && map.closePopup(); } catch (e) {}
+        // Start specialized drawing that requires overlap with configured polygon
+        if (typeof window.startCopyRefugeDrawing === 'function') {
+          window.startCopyRefugeDrawing();
+        } else {
+          try { alert('Copy drawing is unavailable.'); } catch (e) {}
+        }
+      });
       const del = document.createElement('button');
       del.className = 'hud-delete';
       del.type = 'button';
@@ -624,8 +643,11 @@ window.addEventListener('DOMContentLoaded', function () {
   // Refuge drawing logic
   // -----------------------------
   let drawing = null; // state holder when active
+  // Optional per-session drawing configuration
+  let __drawingSaveOptions = null; // e.g., { requireIntersect: true, intersectWith: <GeoJSON>, intersectLabel: 'Maine polygon' }
+  let __drawingTitle = null; // override HUD title when set
 
-  function createDrawingHud(onCancel) {
+  function createDrawingHud(onCancel, titleText) {
     let hud = document.querySelector('.drawing-hud');
     if (hud) hud.remove();
     hud = document.createElement('div');
@@ -647,6 +669,13 @@ window.addEventListener('DOMContentLoaded', function () {
       </div>
     `;
     document.body.appendChild(hud);
+    // Override title if provided
+    try {
+      const titleEl = hud.querySelector('.hud-title span');
+      if (titleEl && typeof titleText === 'string' && titleText.trim()) {
+        titleEl.textContent = titleText.trim();
+      }
+    } catch (e) {}
     hud.querySelector('.hud-cancel').addEventListener('click', () => { onCancel && onCancel(); });
     const statusEl = hud.querySelector('.hud-status');
     const controlsEl = hud.querySelector('.hud-controls');
@@ -714,6 +743,9 @@ window.addEventListener('DOMContentLoaded', function () {
     if (dot) dot.classList.remove('near-first');
     // Re-enable bottom UI interactions
     try { document.body.classList.remove('drawing-active'); } catch (e) {}
+    // Reset per-session config
+    __drawingSaveOptions = null;
+    __drawingTitle = null;
     drawing = null;
   }
 
@@ -737,7 +769,7 @@ window.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  async function saveRefugePolygon(latlngs, name, setStatus) {
+  async function saveRefugePolygon(latlngs, name, setStatus, options = null) {
     // Ensure closed ring and convert to GeoJSON lon/lat
     const ring = latlngs.map(ll => [ll.lng, ll.lat]);
     // Block saving with fewer than 3 vertices (no area with two angles)
@@ -753,6 +785,35 @@ window.addEventListener('DOMContentLoaded', function () {
     if (!name || !name.trim()) {
       setStatus && setStatus('Enter a name in the bar to save.', 'info');
       return false;
+    }
+    // Optional overlap validation (e.g., against Maine polygon)
+    if (options && options.requireIntersect) {
+      const aoi = options.intersectWith || null;
+      const label = (options.intersectLabel || 'required area');
+      if (!aoi) {
+        setStatus && setStatus(`${label} is not configured.`, 'error');
+        return false;
+      }
+      try {
+        if (!(window.turf && typeof window.turf.booleanIntersects === 'function')) {
+          setStatus && setStatus('Geometry engine unavailable.', 'error');
+          return false;
+        }
+        const drawn = window.turf.polygon([ring]);
+        const aoiGeom = (aoi.type ? aoi : (aoi.geometry || null));
+        if (!aoiGeom || !aoiGeom.type) {
+          setStatus && setStatus(`${label} is invalid.`, 'error');
+          return false;
+        }
+        const intersects = window.turf.booleanIntersects(drawn, aoiGeom);
+        if (!intersects) {
+          setStatus && setStatus(`Polygon must overlap the ${label}.`, 'error');
+          return false;
+        }
+      } catch (e) {
+        setStatus && setStatus('Failed to validate overlap.', 'error');
+        return false;
+      }
     }
     try {
       setStatus && setStatus('Saving…', 'info');
@@ -791,7 +852,7 @@ window.addEventListener('DOMContentLoaded', function () {
       try { document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show')); } catch (e) {}
       try { typeof closeSidePanel === 'function' && closeSidePanel(); } catch (e) {}
     } catch (e) {}
-    const hudApi = createDrawingHud(() => teardownDrawing());
+    const hudApi = createDrawingHud(() => teardownDrawing(), (__drawingTitle || undefined));
 
     const state = {
       // Use mobile-vs-desktop to decide interaction model, independent of Telegram
@@ -845,7 +906,7 @@ window.addEventListener('DOMContentLoaded', function () {
         return;
       }
       hudApi.hideOk && hudApi.hideOk();
-      const ok = await saveRefugePolygon(state.vertices, name, state.setStatus);
+      const ok = await saveRefugePolygon(state.vertices, name, state.setStatus, (__drawingSaveOptions || null));
       if (ok) {
         teardownDrawing();
       } else {
@@ -1381,5 +1442,14 @@ window.addEventListener('DOMContentLoaded', function () {
 
   // expose for other modules if needed
   window.startRefugeDrawing = startRefugeDrawing;
+  window.startCopyRefugeDrawing = function startCopyRefugeDrawing() {
+    __drawingTitle = 'Copy refuge';
+    __drawingSaveOptions = {
+      requireIntersect: true,
+      intersectWith: (window.MAINE_POLYGON || window.AOI_POLYGON || null),
+      intersectLabel: 'Maine polygon'
+    };
+    startRefugeDrawing();
+  };
 
 });
