@@ -578,11 +578,11 @@ body {
 .refuge-popup .refuge-rename-btn {
   background: transparent;
   border: none;
-  padding: 0 2px;
+  padding: 0 1px;
   margin: 0;
   color: #0b63c9;
-  font-size: 12px;
-  line-height: 1.2;
+  font-size: 10px;
+  line-height: 1.1;
   cursor: pointer;
 }
 .refuge-popup .refuge-rename-btn:hover { text-decoration: underline; }
@@ -592,12 +592,17 @@ body {
 .leaflet-popup-content:has(.refuge-popup) {
   display: inline-block;
   width: auto !important;
-  margin: 3px 3px; /* reduced to ~one-third */
+  margin: 3px 2px 3px 3px; /* tighter on right only */
 }
 .leaflet-popup-content-wrapper:has(.refuge-popup) {
   width: auto;
   max-width: none;
-  padding-right: 8px; /* tighter so name sits closer to the close (×) */
+  padding-right: 4px; /* even tighter near the close (×) */
+}
+/* Give the close (×) its own tight offsets for refuge popups */
+.leaflet-popup:has(.refuge-popup) .leaflet-popup-close-button {
+  right: 2px;
+  top: 2px;
 }
 
 /* Reduce default right margin inside Leaflet popup so content sits closer to × */
