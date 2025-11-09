@@ -245,13 +245,9 @@ window.addEventListener('DOMContentLoaded', function () {
     if (okBtn) { try { okBtn.remove(); } catch (e) {} }
     if (controls) { controls.style.display = ''; }
     const actions = hud.querySelector('.hud-actions');
-    if (actions && !hud.querySelector('.hud-run')) {
-      const run = document.createElement('button');
-      run.className = 'hud-run';
-      run.type = 'button';
-      run.textContent = 'Run';
-      actions.appendChild(run);
-      run.addEventListener('click', () => {
+    // Auto-run copy flow immediately upon opening Edit bar, no extra buttons
+    setTimeout(() => {
+      try {
         const titleEl2 = hud.querySelector('.hud-title span');
         const runName = titleEl2 && titleEl2.textContent ? titleEl2.textContent.trim() : '';
         const h = document.querySelector('.drawing-hud');
@@ -261,8 +257,8 @@ window.addEventListener('DOMContentLoaded', function () {
         if (typeof window.startCopyRefugeDrawing === 'function') {
           window.startCopyRefugeDrawing(runName);
         }
-      });
-    }
+      } catch (e) {}
+    }, 0);
     if (actions && !hud.querySelector('.hud-delete')) {
       const del = document.createElement('button');
       del.className = 'hud-delete';
