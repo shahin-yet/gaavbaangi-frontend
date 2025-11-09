@@ -64,6 +64,10 @@ window.addEventListener('DOMContentLoaded', function () {
     zoom: 5,
     zoomControl: true
   });
+  // Layer to hold unsaved edit-draft polygons
+  const draftLayerGroup = L.layerGroup().addTo(map);
+  // Persistent in-page cache for draft polygons (not sent to backend)
+  window.__editDraftsCache = window.__editDraftsCache || [];
   // Suppress any map popups while Edit bar or drawing HUD is active
   map.on('popupopen', function () {
     try {
@@ -902,6 +906,53 @@ window.addEventListener('DOMContentLoaded', function () {
     }
   }
 
+  // Save polygon locally (draft mode) instead of backend persistence
+  function saveDraftPolygon(latlngs, setStatus, options = null) {
+    try {
+      const ring = latlngs.map(ll => [ll.lng, ll.lat]);
+      if (ring.length < 3) {
+        setStatus && setStatus('Need at least 3 points', 'error');
+        return false;
+      }
+      if (ring.length >= 3) {
+        const first = ring[0];
+        const last = ring[ring.length - 1];
+        if (first[0] !== last[0] || first[1] !== last[1]) ring.push(first);
+      }
+      // Optional overlap validation if configured and requested
+      if (options && options.requireIntersect) {
+        const aoi = options.intersectWith || null;
+        if (aoi && window.turf && typeof window.turf.booleanIntersects === 'function') {
+          const drawn = window.turf.polygon([ring]);
+          const aoiGeom = (aoi.type ? aoi : (aoi.geometry || null));
+          if (aoiGeom && aoiGeom.type) {
+            const intersects = window.turf.booleanIntersects(drawn, aoiGeom);
+            if (!intersects) {
+              setStatus && setStatus(`Polygon must overlap the ${options.intersectLabel || 'required area'}.`, 'error');
+              return false;
+            }
+          }
+        }
+      }
+      // Add to local cache and render on map
+      const draftGeo = { type: 'Polygon', coordinates: [ring] };
+      window.__editDraftsCache.push({ polygon: draftGeo, createdAt: Date.now() });
+      const latlngsClosed = ring.map(([lng, lat]) => L.latLng(lat, lng));
+      const polygon = L.polygon(latlngsClosed, {
+        color: '#1e90ff',
+        weight: 2,
+        fillColor: '#1e90ff',
+        fillOpacity: 0.15
+      });
+      polygon.addTo(draftLayerGroup);
+      setStatus && setStatus('Saved locally.', 'success');
+      return true;
+    } catch (e) {
+      setStatus && setStatus('Failed to save locally.', 'error');
+      return false;
+    }
+  }
+
   function startRefugeDrawing() {
     if (drawing) teardownDrawing();
     // Disable bottom UI interactions while drawing
@@ -957,25 +1008,31 @@ window.addEventListener('DOMContentLoaded', function () {
       if (!state.closedPreview) {
         showClosedPreview();
       }
-      let name = state.getName ? state.getName() : '';
-      // For copy mode: auto-generate a name and avoid showing controls
-      if (!name && (__drawingSaveOptions && (__drawingSaveOptions.autoName !== undefined))) {
-        try {
-          name = (typeof __drawingSaveOptions.autoName === 'function')
-            ? __drawingSaveOptions.autoName()
-            : String(__drawingSaveOptions.autoName || '').trim();
-        } catch (e) {
-          name = '';
+      let ok = false;
+      const isDraftMode = !!(__drawingSaveOptions && __drawingSaveOptions.draftMode);
+      if (isDraftMode) {
+        ok = !!saveDraftPolygon(state.vertices, state.setStatus, (__drawingSaveOptions || null));
+      } else {
+        let name = state.getName ? state.getName() : '';
+        // For copy mode: auto-generate a name and avoid showing controls
+        if (!name && (__drawingSaveOptions && (__drawingSaveOptions.autoName !== undefined))) {
+          try {
+            name = (typeof __drawingSaveOptions.autoName === 'function')
+              ? __drawingSaveOptions.autoName()
+              : String(__drawingSaveOptions.autoName || '').trim();
+          } catch (e) {
+            name = '';
+          }
         }
+        if (!name) {
+          state.showNameBar && state.showNameBar();
+          state.setStatus && state.setStatus('Enter a name to save.', 'info');
+          state.focusName && state.focusName();
+          return;
+        }
+        hudApi.hideOk && hudApi.hideOk();
+        ok = await saveRefugePolygon(state.vertices, name, state.setStatus, (__drawingSaveOptions || null));
       }
-      if (!name) {
-        state.showNameBar && state.showNameBar();
-        state.setStatus && state.setStatus('Enter a name to save.', 'info');
-        state.focusName && state.focusName();
-        return;
-      }
-      hudApi.hideOk && hudApi.hideOk();
-      const ok = await saveRefugePolygon(state.vertices, name, state.setStatus, (__drawingSaveOptions || null));
       if (ok) {
         // Capture restart intent/details before teardown resets globals
         const shouldRestart = !!(__drawingSaveOptions && __drawingSaveOptions.restartAfterSave);
@@ -1533,6 +1590,8 @@ window.addEventListener('DOMContentLoaded', function () {
       intersectLabel: 'Maine polygon',
       // Auto-continue drawing new polygons after each save in edit bar flow
       restartAfterSave: true,
+      // Draft mode: do not prompt for name or send to backend
+      draftMode: true,
       autoName: function () {
         if (typeof nameFromTitle === 'string' && nameFromTitle.trim()) {
           return nameFromTitle.trim();
