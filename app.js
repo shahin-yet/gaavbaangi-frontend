@@ -195,12 +195,7 @@ window.addEventListener('DOMContentLoaded', function () {
   }
 
   function showUndoToast(message, onUndo, timeoutMs = 12000) {
-    try {
-      document.querySelectorAll('.undo-toast').forEach(el => el.remove());
-      // When undo panel shows, remove Edit bar to avoid overlap
-      const hud = document.querySelector('.drawing-hud');
-      if (hud) hud.remove();
-    } catch (e) {}
+    try { document.querySelectorAll('.undo-toast').forEach(el => el.remove()); } catch (e) {}
     const toast = document.createElement('div');
     toast.className = 'undo-toast';
     toast.innerHTML = `<span class="undo-msg">${escapeHtml(message)}</span><button class="undo-btn" type="button">Undo</button>`;
@@ -217,13 +212,6 @@ window.addEventListener('DOMContentLoaded', function () {
   }
 
   function openRefugeEditor(refuge) {
-    // Only allow Edit bar when an AOI/Maine polygon exists
-    const hasAoi = !!(window.MAINE_POLYGON || window.AOI_POLYGON);
-    if (!hasAoi) {
-      try { map && map.closePopup && map.closePopup(); } catch (e) {}
-      alert('Edit is available only when the Maine polygon is configured.');
-      return;
-    }
     // Reuse drawing HUD for a consistent look
     const beginEditing = () => {
       try { document.body.classList.add('editing-active'); } catch (e) {}
@@ -341,34 +329,20 @@ window.addEventListener('DOMContentLoaded', function () {
                 const popupId = `ref-edit-${r.id}`;
                 const renameId = `ref-rename-${r.id}`;
                 const nameInputId = `ref-name-input-${r.id}`;
-                const hasAoi = !!(window.MAINE_POLYGON || window.AOI_POLYGON);
-                const popupHtml = hasAoi
-                  ? `
-                    <div class="refuge-popup">
-                      <div class="refuge-name-row">
-                        <div class="refuge-name">${escapeHtml(r.name || 'Refuge')}</div>
-                        <button id="${renameId}" class="refuge-rename-btn" type="button">rename</button>
-                      </div>
-                      <button id="${popupId}" class="refuge-edit-link" type="button">Edit</button>
+                const popupHtml = `
+                  <div class="refuge-popup">
+                    <div class="refuge-name-row">
+                      <div class="refuge-name">${escapeHtml(r.name || 'Refuge')}</div>
+                      <button id="${renameId}" class="refuge-rename-btn" type="button">rename</button>
                     </div>
-                  `
-                  : `
-                    <div class="refuge-popup">
-                      <div class="refuge-name-row">
-                        <div class="refuge-name">${escapeHtml(r.name || 'Refuge')}</div>
-                      </div>
-                    </div>
-                  `;
+                    <button id="${popupId}" class="refuge-edit-link" type="button">Edit</button>
+                  </div>
+                `;
                 polygon.addTo(refugeLayerGroup).bindPopup(popupHtml);
                 polygon.on('popupopen', () => {
                   // Block name popup UI while edit bar/drawing is active
                   if ((window.__editing === true) || document.body.classList.contains('drawing-active')) {
                     try { polygon.closePopup(); } catch (e) {}
-                    return;
-                  }
-                  // If AOI is not present, suppress interactive controls
-                  const hasAoiNow = !!(window.MAINE_POLYGON || window.AOI_POLYGON);
-                  if (!hasAoiNow) {
                     return;
                   }
                   const editBtn = document.getElementById(popupId);
@@ -1662,11 +1636,6 @@ window.addEventListener('DOMContentLoaded', function () {
           try {
             const deleted = await deleteRefugeById(refugeIdForDelete);
             await loadAndRenderRefuges();
-            // Remove Edit bar when showing undo
-            try {
-              const hud2 = document.querySelector('.drawing-hud');
-              if (hud2) hud2.remove();
-            } catch (e) {}
             if (typeof showUndoToast === 'function') {
               showUndoToast('Refuge deleted', async () => {
                 if (deleted) {
