@@ -154,33 +154,51 @@ window.addEventListener('DOMContentLoaded', function () {
 
   function openRefugeEditor(refuge) {
     // Reuse drawing HUD for a consistent look
+    let overlayBtn = null;
+    const resetOverlayButton = () => {
+      if (!overlayBtn) return;
+      if (window.__editOverlayActive) {
+        overlayBtn.disabled = true;
+        overlayBtn.textContent = 'Drawing…';
+      } else {
+        overlayBtn.disabled = false;
+        overlayBtn.textContent = 'Draw overlay';
+      }
+    };
+    const cleanupEditOverlays = () => {
+      if (Array.isArray(window.__editOverlayLayers)) {
+        window.__editOverlayLayers.forEach(layer => {
+          if (!layer) return;
+          try {
+            if (refugeLayerGroup && typeof refugeLayerGroup.removeLayer === 'function') {
+              refugeLayerGroup.removeLayer(layer);
+            }
+          } catch (e) {}
+        });
+      }
+      window.__editOverlayLayers = [];
+    };
+    const stopOverlayLoop = () => {
+      window.__editOverlayActive = false;
+      resetOverlayButton();
+    };
     const beginEditing = () => {
       try { document.body.classList.add('editing-active'); } catch (e) {}
       window.__editing = true;
-      // Add a transparent blocker to capture all pointer events beneath the HUD
-      try {
-        const blocker = document.createElement('div');
-        blocker.className = 'ui-edit-blocker';
-        blocker.style.position = 'fixed';
-        blocker.style.left = '0';
-        blocker.style.top = '0';
-        blocker.style.right = '0';
-        blocker.style.bottom = '0';
-        blocker.style.background = 'transparent';
-        blocker.style.zIndex = '1150'; // between toolbar/leaflet popups and HUD (1200)
-        blocker.style.pointerEvents = 'auto';
-        // Prevent context menu or accidental interactions
-        blocker.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
-        blocker.addEventListener('mousedown', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
-        blocker.addEventListener('mouseup', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
-        blocker.addEventListener('touchstart', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true, passive: false });
-        blocker.addEventListener('touchend', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true, passive: false });
-        blocker.addEventListener('wheel', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
-        document.body.appendChild(blocker);
-        window.__editBlocker = blocker;
-      } catch (e) {}
+      // Keep map interactions available during edit; do not add a global blocker overlay
+      try { window.__editBlocker = null; } catch (e) {}
+      cleanupEditOverlays();
+      window.__editOverlayLayers = [];
+      window.__editOverlayCache = [];
+      window.__editOverlayActive = false;
+      resetOverlayButton();
     };
     const endEditing = () => {
+      stopOverlayLoop();
+      if (drawing) {
+        teardownDrawing();
+      }
+      cleanupEditOverlays();
       try { document.body.classList.remove('editing-active'); } catch (e) {}
       window.__editing = false;
       try {
@@ -215,6 +233,102 @@ window.addEventListener('DOMContentLoaded', function () {
     if (okBtn) { try { okBtn.remove(); } catch (e) {} }
     if (controls) { controls.style.display = ''; }
     const actions = hud.querySelector('.hud-actions');
+    if (actions) {
+      overlayBtn = hud.querySelector('.hud-overlay');
+      if (!overlayBtn) {
+        overlayBtn = document.createElement('button');
+        overlayBtn.className = 'hud-overlay';
+        overlayBtn.type = 'button';
+        overlayBtn.textContent = 'Draw overlay';
+        if (actions.firstChild) {
+          actions.insertBefore(overlayBtn, actions.firstChild);
+        } else {
+          actions.appendChild(overlayBtn);
+        }
+      }
+      const createOverlayHudApi = () => ({
+        hud,
+        setStatus: () => {},
+        getName: () => '',
+        focusName: () => {},
+        showNameBar: () => {},
+        hideNameBar: () => {},
+        hideOk: () => {},
+        showOk: () => {}
+      });
+      const startOverlayLoop = () => {
+        if (window.__editOverlayActive) return;
+        window.__editOverlayActive = true;
+        resetOverlayButton();
+        const overlayHudApi = createOverlayHudApi();
+        const run = () => {
+          if (!window.__editing || !window.__editOverlayActive) {
+            stopOverlayLoop();
+            return;
+          }
+          startRefugeDrawing({
+            skipSaving: true,
+            preserveHud: true,
+            hudApi: overlayHudApi,
+            teardownOptions: { preserveHud: true },
+            cancelTeardownOptions: { preserveHud: true },
+            onComplete: (result) => {
+              if (!window.__editOverlayActive) {
+                stopOverlayLoop();
+                return;
+              }
+              const latlngs = result && Array.isArray(result.latlngs) ? result.latlngs : [];
+              let overlayLayer = result && result.previewLayer;
+              if (!overlayLayer && latlngs.length >= 3) {
+                try {
+                  overlayLayer = L.polygon(latlngs, {
+                    color: '#ff9800',
+                    weight: 2,
+                    fillColor: '#ff9800',
+                    fillOpacity: 0.2
+                  }).addTo(refugeLayerGroup);
+                } catch (e) {
+                  overlayLayer = null;
+                }
+              }
+              if (overlayLayer && typeof overlayLayer.setStyle === 'function') {
+                try {
+                  overlayLayer.setStyle({ color: '#ff9800', weight: 2, fillColor: '#ff9800', fillOpacity: 0.2 });
+                } catch (e) {}
+              }
+              if (!Array.isArray(window.__editOverlayLayers)) window.__editOverlayLayers = [];
+              if (overlayLayer) {
+                overlayLayer._isEditOverlay = true;
+                window.__editOverlayLayers.push(overlayLayer);
+              }
+              if (!Array.isArray(window.__editOverlayCache)) window.__editOverlayCache = [];
+              if (latlngs && latlngs.length) {
+                const storedCoords = latlngs.map(ll => ({ lat: ll.lat, lng: ll.lng }));
+                if (storedCoords.length >= 3) {
+                  const first = storedCoords[0];
+                  const last = storedCoords[storedCoords.length - 1];
+                  if (first.lat !== last.lat || first.lng !== last.lng) {
+                    storedCoords.push({ lat: first.lat, lng: first.lng });
+                  }
+                }
+                window.__editOverlayCache.push(storedCoords);
+              }
+              if (window.__editing && window.__editOverlayActive) {
+                setTimeout(run, 0);
+              } else {
+                stopOverlayLoop();
+              }
+            }
+          });
+        };
+        run();
+      };
+      if (overlayBtn && !overlayBtn.dataset.overlayBound) {
+        overlayBtn.dataset.overlayBound = '1';
+        overlayBtn.addEventListener('click', startOverlayLoop);
+      }
+      resetOverlayButton();
+    }
     if (actions && !hud.querySelector('.hud-delete')) {
       const del = document.createElement('button');
       del.className = 'hud-delete';
@@ -248,7 +362,7 @@ window.addEventListener('DOMContentLoaded', function () {
         }
       });
     }
-    // No rename in edit mode; only Delete is available
+    // No rename in edit mode; Delete remains the only persistent action
   }
 
   async function loadAndRenderRefuges() {
@@ -716,8 +830,9 @@ window.addEventListener('DOMContentLoaded', function () {
     return { hud, setStatus, getName, focusName, onNameEnter, onOkClick, showNameBar, hideNameBar, hideOk, showOk };
   }
 
-  function teardownDrawing() {
+  function teardownDrawing(options = {}) {
     if (!drawing) return;
+    const opts = options || {};
     map.getContainer().style.cursor = '';
     // Clear any idle timers used for dynamic announcements
     if (drawing.idleTimer) {
@@ -741,12 +856,17 @@ window.addEventListener('DOMContentLoaded', function () {
     if (drawing.polyline) refugeLayerGroup.removeLayer(drawing.polyline);
     if (drawing.firstMarker) refugeLayerGroup.removeLayer(drawing.firstMarker);
     if (drawing.tempGuide) refugeLayerGroup.removeLayer(drawing.tempGuide);
+    if (opts.removePreview && drawing.closedPreview) {
+      try { refugeLayerGroup.removeLayer(drawing.closedPreview); } catch (e) {}
+    }
     const hud = document.querySelector('.drawing-hud');
-    if (hud) hud.remove();
+    if (hud && !opts.preserveHud) hud.remove();
     const dot = document.querySelector('.map-center-dot');
     if (dot) dot.classList.remove('near-first');
     // Re-enable bottom UI interactions
-    try { document.body.classList.remove('drawing-active'); } catch (e) {}
+    if (!opts.keepDrawingActiveClass) {
+      try { document.body.classList.remove('drawing-active'); } catch (e) {}
+    }
     drawing = null;
   }
 
@@ -815,8 +935,13 @@ window.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  function startRefugeDrawing() {
-    if (drawing) teardownDrawing();
+  function startRefugeDrawing(options = {}) {
+    const opts = options || {};
+    const skipSaving = !!opts.skipSaving;
+    const teardownBeforeStart = Object.prototype.hasOwnProperty.call(opts, 'teardownBeforeStartOptions')
+      ? opts.teardownBeforeStartOptions
+      : (opts.preserveHud ? { preserveHud: true, keepDrawingActiveClass: !!opts.keepDrawingActiveClass } : undefined);
+    if (drawing) teardownDrawing(teardownBeforeStart);
     // Disable bottom UI interactions while drawing
     try {
       document.body.classList.add('drawing-active');
@@ -824,7 +949,24 @@ window.addEventListener('DOMContentLoaded', function () {
       try { document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show')); } catch (e) {}
       try { typeof closeSidePanel === 'function' && closeSidePanel(); } catch (e) {}
     } catch (e) {}
-    const hudApi = createDrawingHud(() => teardownDrawing());
+    const teardownOnCancel = opts.cancelTeardownOptions;
+    const baseHudApi = opts.hudApi || createDrawingHud(() => {
+      teardownDrawing(teardownOnCancel);
+      if (typeof opts.onCancel === 'function') {
+        try { opts.onCancel(); } catch (err) {}
+      }
+    });
+    const hudApi = Object.assign({
+      setStatus: () => {},
+      getName: () => '',
+      focusName: () => {},
+      showNameBar: () => {},
+      hideNameBar: () => {},
+      hideOk: () => {},
+      showOk: () => {},
+      onNameEnter: null,
+      onOkClick: null
+    }, baseHudApi || {});
 
     const state = {
       // Use mobile-vs-desktop to decide interaction model, independent of Telegram
@@ -849,6 +991,9 @@ window.addEventListener('DOMContentLoaded', function () {
       hideNameBar: hudApi.hideNameBar
     };
     drawing = state;
+    const teardownAfterFinish = Object.prototype.hasOwnProperty.call(opts, 'teardownOptions')
+      ? opts.teardownOptions
+      : (opts.preserveHud ? { preserveHud: true } : undefined);
     // Dynamic announcement helpers (always use desktop text on all devices)
     const getMsgClickToAdd = () => 'click to add vertex';
     const getMsgDragToDraw = () => 'drag to draw line';
@@ -870,11 +1015,37 @@ window.addEventListener('DOMContentLoaded', function () {
       if (!state.closedPreview) {
         showClosedPreview();
       }
-      const name = state.getName ? state.getName() : '';
+      if (skipSaving) {
+        const latlngsClone = state.vertices.map(ll => L.latLng(ll.lat, ll.lng));
+        let previewLayer = state.closedPreview;
+        if (!previewLayer && latlngsClone.length >= 3) {
+          try {
+            previewLayer = L.polygon(latlngsClone, {
+              color: '#1e90ff',
+              weight: 2,
+              fillColor: '#1e90ff',
+              fillOpacity: 0.15
+            }).addTo(refugeLayerGroup);
+          } catch (e) {
+            previewLayer = null;
+          }
+        }
+        teardownDrawing(teardownAfterFinish);
+        if (typeof opts.onComplete === 'function') {
+          try {
+            opts.onComplete({
+              latlngs: latlngsClone,
+              previewLayer
+            });
+          } catch (err) {}
+        }
+        return;
+      }
+      const name = hudApi.getName ? hudApi.getName() : '';
       if (!name) {
-        state.showNameBar && state.showNameBar();
+        hudApi.showNameBar && hudApi.showNameBar();
         state.setStatus && state.setStatus('Enter a name to save.', 'info');
-        state.focusName && state.focusName();
+        hudApi.focusName && hudApi.focusName();
         return;
       }
       hudApi.hideOk && hudApi.hideOk();
@@ -886,16 +1057,18 @@ window.addEventListener('DOMContentLoaded', function () {
       }
     };
 
-    hudApi.onNameEnter && hudApi.onNameEnter(() => {
-      if (state.vertices.length >= 3) {
-        attemptSave();
-      }
-    });
-    hudApi.onOkClick && hudApi.onOkClick(() => {
-      if (state.vertices.length >= 3) {
-        attemptSave();
-      }
-    });
+    if (!skipSaving) {
+      hudApi.onNameEnter && hudApi.onNameEnter(() => {
+        if (state.vertices.length >= 3) {
+          attemptSave();
+        }
+      });
+      hudApi.onOkClick && hudApi.onOkClick(() => {
+        if (state.vertices.length >= 3) {
+          attemptSave();
+        }
+      });
+    }
 
 
     const NEAR_FIRST_THRESHOLD_PX_TG = 8; // tighter proximity: require near-exact overlap on Telegram
