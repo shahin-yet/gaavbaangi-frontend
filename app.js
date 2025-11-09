@@ -963,10 +963,19 @@ window.addEventListener('DOMContentLoaded', function () {
       hudApi.hideOk && hudApi.hideOk();
       const ok = await saveRefugePolygon(state.vertices, name, state.setStatus, (__drawingSaveOptions || null));
       if (ok) {
+        // Capture restart intent/details before teardown resets globals
+        const shouldRestart = !!(__drawingSaveOptions && __drawingSaveOptions.restartAfterSave);
+        const restartTitle = __drawingTitle;
+        const restartDeleteId = (typeof window.__copyRefugeDeleteId !== 'undefined') ? window.__copyRefugeDeleteId : null;
         teardownDrawing();
-        // Immediately start a new drawing session after successful save
-        // to allow continuous polygon entry without extra clicks.
-        try { startRefugeDrawing(); } catch (e) {}
+        // For edit bar copy-drawing flow: immediately start a new drawing
+        if (shouldRestart && typeof window.startCopyRefugeDrawing === 'function') {
+          try {
+            setTimeout(() => {
+              try { window.startCopyRefugeDrawing(restartTitle, restartDeleteId); } catch (e) {}
+            }, 0);
+          } catch (e) {}
+        }
       } else {
         hudApi.showOk && hudApi.showOk();
       }
@@ -1506,6 +1515,8 @@ window.addEventListener('DOMContentLoaded', function () {
       requireIntersect: true,
       intersectWith: (window.MAINE_POLYGON || window.AOI_POLYGON || null),
       intersectLabel: 'Maine polygon',
+      // Auto-continue drawing new polygons after each save in edit bar flow
+      restartAfterSave: true,
       autoName: function () {
         if (typeof nameFromTitle === 'string' && nameFromTitle.trim()) {
           return nameFromTitle.trim();
@@ -1519,6 +1530,8 @@ window.addEventListener('DOMContentLoaded', function () {
         }
       }
     };
+    // Remember the delete-id for subsequent auto-restart sessions
+    try { window.__copyRefugeDeleteId = refugeIdForDelete || null; } catch (e) {}
     startRefugeDrawing();
     try {
       const hud = document.querySelector('.drawing-hud');
