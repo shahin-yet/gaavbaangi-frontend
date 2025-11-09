@@ -245,6 +245,24 @@ window.addEventListener('DOMContentLoaded', function () {
     if (okBtn) { try { okBtn.remove(); } catch (e) {} }
     if (controls) { controls.style.display = ''; }
     const actions = hud.querySelector('.hud-actions');
+    if (actions && !hud.querySelector('.hud-run')) {
+      const run = document.createElement('button');
+      run.className = 'hud-run';
+      run.type = 'button';
+      run.textContent = 'Run';
+      actions.appendChild(run);
+      run.addEventListener('click', () => {
+        const titleEl2 = hud.querySelector('.hud-title span');
+        const runName = titleEl2 && titleEl2.textContent ? titleEl2.textContent.trim() : '';
+        const h = document.querySelector('.drawing-hud');
+        h && h.remove();
+        try { clearRefugeDimming(); } catch (e) {}
+        endEditing();
+        if (typeof window.startCopyRefugeDrawing === 'function') {
+          window.startCopyRefugeDrawing(runName);
+        }
+      });
+    }
     if (actions && !hud.querySelector('.hud-delete')) {
       const del = document.createElement('button');
       del.className = 'hud-delete';
@@ -588,16 +606,6 @@ window.addEventListener('DOMContentLoaded', function () {
       action: function() {
         document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
         startRefugeDrawing();
-      }
-    },
-    {
-      icon: 'fas fa-clone',
-      text: 'Copy refuge',
-      action: function() {
-        document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
-        if (typeof window.startCopyRefugeDrawing === 'function') {
-          window.startCopyRefugeDrawing();
-        }
       }
     }
   ]);
@@ -1495,13 +1503,16 @@ window.addEventListener('DOMContentLoaded', function () {
 
   // expose for other modules if needed
   window.startRefugeDrawing = startRefugeDrawing;
-  window.startCopyRefugeDrawing = function startCopyRefugeDrawing() {
-    __drawingTitle = 'Copy refuge';
+  window.startCopyRefugeDrawing = function startCopyRefugeDrawing(nameFromTitle) {
+    __drawingTitle = (typeof nameFromTitle === 'string' && nameFromTitle.trim()) ? nameFromTitle.trim() : 'Copy refuge';
     __drawingSaveOptions = {
       requireIntersect: true,
       intersectWith: (window.MAINE_POLYGON || window.AOI_POLYGON || null),
       intersectLabel: 'Maine polygon',
       autoName: function () {
+        if (typeof nameFromTitle === 'string' && nameFromTitle.trim()) {
+          return nameFromTitle.trim();
+        }
         try {
           const ts = new Date().toISOString().replace(/[:.]/g, '-');
           const rand = Math.random().toString(36).slice(2, 7);
