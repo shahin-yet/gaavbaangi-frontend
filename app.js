@@ -64,6 +64,13 @@ window.addEventListener('DOMContentLoaded', function () {
     zoom: 5,
     zoomControl: true
   });
+  // Suppress any map popups while Edit bar or drawing HUD is active
+  map.on('popupopen', function () {
+    try {
+      const suppress = (window.__editing === true) || document.body.classList.contains('drawing-active');
+      if (suppress) map.closePopup();
+    } catch (e) {}
+  });
 
   // Terrain layer (OpenTopoMap)
   const terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
@@ -206,10 +213,12 @@ window.addEventListener('DOMContentLoaded', function () {
       try { document.body.classList.add('editing-active'); } catch (e) {}
       // Mark editing state to selectively disable other UI while allowing Layer/Center
       window.__editing = true;
+      window.__editBarOpen = true;
     };
     const endEditing = () => {
       try { document.body.classList.remove('editing-active'); } catch (e) {}
       window.__editing = false;
+      window.__editBarOpen = false;
       try {
         if (window.__editBlocker && window.__editBlocker.parentNode) {
           window.__editBlocker.parentNode.removeChild(window.__editBlocker);
@@ -327,6 +336,11 @@ window.addEventListener('DOMContentLoaded', function () {
                 `;
                 polygon.addTo(refugeLayerGroup).bindPopup(popupHtml);
                 polygon.on('popupopen', () => {
+                  // Block name popup UI while edit bar/drawing is active
+                  if ((window.__editing === true) || document.body.classList.contains('drawing-active')) {
+                    try { polygon.closePopup(); } catch (e) {}
+                    return;
+                  }
                   const editBtn = document.getElementById(popupId);
                   if (editBtn) {
                     editBtn.onclick = (ev) => {
