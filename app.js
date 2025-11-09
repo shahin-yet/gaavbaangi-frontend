@@ -646,7 +646,8 @@ window.addEventListener('DOMContentLoaded', function () {
       item.addEventListener('click', function(e) {
         e.stopPropagation();
         // Block option logic while drawing is active, except for layer panel actions
-        if ((typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') || (window.__editing)) {
+        // Also allow layer button during edit mode
+        if ((typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') || (window.__editing && buttonId !== 'btn-layer')) {
           return;
         }
         // Close any open name popups
@@ -667,7 +668,8 @@ window.addEventListener('DOMContentLoaded', function () {
     button.onclick = function(e) {
       e.stopPropagation();
       // Block opening option panels while drawing, except allow the layer panel
-      if ((typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') || (window.__editing)) {
+      // Also allow layer button during edit mode
+      if ((typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') || (window.__editing && buttonId !== 'btn-layer')) {
         return;
       }
       // Close any open name popups when interacting with toolbar
