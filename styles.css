@@ -538,7 +538,7 @@ body {
 .drawing-hud .hud-operations { display: flex; gap: 8px; justify-content: center; }
 .drawing-hud .hud-actions-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .drawing-hud .hud-actions-left { display: flex; gap: 8px; }
-.drawing-hud .hud-actions-right { display: flex; gap: 1px; }
+.drawing-hud .hud-actions-right { display: flex; gap: 8px; }
 .drawing-hud .hud-name { width: 100%; }
 .drawing-hud .hud-ok { border: 1px solid var(--gray-300); background: var(--primary, #1b7f39); color: #fff; padding: 10px 16px; border-radius: 10px; cursor: pointer; font-size: 14px; }
 .drawing-hud .hud-ok:hover { filter: brightness(0.95); }
