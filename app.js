@@ -374,12 +374,9 @@ window.addEventListener('DOMContentLoaded', function () {
       
       // Add delete functionality
       del.addEventListener('click', async () => {
-        // Hide all action buttons while processing to prevent repeat clicks
-        try { del.disabled = true; del.style.display = 'none'; } catch (e) {}
-        try { undoBtn.disabled = true; undoBtn.style.display = 'none'; } catch (e) {}
-        try { saveBtn.disabled = true; saveBtn.style.display = 'none'; } catch (e) {}
-        try { adjoinBtn.disabled = true; adjoinBtn.style.display = 'none'; } catch (e) {}
-        try { subtractBtn.disabled = true; subtractBtn.style.display = 'none'; } catch (e) {}
+        // Hide all buttons and operation row while processing to prevent repeat clicks
+        try { operationRow.style.display = 'none'; } catch (e) {}
+        try { mainActionsRow.style.display = 'none'; } catch (e) {}
         try {
           if (statusEl) statusEl.style.display = '';
           hudApi.setStatus && hudApi.setStatus('Deleting…', 'info');
@@ -400,11 +397,8 @@ window.addEventListener('DOMContentLoaded', function () {
           if (statusEl) statusEl.style.display = '';
           hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Delete failed', 'error');
           // Restore all buttons if deletion fails
-          try { del.disabled = false; del.style.display = ''; } catch (err) {}
-          try { undoBtn.disabled = false; undoBtn.style.display = ''; } catch (err) {}
-          try { saveBtn.disabled = false; saveBtn.style.display = ''; } catch (err) {}
-          try { adjoinBtn.disabled = false; adjoinBtn.style.display = ''; } catch (err) {}
-          try { subtractBtn.disabled = false; subtractBtn.style.display = ''; } catch (err) {}
+          try { operationRow.style.display = ''; } catch (err) {}
+          try { mainActionsRow.style.display = ''; } catch (err) {}
         }
       });
     }
