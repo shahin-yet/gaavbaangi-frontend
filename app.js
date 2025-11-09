@@ -198,10 +198,6 @@ window.addEventListener('DOMContentLoaded', function () {
       if (drawing) {
         teardownDrawing();
       }
-      try {
-        const ra = document.querySelector('.hud-right-actions');
-        if (ra && ra.parentNode) ra.parentNode.removeChild(ra);
-      } catch (e) {}
       cleanupEditOverlays();
       try { document.body.classList.remove('editing-active'); } catch (e) {}
       window.__editing = false;
@@ -318,99 +314,66 @@ window.addEventListener('DOMContentLoaded', function () {
       // Auto-start overlay loop immediately on entering edit mode
       startOverlayLoop();
     }
-    if (actions) {
-      // Position left actions (Delete) at bottom-left
-      if (controls) {
-        controls.style.display = '';
-        controls.style.position = 'fixed';
-        controls.style.left = '12px';
-        controls.style.bottom = '12px';
-        controls.style.top = '';
-        controls.style.right = '';
-        controls.style.padding = '0';
-        controls.style.background = 'transparent';
-        controls.style.boxShadow = 'none';
-        controls.style.border = 'none';
-      }
-      actions.style.display = 'flex';
-      actions.style.gap = '8px';
-      actions.style.margin = '0';
-      actions.style.padding = '0';
-      // Create a right-side actions container for Save/Undo
-      let rightActions = document.querySelector('.hud-right-actions');
-      if (!rightActions) {
-        rightActions = document.createElement('div');
-        rightActions.className = 'hud-right-actions';
-        rightActions.style.position = 'fixed';
-        rightActions.style.right = '12px';
-        rightActions.style.bottom = '12px';
-        rightActions.style.display = 'flex';
-        rightActions.style.gap = '8px';
-        rightActions.style.margin = '0';
-        rightActions.style.padding = '0';
-        rightActions.style.background = 'transparent';
-        rightActions.style.boxShadow = 'none';
-        rightActions.style.border = 'none';
-        document.body.appendChild(rightActions);
-      }
-      // Delete button (keep existing behavior)
-      let del = hud.querySelector('.hud-delete');
-      if (!del) {
-        del = document.createElement('button');
-        del.className = 'hud-delete';
-        del.type = 'button';
-        del.textContent = 'Delete';
-        actions.appendChild(del);
-        del.addEventListener('click', async () => {
-          // Hide the delete button while processing to prevent repeat clicks
-          try { del.disabled = true; del.style.display = 'none'; } catch (e) {}
-          try {
-            if (statusEl) statusEl.style.display = '';
-            hudApi.setStatus && hudApi.setStatus('Deleting…', 'info');
-            const deleted = await deleteRefugeById(refuge.id);
-            lastDeletedRefuge = deleted;
-            await loadAndRenderRefuges();
-            const h = document.querySelector('.drawing-hud');
-            h && h.remove();
-            endEditing();
-            const deletedName = (deleted && typeof deleted.name === 'string' && deleted.name.trim()) ? deleted.name : 'Refuge';
-            showUndoToast(`${deletedName} deleted`, async () => {
-              if (lastDeletedRefuge) {
-                try { await recreateRefuge(lastDeletedRefuge); } finally { lastDeletedRefuge = null; }
-                await loadAndRenderRefuges();
-              }
-            }, 12000);
-          } catch (e) {
-            if (statusEl) statusEl.style.display = '';
-            hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Delete failed', 'error');
-            // Restore the button if deletion fails
-            try { del.disabled = false; del.style.display = ''; } catch (err) {}
-          }
-        });
-      }
-      // Save button (no behavior specified yet) — placed at far right
-      let saveBtn = document.querySelector('.hud-save') || hud.querySelector('.hud-save');
-      if (!saveBtn) {
-        saveBtn = document.createElement('button');
-        saveBtn.className = 'hud-save';
-        saveBtn.type = 'button';
-        saveBtn.textContent = 'Save';
-      } else if (saveBtn.parentNode) {
-        try { saveBtn.parentNode.removeChild(saveBtn); } catch (e) {}
-      }
-      // Undo button (explicitly no handler) — placed just to the left of Save
-      let undoBtn = document.querySelector('.hud-undo') || hud.querySelector('.hud-undo');
-      if (!undoBtn) {
-        undoBtn = document.createElement('button');
-        undoBtn.className = 'hud-undo';
-        undoBtn.type = 'button';
-        undoBtn.textContent = 'Undo';
-      } else if (undoBtn.parentNode) {
-        try { undoBtn.parentNode.removeChild(undoBtn); } catch (e) {}
-      }
-      // Append in order so that Save is rightmost within the right-anchored container
-      rightActions.appendChild(undoBtn);
-      rightActions.appendChild(saveBtn);
+    if (actions && !hud.querySelector('.hud-delete')) {
+      // Clear existing content and create left/right containers
+      actions.innerHTML = '';
+      const leftContainer = document.createElement('div');
+      leftContainer.className = 'hud-actions-left';
+      const rightContainer = document.createElement('div');
+      rightContainer.className = 'hud-actions-right';
+      
+      // Create delete button for left side
+      const del = document.createElement('button');
+      del.className = 'hud-delete';
+      del.type = 'button';
+      del.textContent = 'Delete';
+      leftContainer.appendChild(del);
+      
+      // Create undo button for right side (no functionality)
+      const undoBtn = document.createElement('button');
+      undoBtn.className = 'hud-undo';
+      undoBtn.type = 'button';
+      undoBtn.textContent = 'Undo';
+      rightContainer.appendChild(undoBtn);
+      
+      // Create save button for right side (no functionality)
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'hud-save';
+      saveBtn.type = 'button';
+      saveBtn.textContent = 'Save';
+      rightContainer.appendChild(saveBtn);
+      
+      // Append containers to actions
+      actions.appendChild(leftContainer);
+      actions.appendChild(rightContainer);
+      
+      // Add delete functionality
+      del.addEventListener('click', async () => {
+        // Hide the delete button while processing to prevent repeat clicks
+        try { del.disabled = true; del.style.display = 'none'; } catch (e) {}
+        try {
+          if (statusEl) statusEl.style.display = '';
+          hudApi.setStatus && hudApi.setStatus('Deleting…', 'info');
+          const deleted = await deleteRefugeById(refuge.id);
+          lastDeletedRefuge = deleted;
+          await loadAndRenderRefuges();
+          const h = document.querySelector('.drawing-hud');
+          h && h.remove();
+          endEditing();
+          const deletedName = (deleted && typeof deleted.name === 'string' && deleted.name.trim()) ? deleted.name : 'Refuge';
+          showUndoToast(`${deletedName} deleted`, async () => {
+            if (lastDeletedRefuge) {
+              try { await recreateRefuge(lastDeletedRefuge); } finally { lastDeletedRefuge = null; }
+              await loadAndRenderRefuges();
+            }
+          }, 12000);
+        } catch (e) {
+          if (statusEl) statusEl.style.display = '';
+          hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Delete failed', 'error');
+          // Restore the button if deletion fails
+          try { del.disabled = false; del.style.display = ''; } catch (err) {}
+        }
+      });
     }
     // No rename in edit mode; Delete remains the only persistent action
   }
