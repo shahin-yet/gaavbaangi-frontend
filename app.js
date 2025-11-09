@@ -310,16 +310,11 @@ window.addEventListener('DOMContentLoaded', function () {
                         input.type = 'text';
                         input.className = 'refuge-name-input';
                         input.value = originalName;
-                        // Size input to content length and keep it updated
-                        try { input.size = Math.max(1, (originalName || '').length + 1); } catch (e) {}
                         nameEl.parentNode.replaceChild(input, nameEl);
                         input.focus();
                         input.select();
                         renameBtn.textContent = 'Save';
                         renameBtn.title = 'Save name';
-                        input.addEventListener('input', () => {
-                          try { input.size = Math.max(1, (input.value || '').length + 1); } catch (e) {}
-                        });
                         
                         // Allow Enter key to save
                         input.onkeydown = (e) => {
