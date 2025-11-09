@@ -359,11 +359,6 @@ body {
   border-color: #1e90ff;
 }
 
-/* Mobile edit mode: make center cursor ring red only when near snapping */
-.mobile-ui.editing-active .map-center-dot.snap-near {
-  border-color: #ff2d2d;
-}
-
 /* Floating Action Button (Menu) */
 .fab-menu {
   position: absolute;
@@ -486,95 +481,6 @@ body {
 
 .telegram-webapp .fab-menu { bottom: 16px; right: 16px; }
 
-/* Mobile Edit: Right-thumb vertical scroll control */
-.vertical-scroll-pad {
-  position: absolute;
-  right: 20px;
-  bottom: calc(24px + 56px + 14px); /* above FAB with spacing */
-  width: 64px;
-  height: 20vh; /* shortened by one-third */
-  min-height: 108px; /* 2/3 of 160px */
-  max-height: 30vh; /* ~2/3 of previous cap */
-  background: rgba(255,255,255,0.96);
-  border: 1px solid var(--gray-200);
-  border-radius: 14px;
-  box-shadow: var(--shadow-lg);
-  display: none; /* toggled on in mobile editing */
-  z-index: 1200;
-  padding: 8px 10px;
-  align-items: center;
-  justify-content: center;
-  pointer-events: auto; /* interactive: used to control border rail */
-  transform: translateY(-100%); /* lift by its own height */
-}
-
-.mobile-ui.editing-active .vertical-scroll-pad { display: flex; }
-
-.vertical-scroll-pad .vsp-track {
-  position: relative;
-  width: 60px; /* circular dial */
-  height: 60px;
-  border-radius: 50%;
-  background: radial-gradient(circle at center, #ffffff 55%, transparent 56%);
-  border: 2px solid var(--gray-300);
-  margin: auto;
-}
-
-.vertical-scroll-pad .vsp-wheel {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background:
-    repeating-conic-gradient(
-      from 0deg,
-      #bbbbbb 0deg 2deg,
-      transparent 2deg 14deg
-    ),
-    radial-gradient(circle at center, transparent 52%, rgba(0,0,0,0.06) 53%);
-}
-
-.vertical-scroll-pad .vsp-indicator {
-  position: absolute;
-  top: 4px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #ff2d2d;
-  box-shadow: 0 0 0 4px rgba(255,45,45,0.12);
-}
-
-.vertical-scroll-pad .vsp-label {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 11px;
-  color: #2a2a2a;
-  user-select: none;
-  pointer-events: none;
-}
-
-.vertical-scroll-pad .vsp-thumb {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 0px; /* hidden in dial mode */
-  height: 0px;
-  border-radius: 50%;
-  background: transparent;
-  box-shadow: none;
-  transform: translate(-50%, -50%);
-  touch-action: none;
-  cursor: grab;
-}
-
-.vertical-scroll-pad .vsp-thumb.dragging { cursor: grabbing; }
-
-/* Make the center dot clearly active in edit rail mode */
-.mobile-ui.editing-active .map-center-dot { border-color: #ff2d2d; }
-
 /* Drawing HUD (top-right) */
 .drawing-hud {
   position: absolute;
@@ -645,6 +551,32 @@ body {
   font-size: 14px;
 }
 .drawing-hud .hud-delete:hover { filter: brightness(0.95); }
+
+/* Edit HUD: Undo and Save */
+.drawing-hud .hud-undo {
+  margin-left: 8px;
+  border: 1px solid #bdbdbd;
+  background: #f5f5f5;
+  color: #333;
+  padding: 10px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.drawing-hud .hud-undo:disabled { opacity: 0.5; cursor: default; }
+.drawing-hud .hud-undo:hover { filter: brightness(0.98); }
+
+.drawing-hud .hud-save {
+  margin-left: 8px;
+  border: 1px solid #76a7ff;
+  background: #0b63c9;
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.drawing-hud .hud-save:hover { filter: brightness(0.95); }
 
 /* Popup content: name with rename button on the right */
 .refuge-popup { display: inline-flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; width: max-content; }
