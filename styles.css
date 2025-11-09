@@ -554,7 +554,7 @@ body {
 
 /* Popup content: name with rename button on the right */
 .refuge-popup { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
-.refuge-popup .refuge-name-row { display: inline-flex; align-items: center; gap: 8px; padding-right: 24px; }
+.refuge-popup .refuge-name-row { display: inline-flex; align-items: center; gap: 8px; }
 .refuge-popup .refuge-name { font-weight: 600; white-space: nowrap; outline: none; }
 .refuge-popup .refuge-name:focus { outline: 2px solid var(--gray-300); outline-offset: 2px; border-radius: 4px; }
 .refuge-popup .refuge-name-input { width: auto; font-weight: 600; padding: 4px 6px; border: 1px solid var(--gray-300); border-radius: 6px; }
@@ -576,18 +576,13 @@ body {
 /* Make Rename a tiny text link instead of a full button */
 .refuge-popup .refuge-rename-btn {
   background: transparent;
-  background-color: transparent;
   border: none;
-  border-radius: 0;
-  padding: 0;
-  margin: 0 0 0 4px;
+  padding: 0 2px;
+  margin: 0;
   color: #0b63c9;
-  font-size: 12px; /* tiny text */
+  font-size: 12px;
   line-height: 1.2;
   cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
 }
 .refuge-popup .refuge-rename-btn:hover { text-decoration: underline; }
 .refuge-popup .refuge-rename-btn:disabled { color: var(--gray-500); cursor: default; text-decoration: none; }
@@ -601,6 +596,7 @@ body {
 .leaflet-popup-content-wrapper:has(.refuge-popup) {
   width: auto;
   max-width: none;
+  padding-right: 28px; /* keep space for the close (×) button */
 }
 
 /* Undo toast */
