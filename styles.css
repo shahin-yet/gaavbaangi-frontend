@@ -555,6 +555,7 @@ body {
 /* Popup content: name with rename button on the right */
 .refuge-popup { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
 .refuge-popup .refuge-name-row { display: inline-flex; align-items: center; gap: 8px; }
+.refuge-popup .refuge-name-row { padding-right: 18px; } /* keep clear of the close (×) without increasing global right margin */
 .refuge-popup .refuge-name { font-weight: 600; white-space: nowrap; outline: none; }
 .refuge-popup .refuge-name:focus { outline: 2px solid var(--gray-300); outline-offset: 2px; border-radius: 4px; }
 .refuge-popup .refuge-name-input { width: auto; font-weight: 600; padding: 4px 6px; border: 1px solid var(--gray-300); border-radius: 6px; }
@@ -584,6 +585,7 @@ body {
   font-size: 10px;
   line-height: 1.1;
   cursor: pointer;
+  white-space: nowrap; /* prevent wrapping under the close (×) */
 }
 .refuge-popup .refuge-rename-btn:hover { text-decoration: underline; }
 .refuge-popup .refuge-rename-btn:disabled { color: var(--gray-500); cursor: default; text-decoration: none; }
