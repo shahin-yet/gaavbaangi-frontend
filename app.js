@@ -111,6 +111,27 @@ window.addEventListener('DOMContentLoaded', function () {
     return data.refuge;
   }
 
+  async function updateRefugePolygon(refugeId, ringLatLngs) {
+    // Ensure closed ring and convert to GeoJSON lon/lat
+    const ring = ringLatLngs.map(ll => [ll.lng, ll.lat]);
+    if (ring.length >= 3) {
+      const first = ring[0];
+      const last = ring[ring.length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) ring.push(first);
+    }
+    const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges/${refugeId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ polygon: { type: 'Polygon', coordinates: [ring] } })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data || data.status !== 'success') {
+      const msg = (data && data.message) || `Failed to update (${res.status})`;
+      throw new Error(msg);
+    }
+    return data.refuge;
+  }
+
   async function deleteRefugeById(refugeId) {
     const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges/${refugeId}`, { method: 'DELETE' });
     const data = await res.json().catch(() => ({}));
@@ -157,10 +178,29 @@ window.addEventListener('DOMContentLoaded', function () {
     const beginEditing = () => {
       try { document.body.classList.add('editing-active'); } catch (e) {}
       window.__editing = true;
-      // Do not block map interactions; no fullscreen overlay
-      window.__editBlocker = null;
+      // Add a transparent blocker to capture all pointer events beneath the HUD
+      try {
+        const blocker = document.createElement('div');
+        blocker.className = 'ui-edit-blocker';
+        blocker.style.position = 'fixed';
+        blocker.style.left = '0';
+        blocker.style.top = '0';
+        blocker.style.right = '0';
+        blocker.style.bottom = '0';
+        blocker.style.background = 'transparent';
+        blocker.style.zIndex = '1150'; // between toolbar/leaflet popups and HUD (1200)
+        blocker.style.pointerEvents = 'auto';
+        // Prevent context menu or accidental interactions
+        blocker.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
+        blocker.addEventListener('mousedown', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
+        blocker.addEventListener('mouseup', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
+        blocker.addEventListener('touchstart', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true, passive: false });
+        blocker.addEventListener('touchend', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true, passive: false });
+        blocker.addEventListener('wheel', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true });
+        document.body.appendChild(blocker);
+        window.__editBlocker = blocker;
+      } catch (e) {}
     };
-    const cleanupFns = [];
     const endEditing = () => {
       try { document.body.classList.remove('editing-active'); } catch (e) {}
       window.__editing = false;
@@ -169,13 +209,6 @@ window.addEventListener('DOMContentLoaded', function () {
           window.__editBlocker.parentNode.removeChild(window.__editBlocker);
         }
         window.__editBlocker = null;
-      } catch (e) {}
-      // Run any registered cleanups (listeners, cursors, classes)
-      try {
-        while (cleanupFns.length) {
-          const fn = cleanupFns.pop();
-          try { typeof fn === 'function' && fn(); } catch (e) {}
-        }
       } catch (e) {}
     };
     // Close any open UI panels and popups while entering edit mode
@@ -236,320 +269,213 @@ window.addEventListener('DOMContentLoaded', function () {
         }
       });
     }
-    // No rename in edit mode; only Delete is available
-    
-    // Mobile: right-thumb vertical scroll control above FAB (visual only, no behavior)
-    if (isMobile) {
-      const containerWrap = document.querySelector('.map-container') || (map && map.getContainer && map.getContainer().parentElement) || document.body;
-      const vsp = document.createElement('div');
-      vsp.className = 'vertical-scroll-pad';
-      vsp.innerHTML = '<div class="vsp-track"><div class="vsp-thumb"></div></div>';
-      try { containerWrap.appendChild(vsp); } catch (e) {}
-
-      cleanupFns.push(() => {
-        try { vsp && vsp.parentNode && vsp.parentNode.removeChild(vsp); } catch (e) {}
-      });
+    // Add Undo and Save buttons beside Delete during mobile editing
+    let undoBtn = null;
+    let saveBtn = null;
+    if (actions && !hud.querySelector('.hud-undo')) {
+      undoBtn = document.createElement('button');
+      undoBtn.className = 'hud-undo';
+      undoBtn.type = 'button';
+      undoBtn.textContent = 'Undo';
+      actions.appendChild(undoBtn);
+    }
+    if (actions && !hud.querySelector('.hud-save')) {
+      saveBtn = document.createElement('button');
+      saveBtn.className = 'hud-save';
+      saveBtn.type = 'button';
+      saveBtn.textContent = 'Save';
+      actions.appendChild(saveBtn);
     }
 
-    // Mobile-only: rail along refuge border, controlled by vertical scroll pad
-    if (isMobile && refuge && refuge.polygon) {
-      const bodyEl = document.body;
-      const dotEl = document.querySelector('.map-center-dot');
-      // Choose the longest ring to rail on (outer boundary)
+    // Mobile-only interactive border editing
+    if (typeof isMobile !== 'undefined' && isMobile) {
+      try { window.__suppressCenterDoubleAction = true; } catch (e) {}
+      // Allow map interactions while editing
+      try { if (window.__editBlocker) window.__editBlocker.style.pointerEvents = 'none'; } catch (e) {}
+
+      const statusEl = hud.querySelector('.hud-status');
+      if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Pan to position, double tap to lock'; }
+
+      // Build editable ring from GeoJSON (first polygon ring)
       const toLatLng = ([lng, lat]) => L.latLng(lat, lng);
-      const geo = refuge.polygon;
-      const rings = [];
-      if (geo && geo.type === 'Polygon') {
-        (geo.coordinates || []).forEach(r => rings.push((r || []).map(toLatLng)));
-      } else if (geo && geo.type === 'MultiPolygon') {
-        (geo.coordinates || []).forEach(poly => { (poly || []).forEach(r => rings.push((r || []).map(toLatLng))); });
-      }
-      if (!rings.length) return;
+      const fromGeo = (poly) => {
+        try {
+          if (!poly || poly.type !== 'Polygon') return [];
+          const ring = (poly.coordinates && poly.coordinates[0]) || [];
+          const latlngs = ring.map(toLatLng);
+          // Drop duplicated closing point if present
+          if (latlngs.length > 1) {
+            const a = latlngs[0], b = latlngs[latlngs.length - 1];
+            if (a.lat === b.lat && a.lng === b.lng) latlngs.pop();
+          }
+          return latlngs;
+        } catch (e) { return []; }
+      };
 
-      // Pick longest ring by geodesic length
-      function ringLength(latlngs) {
-        let len = 0;
-        for (let i = 0; i < latlngs.length - 1; i++) len += map.distance(latlngs[i], latlngs[i + 1]);
-        return len;
-      }
-      let railRing = rings[0];
-      let maxLen = ringLength(railRing);
-      for (let i = 1; i < rings.length; i++) {
-        const Llen = ringLength(rings[i]);
-        if (Llen > maxLen) { maxLen = Llen; railRing = rings[i]; }
-      }
-      if (!railRing || railRing.length < 2) return;
-
-      // Cumulative lengths for interpolation
-      const segLens = [];
-      const cumLens = [0];
-      for (let i = 0; i < railRing.length - 1; i++) {
-        const d = map.distance(railRing[i], railRing[i + 1]);
-        segLens.push(d);
-        cumLens.push(cumLens[cumLens.length - 1] + d);
-      }
-      const totalLen = cumLens[cumLens.length - 1] || 1;
-
-      function pointAt(t) {
-        const target = Math.max(0, Math.min(1, t)) * totalLen;
-        // find segment index
-        let idx = 0;
-        while (idx < segLens.length && cumLens[idx + 1] < target) idx++;
-        const segStart = cumLens[idx];
-        const segLen = segLens[idx] || 1;
-        const localT = Math.max(0, Math.min(1, (target - segStart) / segLen));
-        const a = railRing[idx];
-        const b = railRing[idx + 1] || a;
-        return L.latLng(
-          a.lat + (b.lat - a.lat) * localT,
-          a.lng + (b.lng - a.lng) * localT
-        );
+      let ring = fromGeo(refuge && refuge.polygon);
+      if (!ring || ring.length < 3) {
+        // Nothing to edit
+        return;
       }
 
-      // Helper: nearest on a single ring (pixel-space projection)
-      function nearestOnRing(centerLatLng) {
+      const editPoly = L.polygon(ring, {
+        color: '#1e90ff',
+        weight: 2,
+        fillColor: '#1e90ff',
+        fillOpacity: 0.15
+      }).addTo(refugeLayerGroup);
+      const editCursor = L.circleMarker(ring[0], { radius: 6, color: '#ff5722', fillColor: '#ff5722', fillOpacity: 0.9 }).addTo(refugeLayerGroup);
+
+      const localHandlers = [];
+      const cleanup = () => {
+        try { localHandlers.forEach(({ el, evt, fn, opts }) => el.removeEventListener(evt, fn, opts || false)); } catch (e) {}
+        try { localHandlers.length = 0; } catch (e) {}
+        try { refugeLayerGroup.removeLayer(editPoly); } catch (e) {}
+        try { refugeLayerGroup.removeLayer(editCursor); } catch (e) {}
+        try { window.__suppressCenterDoubleAction = false; } catch (e) {}
+      };
+
+      // Attach cleanup to HUD close
+      const closeHud = () => {
+        const h = document.querySelector('.drawing-hud');
+        if (h) h.remove();
+        cleanup();
+        endEditing();
+      };
+      // Replace cancel to ensure cleanup happens
+      try {
+        const cancelBtn = hud.querySelector('.hud-cancel');
+        if (cancelBtn) {
+          const clone = cancelBtn.cloneNode(true);
+          cancelBtn.parentNode.replaceChild(clone, cancelBtn);
+          clone.addEventListener('click', closeHud);
+        }
+      } catch (e) {}
+
+      // Undo stack
+      const undoStack = [];
+      const pushUndo = () => { undoStack.push(ring.map(ll => L.latLng(ll.lat, ll.lng))); if (undoBtn) undoBtn.disabled = false; };
+      const applyRing = (newRing) => { ring = newRing; editPoly.setLatLngs(ring); };
+
+      // Geometry helpers (operate in container pixel space for snapping)
+      function snapToBorder(centerLatLng) {
         const p = map.latLngToContainerPoint(centerLatLng);
-        let best = { segIndex: -1, t: 0, dist2: Infinity };
-        for (let j = 0; j < railRing.length - 1; j++) {
-          const aPx = map.latLngToContainerPoint(railRing[j]);
-          const bPx = map.latLngToContainerPoint(railRing[j + 1]);
-          const apx = p.x - aPx.x, apy = p.y - aPx.y;
-          const abx = bPx.x - aPx.x, aby = bPx.y - aPx.y;
+        const pts = ring.map(ll => map.latLngToContainerPoint(ll));
+        let best = { dist2: Infinity, segIndex: -1, snap: null };
+        const n = pts.length;
+        for (let i = 0; i < n; i++) {
+          const a = pts[i];
+          const b = pts[(i + 1) % n];
+          const abx = b.x - a.x, aby = b.y - a.y;
+          const apx = p.x - a.x, apy = p.y - a.y;
           const ab2 = abx * abx + aby * aby || 1;
-          let t = (apx * abx + apy * aby) / ab2; if (t < 0) t = 0; else if (t > 1) t = 1;
-          const qx = aPx.x + abx * t, qy = aPx.y + aby * t;
-          const dx = p.x - qx, dy = p.y - qy;
+          let t = (apx * abx + apy * aby) / ab2;
+          if (t < 0) t = 0; else if (t > 1) t = 1;
+          const sx = a.x + t * abx;
+          const sy = a.y + t * aby;
+          const dx = p.x - sx, dy = p.y - sy;
           const d2 = dx * dx + dy * dy;
-          if (d2 < best.dist2) best = { segIndex: j, t, dist2: d2 };
+          if (d2 < best.dist2) best = { dist2: d2, segIndex: i, snap: L.point(sx, sy) };
         }
-        const segStart = cumLens[best.segIndex];
-        const segLen = segLens[best.segIndex] || 1;
-        const along = (segStart + best.t * segLen) / totalLen;
-        return Math.max(0, Math.min(1, along));
+        const snapLatLng = map.containerPointToLatLng(best.snap);
+        return { latlng: snapLatLng, segIndex: best.segIndex };
       }
 
-      // Interactive vertical scroll pad controls the parameter t ∈ [0,1]
-      const vsp = document.querySelector('.vertical-scroll-pad');
-      const track = vsp && vsp.querySelector('.vsp-track');
-      const thumb = vsp && vsp.querySelector('.vsp-thumb');
-      // Upgrade to dial UI if not already present
-      if (vsp && track && !track.querySelector('.vsp-wheel')) {
-        track.innerHTML = '<div class="vsp-wheel"></div><div class="vsp-indicator"></div><div class="vsp-label"></div>';
-      }
-      const wheel = vsp && vsp.querySelector('.vsp-wheel');
-      const label = vsp && vsp.querySelector('.vsp-label');
-      if (!vsp || !track || !thumb) return;
+      let draggingIndex = null; // index of vertex being adjusted live
+      let firstMoveInserted = false;
+      let touchStart = { x: 0, y: 0 };
+      let touchMoved = false;
+      const TAP_THRESHOLD = 8; // px
 
-      // Disable map dragging to prevent conflicting input during rail edit
-      try { map.dragging && map.dragging.disable && map.dragging.disable(); } catch (e) {}
+      const container = map.getContainer();
 
-      // Initial lock: set to nearest point on ring and show active state
-      if (dotEl) { try { dotEl.classList.add('snap-near'); } catch (e) {} }
-      try { bodyEl && bodyEl.classList.add('editing-active'); } catch (e) {}
-      let tAcc = nearestOnRing(map.getCenter()); // unbounded t for infinite wrap
-      let isDraggingThumb = false;
-      let startAngle = 0; // radians
-      let lastAngle = 0;  // radians
-      let accumTurns = 0; // accumulated rotations in turns
-      let startT = tAcc;
-
-      function normalize01(t) { return (t % 1 + 1) % 1; }
-
-      function setDialFromT(t) {
-        const tN = normalize01(t);
-        const angleDeg = tN * 360;
-        if (wheel) wheel.style.transform = `rotate(${angleDeg}deg)`;
-        if (label) {
-          // Show a zoom-like value for familiar look (no real zoom applied)
-          const val = (1 + tN * 4).toFixed(1) + 'x';
-          label.textContent = val;
-        }
-      }
-
-      function panToT(t, animate = true) {
-        tAcc = t;
-        const tN = normalize01(tAcc);
-        const target = pointAt(tN);
-        map.panTo(target, { animate: !!animate, duration: 0.25, easeLinearity: 0.25 });
-        setDialFromT(tAcc);
-      }
-
-      // Set initial position
-      setDialFromT(tAcc);
-      panToT(tAcc, false);
-
-      function getClientXY(e) {
-        const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
-        return { x: t.clientX, y: t.clientY };
-      }
-
-      function angleAtEvent(e) {
-        const rect = track.getBoundingClientRect();
-        // center of the circular dial
-        const cx = rect.left + rect.width / 2;
-        const cy = rect.top + rect.width / 2; // track is square
-        const { x, y } = getClientXY(e);
-        const dx = x - cx;
-        const dy = y - cy;
-        const a = Math.atan2(dy, dx); // [-pi, pi], 0 at +X, CCW positive
-        // Convert to 0 at top (negative Y) and clockwise positive
-        let cwFromTop = (-a + Math.PI / 2);
-        // normalize to [-pi, 3pi) for stability; we'll unwrap later
-        while (cwFromTop < -Math.PI) cwFromTop += Math.PI * 2;
-        while (cwFromTop >= Math.PI * 3) cwFromTop -= Math.PI * 2;
-        return cwFromTop;
-      }
-
-      function unwrapDelta(curr, prev) {
-        let d = curr - prev;
-        if (d > Math.PI) d -= Math.PI * 2;
-        if (d < -Math.PI) d += Math.PI * 2;
-        return d;
-      }
-
-      function angleToT(a) {
-        // a is clockwise from top in radians
-        const twoPi = Math.PI * 2;
-        let n = a % twoPi; if (n < 0) n += twoPi;
-        return n / twoPi;
-      }
-
-      const onStart = (e) => {
-        e.preventDefault && e.preventDefault();
-        e.stopPropagation && e.stopPropagation();
-        isDraggingThumb = true;
-        thumb.classList.add('dragging');
-        // If start from track (not thumb), jump to that absolute spot first
-        const a0 = angleAtEvent(e);
-        if (e.target === track) {
-          panToT(angleToT(a0), true);
-        }
-        startAngle = a0;
-        lastAngle = a0;
-        accumTurns = 0;
-        startT = tAcc;
-        window.addEventListener('mousemove', onMove, { passive: false });
-        window.addEventListener('touchmove', onMove, { passive: false });
-        window.addEventListener('mouseup', onEnd, { passive: false });
-        window.addEventListener('touchend', onEnd, { passive: false });
-      };
-      let lastTimeMs = 0;
-      let velTurnsPerMs = 0; // for inertia
-      const onMove = (e) => {
-        if (!isDraggingThumb) return;
-        e.preventDefault && e.preventDefault();
-        e.stopPropagation && e.stopPropagation();
-        const a = angleAtEvent(e);
-        const d = unwrapDelta(a, lastAngle);
-        lastAngle = a;
-        const now = performance.now();
-        const dt = lastTimeMs ? Math.max(1, now - lastTimeMs) : 16;
-        lastTimeMs = now;
-        const dTurns = d / (Math.PI * 2);
-        accumTurns += dTurns;
-        velTurnsPerMs = dTurns / dt;
-        panToT(startT + accumTurns, false);
-      };
-      let inertiaRaf = 0;
-      const runInertia = () => {
-        const decay = 0.92;
-        const stopThreshold = 0.00002; // turns/ms
-        let prev = performance.now();
-        const step = () => {
-          const now = performance.now();
-          const dt = Math.max(1, now - prev);
-          prev = now;
-          if (Math.abs(velTurnsPerMs) < stopThreshold) { inertiaRaf = 0; return; }
-          tAcc += velTurnsPerMs * dt;
-          panToT(tAcc, false);
-          velTurnsPerMs *= decay;
-          inertiaRaf = requestAnimationFrame(step);
-        };
-        inertiaRaf = requestAnimationFrame(step);
-      };
-      const onEnd = (e) => {
-        if (!isDraggingThumb) return;
-        e.preventDefault && e.preventDefault();
-        e.stopPropagation && e.stopPropagation();
-        isDraggingThumb = false;
-        thumb.classList.remove('dragging');
-        // inertia if moving fast
-        if (Math.abs(velTurnsPerMs) > 0.00005) {
-          runInertia();
-        } else {
-          panToT(tAcc, true);
-        }
-        window.removeEventListener('mousemove', onMove, { passive: false });
-        window.removeEventListener('touchmove', onMove, { passive: false });
-        window.removeEventListener('mouseup', onEnd, { passive: false });
-        window.removeEventListener('touchend', onEnd, { passive: false });
-      };
-
-      // Click/press track jumps
-      track.addEventListener('mousedown', onStart, { passive: false });
-      track.addEventListener('touchstart', onStart, { passive: false });
-      wheel && wheel.addEventListener('mousedown', onStart, { passive: false });
-      wheel && wheel.addEventListener('touchstart', onStart, { passive: false });
-      thumb.addEventListener('mousedown', onStart, { passive: false });
-      thumb.addEventListener('touchstart', onStart, { passive: false });
-
-      // Wheel scroll support (normalize trackpad vs mouse wheel)
-      let wheelAccumPx = 0;
-      // Separate accumulator for dial visuals when using wheel-to-zoom
-      let dialTAccVisual = tAcc;
-      const onWheel = (e) => {
-        e.preventDefault();
-        // Normalize delta to pixels
-        let dy = e.deltaY || 0;
-        if (e.deltaMode === 1) { // lines
-          dy *= 16;
-        } else if (e.deltaMode === 2) { // pages
-          dy *= 800;
-        }
-        // Accumulate and emit discrete steps like a mouse wheel notch (~100px)
-        wheelAccumPx += dy;
-        const STEP_PX = 100;
-        const steps = Math.trunc(wheelAccumPx / STEP_PX);
-        if (steps !== 0) {
-          // Zoom map like a mouse wheel: positive dy (down) => zoom out
-          const currentZoom = typeof map.getZoom === 'function' ? map.getZoom() : 0;
-          const minZoom = typeof map.getMinZoom === 'function' ? map.getMinZoom() : 0;
-          const maxZoom = typeof map.getMaxZoom === 'function' ? map.getMaxZoom() : 22;
-          let targetZoom = currentZoom - steps;
-          if (targetZoom < minZoom) targetZoom = minZoom;
-          if (targetZoom > maxZoom) targetZoom = maxZoom;
-          try { map.setZoom(targetZoom, { animate: true }); } catch (err) { try { map.setZoom(targetZoom); } catch (e2) {} }
-          // Keep dial visuals rotating to reflect action without altering rail position state
-          const stepTurnsVisual = -(steps * STEP_PX) / 2400; // down = clockwise
-          dialTAccVisual += stepTurnsVisual;
-          setDialFromT(dialTAccVisual);
-          wheelAccumPx -= steps * STEP_PX;
+      const onMapMove = () => {
+        const { latlng, segIndex } = snapToBorder(map.getCenter());
+        editCursor.setLatLng(latlng);
+        if (draggingIndex != null) {
+          // Live adjust the vertex to follow border under the center
+          ring[draggingIndex] = latlng;
+          editPoly.setLatLngs(ring);
+        } else if (!firstMoveInserted) {
+          // Insert a new vertex on first movement after entering edit
+          pushUndo();
+          const insertAt = (segIndex + 1);
+          ring.splice(insertAt, 0, latlng);
+          draggingIndex = insertAt;
+          firstMoveInserted = true;
+          editPoly.setLatLngs(ring);
         }
       };
-      vsp.addEventListener('wheel', onWheel, { passive: false });
 
-      // Cleanup: re-enable dragging and remove listeners
-      cleanupFns.push(() => {
-        try { map.dragging && map.dragging.enable && map.dragging.enable(); } catch (e) {}
-        if (dotEl) { try { dotEl.classList.remove('snap-near'); } catch (e) {} }
-        try {
-          track.removeEventListener('mousedown', onStart, { passive: false });
-          track.removeEventListener('touchstart', onStart, { passive: false });
-          wheel && wheel.removeEventListener('mousedown', onStart, { passive: false });
-          wheel && wheel.removeEventListener('touchstart', onStart, { passive: false });
-          thumb.removeEventListener('mousedown', onStart, { passive: false });
-          thumb.removeEventListener('touchstart', onStart, { passive: false });
-        } catch (e) {}
-        try {
-          window.removeEventListener('mousemove', onMove, { passive: false });
-          window.removeEventListener('touchmove', onMove, { passive: false });
-          window.removeEventListener('mouseup', onEnd, { passive: false });
-          window.removeEventListener('touchend', onEnd, { passive: false });
-        } catch (e) {}
-        try { vsp.removeEventListener('wheel', onWheel, { passive: false }); } catch (e) {}
-        try { inertiaRaf && cancelAnimationFrame(inertiaRaf); } catch (e) {}
-      });
+      const onCenterDoubleTap = () => {
+        // Lock current dragging vertex
+        draggingIndex = null;
+        if (statusEl) statusEl.textContent = 'Pan to choose position, tap to add, double tap to lock';
+      };
+
+      const getTouchPoint = (e) => {
+        const t = (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]) || null;
+        return t ? { x: t.clientX, y: t.clientY } : null;
+      };
+      const onTouchStart = (ev) => {
+        const p = getTouchPoint(ev); if (!p) return; touchStart = p; touchMoved = false;
+      };
+      const onTouchMove = (ev) => {
+        const p = getTouchPoint(ev); if (!p) return;
+        const dx = p.x - touchStart.x, dy = p.y - touchStart.y;
+        if ((dx * dx + dy * dy) > (TAP_THRESHOLD * TAP_THRESHOLD)) touchMoved = true;
+      };
+      const onTouchEnd = (ev) => {
+        // Treat as single tap (add portable vertex) if not moved much
+        if (touchMoved) return;
+        ev.preventDefault && ev.preventDefault();
+        ev.stopPropagation && ev.stopPropagation();
+        const { latlng, segIndex } = snapToBorder(map.getCenter());
+        pushUndo();
+        const insertAt = (segIndex + 1);
+        ring.splice(insertAt, 0, latlng);
+        draggingIndex = insertAt; // start dragging this new vertex
+        editPoly.setLatLngs(ring);
+      };
+
+      map.on('move', onMapMove);
+      const dblHandler = () => onCenterDoubleTap();
+      window.addEventListener('map-center-doubletap', dblHandler);
+      container.addEventListener('touchstart', onTouchStart, { passive: false });
+      localHandlers.push({ el: container, evt: 'touchstart', fn: onTouchStart, opts: { passive: false } });
+      container.addEventListener('touchmove', onTouchMove, { passive: false });
+      localHandlers.push({ el: container, evt: 'touchmove', fn: onTouchMove, opts: { passive: false } });
+      container.addEventListener('touchend', onTouchEnd, { passive: false });
+      localHandlers.push({ el: container, evt: 'touchend', fn: onTouchEnd, opts: { passive: false } });
+
+      // Wire Undo
+      if (undoBtn) {
+        undoBtn.disabled = true;
+        undoBtn.addEventListener('click', () => {
+          if (!undoStack.length) return;
+          const prev = undoStack.pop();
+          applyRing(prev);
+          draggingIndex = null;
+          if (undoStack.length === 0) undoBtn.disabled = true;
+        });
+      }
+      // Wire Save
+      if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+          try {
+            saveBtn.disabled = true;
+            if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Saving…'; }
+            await updateRefugePolygon(refuge.id, ring);
+            await loadAndRenderRefuges();
+            closeHud();
+          } catch (e) {
+            if (statusEl) { statusEl.style.display = ''; statusEl.textContent = (e && e.message) || 'Failed to save'; }
+            saveBtn.disabled = false;
+          }
+        });
+      }
     }
+    // No rename in edit mode; actions are Delete, Undo, Save
   }
 
   async function loadAndRenderRefuges() {
