@@ -250,20 +250,95 @@ window.addEventListener('DOMContentLoaded', function () {
                 });
                 polygon._refuge = { id: r.id, name: r.name, polygon: r.polygon };
                 const popupId = `ref-edit-${r.id}`;
+                const renameId = `ref-rename-${r.id}`;
+                const nameInputId = `ref-name-input-${r.id}`;
                 const popupHtml = `
                   <div class="refuge-popup">
-                    <div class="refuge-name">${escapeHtml(r.name || 'Refuge')}</div>
+                    <div class="refuge-name-row">
+                      <div class="refuge-name">${escapeHtml(r.name || 'Refuge')}</div>
+                      <button id="${renameId}" class="refuge-rename-btn" type="button">rename</button>
+                    </div>
                     <button id="${popupId}" class="refuge-edit-link" type="button">Edit</button>
                   </div>
                 `;
                 polygon.addTo(refugeLayerGroup).bindPopup(popupHtml);
                 polygon.on('popupopen', () => {
-                  const btn = document.getElementById(popupId);
-                  if (btn) {
-                    btn.onclick = (ev) => {
+                  const editBtn = document.getElementById(popupId);
+                  if (editBtn) {
+                    editBtn.onclick = (ev) => {
                       ev && ev.stopPropagation && ev.stopPropagation();
                       try { polygon.closePopup(); } catch (e) {}
                       openRefugeEditor(polygon._refuge);
+                    };
+                  }
+                  const renameBtn = document.getElementById(renameId);
+                  const popupRoot = renameBtn ? renameBtn.closest('.refuge-popup') : null;
+                  const nameEl = popupRoot ? popupRoot.querySelector('.refuge-name') : null;
+                  let renaming = false;
+                  const enterHandler = async (e) => {
+                    if (e && (e.key === 'Enter' || e.keyCode === 13)) {
+                      e.preventDefault();
+                      await doSave();
+                    } else if (e && (e.key === 'Escape' || e.keyCode === 27)) {
+                      // cancel rename: restore label
+                      exitRename(false);
+                    }
+                  };
+                  const exitRename = (updated, newName) => {
+                    if (!popupRoot) return;
+                    const input = popupRoot.querySelector(`#${nameInputId}`);
+                    if (input && input.removeEventListener) input.removeEventListener('keydown', enterHandler);
+                    if (nameEl) {
+                      if (updated && typeof newName === 'string') {
+                        nameEl.textContent = newName;
+                      }
+                      nameEl.style.display = '';
+                    }
+                    const existingInput = popupRoot.querySelector(`#${nameInputId}`);
+                    if (existingInput && existingInput.parentNode) {
+                      existingInput.parentNode.removeChild(existingInput);
+                    }
+                    if (renameBtn) {
+                      renameBtn.disabled = false;
+                      renameBtn.textContent = 'rename';
+                    }
+                    renaming = false;
+                  };
+                  const doSave = async () => {
+                    if (!popupRoot) return;
+                    const input = popupRoot.querySelector(`#${nameInputId}`);
+                    const val = input && typeof input.value === 'string' ? input.value.trim() : '';
+                    if (!val) { exitRename(false); return; }
+                    try {
+                      if (renameBtn) renameBtn.disabled = true;
+                      const updated = await updateRefugeName(polygon._refuge.id, val);
+                      polygon._refuge.name = updated && updated.name ? updated.name : val;
+                      exitRename(true, polygon._refuge.name);
+                    } catch (err) {
+                      alert((err && err.message) || 'Failed to rename');
+                      if (renameBtn) renameBtn.disabled = false;
+                    }
+                  };
+                  if (renameBtn && nameEl) {
+                    renameBtn.onclick = async (e) => {
+                      e && e.stopPropagation && e.stopPropagation();
+                      if (!renaming) {
+                        // enter rename mode
+                        renaming = true;
+                        // hide label, insert input
+                        nameEl.style.display = 'none';
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.id = nameInputId;
+                        input.className = 'refuge-name-input';
+                        input.value = nameEl.textContent || '';
+                        nameEl.parentNode && nameEl.parentNode.insertBefore(input, renameBtn);
+                        try { input.focus(); input.select && input.select(); } catch (e) {}
+                        input.addEventListener('keydown', enterHandler);
+                        renameBtn.textContent = 'Save';
+                      } else {
+                        await doSave();
+                      }
                     };
                   }
                 });
