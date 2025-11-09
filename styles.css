@@ -492,7 +492,7 @@ body {
   box-shadow: var(--shadow-lg);
   padding: 10px 12px;
   z-index: 1200;
-  min-width: 220px;
+  min-width: 180px; /* slightly narrower so the ✕ is closer to the title */
 }
 
 .drawing-hud .hud-row {
@@ -569,7 +569,7 @@ body {
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
-  text-align: center;
+  text-align: left;
 }
 .refuge-popup .refuge-edit-link:hover { background: #e8f2ff; }
 
