@@ -534,9 +534,11 @@ body {
 .drawing-hud .hud-status.status-success { color: #1b7f39; }
 
 /* HUD controls layout */
-.drawing-hud .hud-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.drawing-hud .hud-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.drawing-hud .hud-operations { display: flex; gap: 8px; justify-content: center; }
+.drawing-hud .hud-actions-row { display: flex; justify-content: space-between; align-items: center; }
 .drawing-hud .hud-actions-left { display: flex; gap: 8px; }
-.drawing-hud .hud-actions-right { display: flex; gap: 8px; }
+.drawing-hud .hud-actions-right { display: flex; gap: 1px; }
 .drawing-hud .hud-name { width: 100%; }
 .drawing-hud .hud-ok { border: 1px solid var(--gray-300); background: var(--primary, #1b7f39); color: #fff; padding: 10px 16px; border-radius: 10px; cursor: pointer; font-size: 14px; }
 .drawing-hud .hud-ok:hover { filter: brightness(0.95); }
@@ -574,6 +576,18 @@ body {
   font-size: 14px;
 }
 .drawing-hud .hud-save:hover { filter: brightness(0.95); }
+
+.drawing-hud .hud-operation-btn {
+  flex: 1;
+  border: 1px solid #e0e0e0;
+  background: #fafafa;
+  color: var(--gray-700, #333);
+  padding: 10px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.drawing-hud .hud-operation-btn:hover { filter: brightness(0.97); }
 
 /* Popup content: name with rename button on the right */
 .refuge-popup { display: inline-flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; width: max-content; }
