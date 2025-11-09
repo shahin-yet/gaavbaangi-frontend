@@ -1520,13 +1520,18 @@ window.addEventListener('DOMContentLoaded', function () {
     try {
       const hud = document.querySelector('.drawing-hud');
       const statusEl = hud ? hud.querySelector('.hud-status') : null;
-      const actions = hud ? hud.querySelector('.hud-actions') : null;
-      if (hud && actions && refugeIdForDelete && !hud.querySelector('.hud-delete')) {
+      const rowEl = hud ? hud.querySelector('.hud-row') : null;
+      const cancelBtn = hud ? hud.querySelector('.hud-cancel') : null;
+      if (hud && rowEl && refugeIdForDelete && !hud.querySelector('.hud-delete')) {
         const del = document.createElement('button');
         del.className = 'hud-delete';
         del.type = 'button';
         del.textContent = 'Delete';
-        actions.appendChild(del);
+        if (cancelBtn && cancelBtn.parentNode === rowEl) {
+          rowEl.insertBefore(del, cancelBtn);
+        } else {
+          rowEl.appendChild(del);
+        }
         del.addEventListener('click', async () => {
           try { del.disabled = true; } catch (e) {}
           try { if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Deleting…'; statusEl.className = 'hud-status status-info'; } } catch (e) {}
