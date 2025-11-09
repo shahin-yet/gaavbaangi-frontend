@@ -484,15 +484,15 @@ body {
 /* Drawing HUD (top-right) */
 .drawing-hud {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 16px;
+  right: 16px;
   background: rgba(255,255,255,0.98);
   border: 1px solid var(--gray-200);
   border-radius: 10px;
   box-shadow: var(--shadow-lg);
-  padding: 8px 8px;
+  padding: 10px 12px;
   z-index: 1200;
-  min-width: 180px; /* slightly narrower so the ✕ is closer to the title */
+  min-width: 220px;
 }
 
 .drawing-hud .hud-row {
@@ -553,9 +553,8 @@ body {
 .drawing-hud .hud-delete:hover { filter: brightness(0.95); }
 
 /* Popup content: name with rename button on the right */
-.refuge-popup { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
-.refuge-popup .refuge-name-row { display: inline-flex; align-items: center; gap: 8px; }
-.refuge-popup .refuge-name-row { padding-right: 18px; } /* keep clear of the close (×) without increasing global right margin */
+.refuge-popup { display: inline-flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; width: max-content; }
+.refuge-popup .refuge-name-row { display: inline-flex; align-items: center; gap: 8px; padding-right: 24px; }
 .refuge-popup .refuge-name { font-weight: 600; white-space: nowrap; outline: none; }
 .refuge-popup .refuge-name:focus { outline: 2px solid var(--gray-300); outline-offset: 2px; border-radius: 4px; }
 .refuge-popup .refuge-name-input { width: auto; font-weight: 600; padding: 4px 6px; border: 1px solid var(--gray-300); border-radius: 6px; }
@@ -566,8 +565,7 @@ body {
   border: 1px solid var(--gray-300);
   background: #f5f9ff;
   color: #0b63c9;
-  padding: 8px 8px; /* smaller left padding to align with name text */
-  margin: 1px; /* 1px margin on all sides */
+  padding: 8px 12px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
@@ -578,14 +576,18 @@ body {
 /* Make Rename a tiny text link instead of a full button */
 .refuge-popup .refuge-rename-btn {
   background: transparent;
+  background-color: transparent;
   border: none;
-  padding: 0 1px;
-  margin: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 0 0 0 4px;
   color: #0b63c9;
-  font-size: 10px;
-  line-height: 1.1;
+  font-size: 70%; /* ~30% smaller than surrounding text */
+  line-height: 1.2;
   cursor: pointer;
-  white-space: nowrap; /* prevent wrapping under the close (×) */
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
 }
 .refuge-popup .refuge-rename-btn:hover { text-decoration: underline; }
 .refuge-popup .refuge-rename-btn:disabled { color: var(--gray-500); cursor: default; text-decoration: none; }
@@ -593,31 +595,26 @@ body {
 /* Make Leaflet popup shrink-wrap when it contains our refuge popup */
 .leaflet-popup-content:has(.refuge-popup) {
   display: inline-block;
-  width: auto !important;
-  margin: 3px 2px 3px 3px; /* tighter on right only */
+  width: auto !important; /* let content define width */
+  box-sizing: border-box;
+  margin: 0; /* remove side margins so content can be full width */
+  padding: 8px 10px; /* keep inner padding instead */
 }
 .leaflet-popup-content-wrapper:has(.refuge-popup) {
-  width: auto;
+  width: max-content; /* shrink to fit content */
+  max-width: 90vw; /* safety on small screens */
+}
+/* Also relax the outer popup container when used for refuge popup */
+.leaflet-popup:has(.refuge-popup) {
+  width: max-content;
   max-width: none;
-  padding-right: 4px; /* even tighter near the close (×) */
-}
-/* Give the close (×) its own tight offsets for refuge popups */
-.leaflet-popup:has(.refuge-popup) .leaflet-popup-close-button {
-  right: 2px;
-  top: 2px;
-}
-
-/* Reduce default right margin inside Leaflet popup so content sits closer to × */
-.leaflet-popup-content {
-  margin: 8px 6px; /* top/bottom 8px, left/right 6px */
 }
 
 /* Undo toast */
 .undo-toast {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  bottom: auto;
+  top: 16px;
+  right: 16px;
   display: flex;
   align-items: center;
   gap: 12px;
