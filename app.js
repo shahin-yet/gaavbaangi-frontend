@@ -337,7 +337,7 @@ window.addEventListener('DOMContentLoaded', function () {
                         };
                       } else {
                         // Save mode
-                        const input = (renameBtn.closest('.refuge-popup') || document).querySelector('.refuge-name-input');
+                        const input = nameEl.parentNode.querySelector('.refuge-name-input');
                         if (!input) return;
                         
                         const newName = input.value.trim();
