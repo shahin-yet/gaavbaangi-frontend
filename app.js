@@ -85,6 +85,54 @@ window.addEventListener('DOMContentLoaded', function () {
   // -----------------------------
   const refugeLayerGroup = L.layerGroup().addTo(map);
   let lastDeletedRefuge = null; // for Undo restore
+  // Editing dimming helpers
+  function setRefugeDimming(activeRefugeId) {
+    try {
+      refugeLayerGroup.eachLayer(function (layer) {
+        try {
+          if (!layer || typeof layer.setStyle !== 'function') return;
+          const r = layer._refuge;
+          if (!r || typeof r.id !== 'number') return;
+          if (!layer._savedStyle) {
+            const opts = layer.options || {};
+            layer._savedStyle = {
+              color: opts.color,
+              weight: opts.weight,
+              fillColor: opts.fillColor,
+              fillOpacity: opts.fillOpacity,
+              opacity: opts.opacity
+            };
+          }
+          if (r.id !== activeRefugeId) {
+            layer.setStyle({ opacity: 0.15, fillOpacity: 0.04 });
+          } else {
+            // Slightly emphasize the active one if desired
+            layer.setStyle({ opacity: 0.9, weight: 3 });
+          }
+        } catch (e) {}
+      });
+    } catch (e) {}
+  }
+  function clearRefugeDimming() {
+    try {
+      refugeLayerGroup.eachLayer(function (layer) {
+        try {
+          if (!layer || typeof layer.setStyle !== 'function') return;
+          const saved = layer._savedStyle;
+          if (saved) {
+            layer.setStyle({
+              color: saved.color,
+              weight: saved.weight,
+              fillColor: saved.fillColor,
+              fillOpacity: saved.fillOpacity,
+              opacity: saved.opacity
+            });
+            layer._savedStyle = null;
+          }
+        } catch (e) {}
+      });
+    } catch (e) {}
+  }
 
   function escapeHtml(str) {
     try {
@@ -174,9 +222,12 @@ window.addEventListener('DOMContentLoaded', function () {
     try { typeof closeSidePanel === 'function' && closeSidePanel(); } catch (e) {}
     try { map && map.closePopup && map.closePopup(); } catch (e) {}
     beginEditing();
+    // Dim all other refuges while this one is being edited
+    try { setRefugeDimming(refuge.id); } catch (e) {}
     const hudApi = createDrawingHud(() => {
       const hud = document.querySelector('.drawing-hud');
       hud && hud.remove();
+      try { clearRefugeDimming(); } catch (e) {}
       endEditing();
     });
     const hud = document.querySelector('.drawing-hud');
@@ -195,25 +246,6 @@ window.addEventListener('DOMContentLoaded', function () {
     if (controls) { controls.style.display = ''; }
     const actions = hud.querySelector('.hud-actions');
     if (actions && !hud.querySelector('.hud-delete')) {
-      // Add Copy button to launch copy-drawing flow
-      const copyBtn = document.createElement('button');
-      copyBtn.className = 'hud-copy';
-      copyBtn.type = 'button';
-      copyBtn.textContent = 'Copy refuge';
-      actions.insertBefore(copyBtn, actions.firstChild || null);
-      copyBtn.addEventListener('click', () => {
-        // Exit edit mode HUD before starting drawing
-        const h = document.querySelector('.drawing-hud');
-        h && h.remove();
-        endEditing();
-        try { map && map.closePopup && map.closePopup(); } catch (e) {}
-        // Start specialized drawing that requires overlap with configured polygon
-        if (typeof window.startCopyRefugeDrawing === 'function') {
-          window.startCopyRefugeDrawing();
-        } else {
-          try { alert('Copy drawing is unavailable.'); } catch (e) {}
-        }
-      });
       const del = document.createElement('button');
       del.className = 'hud-delete';
       del.type = 'button';
@@ -230,6 +262,7 @@ window.addEventListener('DOMContentLoaded', function () {
           await loadAndRenderRefuges();
           const h = document.querySelector('.drawing-hud');
           h && h.remove();
+          try { clearRefugeDimming(); } catch (e) {}
           endEditing();
           showUndoToast('Refuge deleted', async () => {
             if (lastDeletedRefuge) {
@@ -555,6 +588,16 @@ window.addEventListener('DOMContentLoaded', function () {
       action: function() {
         document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
         startRefugeDrawing();
+      }
+    },
+    {
+      icon: 'fas fa-clone',
+      text: 'Copy refuge',
+      action: function() {
+        document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
+        if (typeof window.startCopyRefugeDrawing === 'function') {
+          window.startCopyRefugeDrawing();
+        }
       }
     }
   ]);
@@ -898,7 +941,17 @@ window.addEventListener('DOMContentLoaded', function () {
       if (!state.closedPreview) {
         showClosedPreview();
       }
-      const name = state.getName ? state.getName() : '';
+      let name = state.getName ? state.getName() : '';
+      // For copy mode: auto-generate a name and avoid showing controls
+      if (!name && (__drawingSaveOptions && (__drawingSaveOptions.autoName !== undefined))) {
+        try {
+          name = (typeof __drawingSaveOptions.autoName === 'function')
+            ? __drawingSaveOptions.autoName()
+            : String(__drawingSaveOptions.autoName || '').trim();
+        } catch (e) {
+          name = '';
+        }
+      }
       if (!name) {
         state.showNameBar && state.showNameBar();
         state.setStatus && state.setStatus('Enter a name to save.', 'info');
@@ -1447,7 +1500,16 @@ window.addEventListener('DOMContentLoaded', function () {
     __drawingSaveOptions = {
       requireIntersect: true,
       intersectWith: (window.MAINE_POLYGON || window.AOI_POLYGON || null),
-      intersectLabel: 'Maine polygon'
+      intersectLabel: 'Maine polygon',
+      autoName: function () {
+        try {
+          const ts = new Date().toISOString().replace(/[:.]/g, '-');
+          const rand = Math.random().toString(36).slice(2, 7);
+          return `Copy ${ts}-${rand}`;
+        } catch (e) {
+          return `Copy ${Date.now()}`;
+        }
+      }
     };
     startRefugeDrawing();
   };
