@@ -1511,9 +1511,11 @@ window.addEventListener('DOMContentLoaded', function () {
   window.startRefugeDrawing = startRefugeDrawing;
   window.startCopyRefugeDrawing = function startCopyRefugeDrawing(nameFromTitle, refugeIdForDelete) {
     __drawingTitle = (typeof nameFromTitle === 'string' && nameFromTitle.trim()) ? nameFromTitle.trim() : 'Copy refuge';
+    const aoiShape = (window.MAINE_POLYGON || window.AOI_POLYGON || null);
     __drawingSaveOptions = {
-      requireIntersect: true,
-      intersectWith: (window.MAINE_POLYGON || window.AOI_POLYGON || null),
+      // Only require intersection when an AOI is actually configured
+      requireIntersect: !!aoiShape,
+      intersectWith: aoiShape,
       intersectLabel: 'Maine polygon',
       // Auto-continue drawing new polygons after each save in edit bar flow
       restartAfterSave: true,
