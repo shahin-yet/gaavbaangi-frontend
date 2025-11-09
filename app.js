@@ -964,6 +964,9 @@ window.addEventListener('DOMContentLoaded', function () {
       const ok = await saveRefugePolygon(state.vertices, name, state.setStatus, (__drawingSaveOptions || null));
       if (ok) {
         teardownDrawing();
+        // Immediately start a new drawing session after successful save
+        // to allow continuous polygon entry without extra clicks.
+        try { startRefugeDrawing(); } catch (e) {}
       } else {
         hudApi.showOk && hudApi.showOk();
       }
