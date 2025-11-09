@@ -566,6 +566,7 @@ body {
   background: #f5f9ff;
   color: #0b63c9;
   padding: 8px 12px;
+  margin-top: 4px; /* small gap below the name flag */
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
@@ -596,7 +597,7 @@ body {
 .leaflet-popup-content-wrapper:has(.refuge-popup) {
   width: auto;
   max-width: none;
-  padding-right: 28px; /* keep space for the close (×) button */
+  padding-right: 8px; /* tighter so name sits closer to the close (×) */
 }
 
 /* Undo toast */
