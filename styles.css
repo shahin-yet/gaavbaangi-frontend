@@ -617,6 +617,7 @@ body {
   position: absolute;
   top: 8px;
   right: 8px;
+  bottom: auto;
   display: flex;
   align-items: center;
   gap: 12px;
