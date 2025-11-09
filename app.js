@@ -1520,18 +1520,25 @@ window.addEventListener('DOMContentLoaded', function () {
     try {
       const hud = document.querySelector('.drawing-hud');
       const statusEl = hud ? hud.querySelector('.hud-status') : null;
-      const rowEl = hud ? hud.querySelector('.hud-row') : null;
-      const cancelBtn = hud ? hud.querySelector('.hud-cancel') : null;
-      if (hud && rowEl && refugeIdForDelete && !hud.querySelector('.hud-delete')) {
+      if (hud && refugeIdForDelete && !hud.querySelector('.hud-delete')) {
+        let footer = hud.querySelector('.hud-footer-left');
+        if (!footer) {
+          footer = document.createElement('div');
+          footer.className = 'hud-footer-left';
+          footer.style.display = 'flex';
+          footer.style.justifyContent = 'flex-start';
+          footer.style.marginTop = '8px';
+          if (statusEl && statusEl.parentNode === hud) {
+            hud.insertBefore(footer, statusEl.nextSibling);
+          } else {
+            hud.appendChild(footer);
+          }
+        }
         const del = document.createElement('button');
         del.className = 'hud-delete';
         del.type = 'button';
         del.textContent = 'Delete';
-        if (cancelBtn && cancelBtn.parentNode === rowEl) {
-          rowEl.insertBefore(del, cancelBtn);
-        } else {
-          rowEl.appendChild(del);
-        }
+        footer.appendChild(del);
         del.addEventListener('click', async () => {
           try { del.disabled = true; } catch (e) {}
           try { if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Deleting…'; statusEl.className = 'hud-status status-info'; } } catch (e) {}
