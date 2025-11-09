@@ -553,7 +553,7 @@ body {
 .drawing-hud .hud-delete:hover { filter: brightness(0.95); }
 
 /* Popup content: name with rename button on the right */
-.refuge-popup { display: flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 200px; }
+.refuge-popup { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
 .refuge-popup .refuge-name-row { display: inline-flex; align-items: center; gap: 8px; padding-right: 24px; }
 .refuge-popup .refuge-name { font-weight: 600; white-space: nowrap; outline: none; }
 .refuge-popup .refuge-name:focus { outline: 2px solid var(--gray-300); outline-offset: 2px; border-radius: 4px; }
@@ -594,11 +594,9 @@ body {
 
 /* Make Leaflet popup shrink-wrap when it contains our refuge popup */
 .leaflet-popup-content:has(.refuge-popup) {
-  display: block;
-  width: 100% !important;
-  box-sizing: border-box;
-  margin: 0; /* remove side margins so content can be full width */
-  padding: 8px 10px; /* keep inner padding instead */
+  display: inline-block;
+  width: auto !important;
+  margin: 8px 10px; /* keep default-ish padding */
 }
 .leaflet-popup-content-wrapper:has(.refuge-popup) {
   width: auto;
