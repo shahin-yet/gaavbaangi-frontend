@@ -769,10 +769,6 @@ window.addEventListener('DOMContentLoaded', function () {
           if (window.__editOverlayActive) {
             stopOverlayLoop();
           }
-          // Stop any active drawing when entering selection mode
-          if (typeof drawing !== 'undefined' && drawing) {
-            teardownDrawing();
-          }
           showSelectionStatus('Adjoin mode on.');
         } else {
           // Resume overlay drawing when exiting selection mode
@@ -790,10 +786,6 @@ window.addEventListener('DOMContentLoaded', function () {
           // Stop overlay drawing when entering selection mode
           if (window.__editOverlayActive) {
             stopOverlayLoop();
-          }
-          // Stop any active drawing when entering selection mode
-          if (typeof drawing !== 'undefined' && drawing) {
-            teardownDrawing();
           }
           showSelectionStatus('Subtract mode on.');
         } else {
@@ -1220,11 +1212,6 @@ window.addEventListener('DOMContentLoaded', function () {
       text: 'Refuge',
       action: function() {
         document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
-        // Block drawing if selection mode is active
-        if (typeof overlaySelectionState !== 'undefined' && overlaySelectionState.mode !== null) {
-          alert('Exit Adjoin/Subtract mode first before starting a new drawing.');
-          return;
-        }
         startRefugeDrawing();
       }
     }
@@ -1480,11 +1467,6 @@ window.addEventListener('DOMContentLoaded', function () {
 
   function startRefugeDrawing(options = {}) {
     const opts = options || {};
-    // Block drawing if selection mode (adjoin/subtract) is active
-    if (!opts.skipSaving && typeof overlaySelectionState !== 'undefined' && overlaySelectionState.mode !== null) {
-      console.warn('Cannot start drawing while selection mode is active');
-      return;
-    }
     const skipSaving = !!opts.skipSaving;
     const teardownBeforeStart = Object.prototype.hasOwnProperty.call(opts, 'teardownBeforeStartOptions')
       ? opts.teardownBeforeStartOptions
