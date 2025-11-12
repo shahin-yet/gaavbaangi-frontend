@@ -373,6 +373,14 @@ window.addEventListener('DOMContentLoaded', function () {
               if (latlngs.length >= 3) {
                 const overlaps = polygonsOverlap(latlngs, refuge.polygon);
                 if (!overlaps) {
+                  // Remove any preview layer that was created
+                  const previewLayer = result && result.previewLayer;
+                  if (previewLayer) {
+                    try {
+                      refugeLayerGroup.removeLayer(previewLayer);
+                    } catch (e) {}
+                  }
+                  
                   // Show error and restart drawing loop without adding this polygon
                   if (statusEl) {
                     statusEl.style.display = '';
