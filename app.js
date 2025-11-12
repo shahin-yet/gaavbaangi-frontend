@@ -243,6 +243,8 @@ window.addEventListener('DOMContentLoaded', function () {
       subtract: new Set()
     };
 
+    window.__overlayDrawingLocked = false;
+
     const baseOverlayStyle = {
       color: '#ff9800',
       weight: 2,
@@ -299,6 +301,7 @@ window.addEventListener('DOMContentLoaded', function () {
       overlaySelectionState.subtract.clear();
       if (!preserveMode) {
         overlaySelectionState.mode = null;
+      window.__overlayDrawingLocked = false;
       }
       if (!skipStyles) {
         updateAllOverlayStyles();
@@ -311,6 +314,7 @@ window.addEventListener('DOMContentLoaded', function () {
         ? 'adjoin'
         : (mode === 'subtract' ? 'subtract' : null);
       overlaySelectionState.mode = (overlaySelectionState.mode === normalized) ? null : normalized;
+      window.__overlayDrawingLocked = overlaySelectionState.mode !== null;
       updateSelectionButtons();
       return overlaySelectionState.mode;
     };
@@ -346,8 +350,9 @@ window.addEventListener('DOMContentLoaded', function () {
         overlayBtn.disabled = true;
         overlayBtn.textContent = 'Drawing…';
       } else {
-        overlayBtn.disabled = false;
-        overlayBtn.textContent = 'Draw overlay';
+        const locked = !!window.__overlayDrawingLocked;
+        overlayBtn.disabled = locked;
+        overlayBtn.textContent = locked ? 'Draw overlay' : 'Draw overlay';
       }
     };
 
@@ -400,6 +405,7 @@ window.addEventListener('DOMContentLoaded', function () {
     const beginEditing = () => {
       try { document.body.classList.add('editing-active'); } catch (e) {}
       window.__editing = true;
+      window.__overlayDrawingLocked = false;
       // Keep map interactions available during edit; do not add a global blocker overlay
       try { window.__editBlocker = null; } catch (e) {}
       cleanupEditOverlays();
@@ -556,6 +562,11 @@ window.addEventListener('DOMContentLoaded', function () {
         if (window.__editOverlayActive) return;
         // Block overlay drawing if a selection mode is active
         if (overlaySelectionState.mode !== null) return;
+        if (window.__overlayDrawingLocked) {
+          window.__editOverlayActive = false;
+          resetOverlayButton();
+          return;
+        }
         window.__editOverlayActive = true;
         resetOverlayButton();
         const overlayHudApi = createOverlayHudApi();
@@ -566,6 +577,10 @@ window.addEventListener('DOMContentLoaded', function () {
           }
           // Block overlay drawing if a selection mode is active
           if (overlaySelectionState.mode !== null) {
+            stopOverlayLoop();
+            return;
+          }
+          if (window.__overlayDrawingLocked) {
             stopOverlayLoop();
             return;
           }
@@ -767,6 +782,7 @@ window.addEventListener('DOMContentLoaded', function () {
       // Add adjoin functionality (selection mode)
       adjoinBtn.addEventListener('click', () => {
         const activeMode = setSelectionMode('adjoin');
+        resetOverlayButton();
         if (activeMode === 'adjoin') {
           // Stop overlay drawing when entering selection mode
           if (window.__editOverlayActive) {
@@ -785,6 +801,7 @@ window.addEventListener('DOMContentLoaded', function () {
       // Add subtract functionality (selection mode)
       subtractBtn.addEventListener('click', () => {
         const activeMode = setSelectionMode('subtract');
+        resetOverlayButton();
         if (activeMode === 'subtract') {
           // Stop overlay drawing when entering selection mode
           if (window.__editOverlayActive) {
