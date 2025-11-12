@@ -370,6 +370,9 @@ window.addEventListener('DOMContentLoaded', function () {
     const stopOverlayLoop = () => {
       window.__editOverlayActive = false;
       resetOverlayButton();
+      try {
+        teardownDrawing({ preserveHud: true });
+      } catch (e) {}
     };
     
     // Highlight the refuge being edited by adding fill
