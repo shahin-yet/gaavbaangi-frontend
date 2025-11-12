@@ -299,6 +299,33 @@ window.addEventListener('DOMContentLoaded', function () {
       if (drawing) {
         teardownDrawing();
       }
+      // Remove any overlays that don't overlap with the refuge before cleanup
+      if (Array.isArray(window.__editOverlayLayers) && window.__editOverlayLayers.length > 0) {
+        const overlaysToRemove = [];
+        window.__editOverlayLayers.forEach((layer, index) => {
+          if (!layer || !layer.getLatLngs) return;
+          try {
+            const latlngs = layer.getLatLngs();
+            const coords = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
+            const overlaps = polygonsOverlap(coords, refuge.polygon);
+            if (!overlaps) {
+              overlaysToRemove.push(layer);
+            }
+          } catch (e) {
+            // If validation fails, keep the overlay for safety
+          }
+        });
+        // Remove non-overlapping overlays
+        overlaysToRemove.forEach(layer => {
+          try {
+            refugeLayerGroup.removeLayer(layer);
+            const idx = window.__editOverlayLayers.indexOf(layer);
+            if (idx > -1) {
+              window.__editOverlayLayers.splice(idx, 1);
+            }
+          } catch (e) {}
+        });
+      }
       cleanupEditOverlays();
       unhighlightEditingRefuge();
       try { document.body.classList.remove('editing-active'); } catch (e) {}
