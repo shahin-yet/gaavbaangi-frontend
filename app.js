@@ -232,6 +232,114 @@ window.addEventListener('DOMContentLoaded', function () {
   function openRefugeEditor(refuge) {
     // Reuse drawing HUD for a consistent look
     let overlayBtn = null;
+    let adjoinBtn = null;
+    let subtractBtn = null;
+    let saveBtn = null;
+    let overlayIdCounter = 0;
+
+    const overlaySelectionState = {
+      mode: null,
+      adjoin: new Set(),
+      subtract: new Set()
+    };
+
+    const baseOverlayStyle = {
+      color: '#ff9800',
+      weight: 2,
+      fillColor: '#ff9800',
+      fillOpacity: 0.2
+    };
+
+    const adjoinOverlayStyle = {
+      color: '#4caf50',
+      weight: 3,
+      fillColor: '#4caf50',
+      fillOpacity: 0.35
+    };
+
+    const subtractOverlayStyle = {
+      color: '#f44336',
+      weight: 3,
+      fillColor: '#f44336',
+      fillOpacity: 0.35
+    };
+
+    const applyOverlayStyle = (layer) => {
+      if (!layer || typeof layer.setStyle !== 'function') return;
+      let style = baseOverlayStyle;
+      if (overlaySelectionState.adjoin.has(layer)) {
+        style = adjoinOverlayStyle;
+      } else if (overlaySelectionState.subtract.has(layer)) {
+        style = subtractOverlayStyle;
+      }
+      try {
+        layer.setStyle(style);
+      } catch (e) {}
+    };
+
+    const updateAllOverlayStyles = () => {
+      if (!Array.isArray(window.__editOverlayLayers)) return;
+      window.__editOverlayLayers.forEach(layer => applyOverlayStyle(layer));
+    };
+
+    const updateSelectionButtons = () => {
+      if (adjoinBtn) {
+        adjoinBtn.classList.toggle('active', overlaySelectionState.mode === 'adjoin');
+      }
+      if (subtractBtn) {
+        subtractBtn.classList.toggle('active', overlaySelectionState.mode === 'subtract');
+      }
+    };
+
+    const clearSelectionState = (options = {}) => {
+      const opts = options || {};
+      const preserveMode = !!opts.preserveMode;
+      const skipStyles = !!opts.skipStyles;
+      overlaySelectionState.adjoin.clear();
+      overlaySelectionState.subtract.clear();
+      if (!preserveMode) {
+        overlaySelectionState.mode = null;
+      }
+      if (!skipStyles) {
+        updateAllOverlayStyles();
+      }
+      updateSelectionButtons();
+    };
+
+    const setSelectionMode = (mode) => {
+      const normalized = mode === 'adjoin'
+        ? 'adjoin'
+        : (mode === 'subtract' ? 'subtract' : null);
+      overlaySelectionState.mode = (overlaySelectionState.mode === normalized) ? null : normalized;
+      updateSelectionButtons();
+      return overlaySelectionState.mode;
+    };
+
+    const toggleOverlaySelection = (layer) => {
+      const activeMode = overlaySelectionState.mode;
+      if (!layer || !activeMode) {
+        return { changed: false, selected: false, mode: activeMode };
+      }
+      const activeSet = activeMode === 'adjoin' ? overlaySelectionState.adjoin : overlaySelectionState.subtract;
+      const otherSet = activeMode === 'adjoin' ? overlaySelectionState.subtract : overlaySelectionState.adjoin;
+      if (activeSet.has(layer)) {
+        activeSet.delete(layer);
+      } else {
+        activeSet.add(layer);
+      }
+      otherSet.delete(layer);
+      if (activeSet.has(layer)) {
+        layer._selectionRole = activeMode;
+      } else if (otherSet.has(layer)) {
+        layer._selectionRole = activeMode === 'adjoin' ? 'subtract' : 'adjoin';
+      } else {
+        layer._selectionRole = null;
+      }
+      const selected = activeSet.has(layer);
+      applyOverlayStyle(layer);
+      return { changed: true, selected, mode: activeMode };
+    };
+
     const resetOverlayButton = () => {
       if (!overlayBtn) return;
       if (window.__editOverlayActive) {
@@ -242,11 +350,14 @@ window.addEventListener('DOMContentLoaded', function () {
         overlayBtn.textContent = 'Draw overlay';
       }
     };
+
     const cleanupEditOverlays = () => {
       if (Array.isArray(window.__editOverlayLayers)) {
         window.__editOverlayLayers.forEach(layer => {
           if (!layer) return;
           try {
+            overlaySelectionState.adjoin.delete(layer);
+            overlaySelectionState.subtract.delete(layer);
             if (refugeLayerGroup && typeof refugeLayerGroup.removeLayer === 'function') {
               refugeLayerGroup.removeLayer(layer);
             }
@@ -254,6 +365,7 @@ window.addEventListener('DOMContentLoaded', function () {
         });
       }
       window.__editOverlayLayers = [];
+      clearSelectionState({ skipStyles: true });
     };
     const stopOverlayLoop = () => {
       window.__editOverlayActive = false;
@@ -288,7 +400,6 @@ window.addEventListener('DOMContentLoaded', function () {
       // Keep map interactions available during edit; do not add a global blocker overlay
       try { window.__editBlocker = null; } catch (e) {}
       cleanupEditOverlays();
-      window.__editOverlayLayers = [];
       window.__editOverlayCache = [];
       window.__editOverlayActive = false;
       resetOverlayButton();
@@ -319,6 +430,8 @@ window.addEventListener('DOMContentLoaded', function () {
         overlaysToRemove.forEach(layer => {
           try {
             refugeLayerGroup.removeLayer(layer);
+            overlaySelectionState.adjoin.delete(layer);
+            overlaySelectionState.subtract.delete(layer);
             const idx = window.__editOverlayLayers.indexOf(layer);
             if (idx > -1) {
               window.__editOverlayLayers.splice(idx, 1);
@@ -363,6 +476,69 @@ window.addEventListener('DOMContentLoaded', function () {
     if (controls) { controls.style.display = ''; }
     const actions = hud.querySelector('.hud-actions');
     if (actions) {
+      const buildSelectionSummary = () => {
+        const parts = [];
+        const addCount = overlaySelectionState.adjoin.size;
+        const subCount = overlaySelectionState.subtract.size;
+        if (addCount) parts.push(`add: ${addCount}`);
+        if (subCount) parts.push(`subtract: ${subCount}`);
+        return parts.length ? `Selected overlays — ${parts.join(', ')}` : 'No overlays selected.';
+      };
+
+      const showSelectionStatus = (message) => {
+        if (!hudApi || typeof hudApi.setStatus !== 'function') return;
+        const summary = buildSelectionSummary();
+        const text = message ? `${message} ${summary}`.trim() : summary;
+        hudApi.setStatus(text, 'info');
+        if (statusEl) statusEl.style.display = '';
+      };
+
+      const handleOverlayInteraction = (evt) => {
+        const layer = evt && evt.target;
+        if (!layer) return;
+        const now = Date.now();
+        if (evt && evt.type === 'click' && layer._lastTouchSelection && (now - layer._lastTouchSelection) < 450) {
+          return;
+        }
+        if (evt && evt.type === 'touchstart') {
+          layer._lastTouchSelection = now;
+        } else {
+          layer._lastTouchSelection = now;
+        }
+        if (!overlaySelectionState.mode) {
+          showSelectionStatus('Tap Adjoin or Subtract to start selecting overlays.');
+          if (evt && evt.originalEvent && typeof evt.originalEvent.preventDefault === 'function') {
+            evt.originalEvent.preventDefault();
+          }
+          if (evt && typeof evt.preventDefault === 'function') evt.preventDefault();
+          return;
+        }
+        const result = toggleOverlaySelection(layer);
+        if (result.changed) {
+          const prefix = result.mode === 'adjoin'
+            ? (result.selected ? 'Marked for adjoin.' : 'Removed from adjoin.')
+            : (result.selected ? 'Marked for subtract.' : 'Removed from subtract.');
+          showSelectionStatus(prefix);
+        }
+        if (evt && evt.originalEvent && typeof evt.originalEvent.preventDefault === 'function') {
+          evt.originalEvent.preventDefault();
+        }
+        if (evt && typeof evt.preventDefault === 'function') evt.preventDefault();
+      };
+
+      const registerOverlayLayer = (layer) => {
+        if (!layer || layer._selectionRegistered) return;
+        layer._selectionRegistered = true;
+        overlayIdCounter += 1;
+        layer._overlayId = `edit-overlay-${overlayIdCounter}`;
+        layer._selectionRole = null;
+        if (typeof layer.on === 'function') {
+          layer.on('click', handleOverlayInteraction);
+          layer.on('touchstart', handleOverlayInteraction);
+        }
+        applyOverlayStyle(layer);
+      };
+
       const createOverlayHudApi = () => ({
         hud,
         setStatus: () => {},
@@ -449,6 +625,9 @@ window.addEventListener('DOMContentLoaded', function () {
                   overlayLayer.setStyle({ color: '#ff9800', weight: 2, fillColor: '#ff9800', fillOpacity: 0.2 });
                 } catch (e) {}
               }
+              if (overlayLayer) {
+                registerOverlayLayer(overlayLayer);
+              }
               if (!Array.isArray(window.__editOverlayLayers)) window.__editOverlayLayers = [];
               if (overlayLayer) {
                 overlayLayer._isEditOverlay = true;
@@ -487,13 +666,13 @@ window.addEventListener('DOMContentLoaded', function () {
       const operationRow = document.createElement('div');
       operationRow.className = 'hud-operations';
       
-      const adjoinBtn = document.createElement('button');
+      adjoinBtn = document.createElement('button');
       adjoinBtn.className = 'hud-operation-btn hud-adjoin';
       adjoinBtn.type = 'button';
       adjoinBtn.textContent = 'Adjoin';
       operationRow.appendChild(adjoinBtn);
       
-      const subtractBtn = document.createElement('button');
+      subtractBtn = document.createElement('button');
       subtractBtn.className = 'hud-operation-btn hud-subtract';
       subtractBtn.type = 'button';
       subtractBtn.textContent = 'Subtract';
@@ -525,7 +704,7 @@ window.addEventListener('DOMContentLoaded', function () {
       rightContainer.appendChild(undoBtn);
       
       // Create save button for right side (no functionality)
-      const saveBtn = document.createElement('button');
+      saveBtn = document.createElement('button');
       saveBtn.className = 'hud-save';
       saveBtn.type = 'button';
       saveBtn.textContent = 'Save';
@@ -536,150 +715,109 @@ window.addEventListener('DOMContentLoaded', function () {
       mainActionsRow.appendChild(rightContainer);
       
       actions.appendChild(mainActionsRow);
+      updateSelectionButtons();
       
       // Helper function to convert overlays to GeoJSON geometries
-      const getOverlayGeometries = () => {
+      const getOverlayGeometries = (layersOverride) => {
         const geometries = [];
-        if (Array.isArray(window.__editOverlayLayers)) {
-          window.__editOverlayLayers.forEach(layer => {
-            if (!layer || !layer.getLatLngs) return;
-            try {
-              const latlngs = layer.getLatLngs();
-              const coords = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
-              // Convert to GeoJSON format [lng, lat]
-              const ring = coords.map(ll => [ll.lng, ll.lat]);
-              // Ensure closed ring
-              if (ring.length >= 3) {
-                const first = ring[0];
-                const last = ring[ring.length - 1];
-                if (first[0] !== last[0] || first[1] !== last[1]) {
-                  ring.push(first);
-                }
-                geometries.push({
-                  type: 'Polygon',
-                  coordinates: [ring]
-                });
-              }
-            } catch (e) {
-              console.warn('Failed to convert overlay:', e);
-            }
-          });
+        let sourceLayers;
+        if (layersOverride instanceof Set) {
+          sourceLayers = Array.from(layersOverride);
+        } else if (Array.isArray(layersOverride)) {
+          sourceLayers = layersOverride;
+        } else {
+          sourceLayers = Array.isArray(window.__editOverlayLayers) ? window.__editOverlayLayers : [];
         }
+        sourceLayers.forEach(layer => {
+          if (!layer || !layer.getLatLngs || !layer._map) return;
+          try {
+            const latlngs = layer.getLatLngs();
+            const coords = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
+            // Convert to GeoJSON format [lng, lat]
+            const ring = coords.map(ll => [ll.lng, ll.lat]);
+            // Ensure closed ring
+            if (ring.length >= 3) {
+              const first = ring[0];
+              const last = ring[ring.length - 1];
+              if (first[0] !== last[0] || first[1] !== last[1]) {
+                ring.push(first);
+              }
+              geometries.push({
+                type: 'Polygon',
+                coordinates: [ring]
+              });
+            }
+          } catch (e) {
+            console.warn('Failed to convert overlay:', e);
+          }
+        });
         return geometries;
       };
 
-      // Add adjoin functionality
-      adjoinBtn.addEventListener('click', async () => {
-        if (statusEl) statusEl.style.display = '';
-        try {
-          const overlayGeoms = getOverlayGeometries();
-          if (overlayGeoms.length === 0) {
-            hudApi.setStatus && hudApi.setStatus('No overlays to adjoin', 'error');
-            return;
-          }
-
-          hudApi.setStatus && hudApi.setStatus('Adjoining areas…', 'info');
-
-          // Send request to backend to adjoin overlays
-          const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges/${refuge.id}/adjoin`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ overlays: overlayGeoms })
-          });
-
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || !data || data.status !== 'success') {
-            const msg = (data && data.message) || `Failed to adjoin (${res.status})`;
-            throw new Error(msg);
-          }
-
-          // Update the refuge object with new geometry
-          refuge.polygon = data.refuge.polygon;
-          
-          // Clear overlays after successful adjoin
-          cleanupEditOverlays();
-          
-          // Reload and re-render refuges to show the updated geometry
-          await loadAndRenderRefuges();
-          
-          hudApi.setStatus && hudApi.setStatus('Areas adjoined successfully', 'success');
-          
-          // Re-enter edit mode for the updated refuge
-          setTimeout(() => {
-            const h = document.querySelector('.drawing-hud');
-            h && h.remove();
-            endEditing();
-            openRefugeEditor(data.refuge);
-          }, 1000);
-        } catch (e) {
-          if (statusEl) statusEl.style.display = '';
-          hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Adjoin failed', 'error');
+      // Add adjoin functionality (selection mode)
+      adjoinBtn.addEventListener('click', () => {
+        const activeMode = setSelectionMode('adjoin');
+        if (activeMode === 'adjoin') {
+          showSelectionStatus('Adjoin mode on.');
+        } else {
+          showSelectionStatus('Adjoin mode off.');
         }
       });
 
-      // Add subtract functionality
-      subtractBtn.addEventListener('click', async () => {
-        if (statusEl) statusEl.style.display = '';
-        try {
-          const overlayGeoms = getOverlayGeometries();
-          if (overlayGeoms.length === 0) {
-            hudApi.setStatus && hudApi.setStatus('No overlays to subtract', 'error');
-            return;
-          }
-
-          hudApi.setStatus && hudApi.setStatus('Subtracting areas…', 'info');
-
-          // Send request to backend to subtract overlays
-          const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges/${refuge.id}/subtract`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ overlays: overlayGeoms })
-          });
-
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || !data || data.status !== 'success') {
-            const msg = (data && data.message) || `Failed to subtract (${res.status})`;
-            throw new Error(msg);
-          }
-
-          // Update the refuge object with new geometry
-          refuge.polygon = data.refuge.polygon;
-          
-          // Clear overlays after successful subtract
-          cleanupEditOverlays();
-          
-          // Reload and re-render refuges to show the updated geometry
-          await loadAndRenderRefuges();
-          
-          hudApi.setStatus && hudApi.setStatus('Areas subtracted successfully', 'success');
-          
-          // Re-enter edit mode for the updated refuge
-          setTimeout(() => {
-            const h = document.querySelector('.drawing-hud');
-            h && h.remove();
-            endEditing();
-            openRefugeEditor(data.refuge);
-          }, 1000);
-        } catch (e) {
-          if (statusEl) statusEl.style.display = '';
-          hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Subtract failed', 'error');
+      // Add subtract functionality (selection mode)
+      subtractBtn.addEventListener('click', () => {
+        const activeMode = setSelectionMode('subtract');
+        if (activeMode === 'subtract') {
+          showSelectionStatus('Subtract mode on.');
+        } else {
+          showSelectionStatus('Subtract mode off.');
         }
       });
 
-      // Add save functionality (saves current state without operations)
+      // Add save functionality (apply currently selected overlays)
       saveBtn.addEventListener('click', async () => {
         try {
+          const adjoinGeoms = getOverlayGeometries(overlaySelectionState.adjoin);
+          const subtractGeoms = getOverlayGeometries(overlaySelectionState.subtract);
+          if (adjoinGeoms.length === 0 && subtractGeoms.length === 0) {
+            if (hudApi && typeof hudApi.setStatus === 'function') {
+              hudApi.setStatus('No overlays selected. Tap Adjoin or Subtract, pick overlays, then save.', 'info');
+            }
+            if (statusEl) statusEl.style.display = '';
+            return;
+          }
           if (statusEl) statusEl.style.display = '';
           hudApi.setStatus && hudApi.setStatus('Saving…', 'info');
           
-          // Just close the editor - changes are already saved via adjoin/subtract
-          await loadAndRenderRefuges();
-          const h = document.querySelector('.drawing-hud');
-          h && h.remove();
-          endEditing();
+          const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges/${refuge.id}/apply-overlays`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              adjoin: adjoinGeoms,
+              subtract: subtractGeoms
+            })
+          });
+
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data || data.status !== 'success') {
+            const msg = (data && data.message) || `Failed to save (${res.status})`;
+            throw new Error(msg);
+          }
+
+          refuge.polygon = data.refuge.polygon;
+          cleanupEditOverlays();
+          clearSelectionState();
           
-          // Show success message briefly
-          hudApi.setStatus && hudApi.setStatus('Saved successfully', 'success');
+          await loadAndRenderRefuges();
+          
+          hudApi.setStatus && hudApi.setStatus('Changes saved.', 'success');
+          
+          setTimeout(() => {
+            const h = document.querySelector('.drawing-hud');
+            h && h.remove();
+            endEditing();
+            openRefugeEditor(data.refuge);
+          }, 800);
         } catch (e) {
           if (statusEl) statusEl.style.display = '';
           hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Save failed', 'error');
