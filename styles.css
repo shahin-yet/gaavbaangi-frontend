@@ -590,6 +590,12 @@ body {
   cursor: pointer;
   font-size: 14px;
 }
+.drawing-hud .hud-operation-btn.active {
+  border-color: var(--primary, #1b7f39);
+  background: #e6f4ea;
+  color: var(--primary, #1b7f39);
+  font-weight: 600;
+}
 .drawing-hud .hud-operation-btn:hover { filter: brightness(0.97); }
 
 /* Popup content: name with rename button on the right */
