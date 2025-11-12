@@ -493,6 +493,9 @@ body {
   padding: 10px 12px;
   z-index: 1200;
   min-width: 220px;
+  max-width: min(90vw, 320px);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .drawing-hud .hud-row {
@@ -508,6 +511,10 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .drawing-hud .hud-cancel {
@@ -527,6 +534,10 @@ body {
   margin-top: 8px;
   font-size: 13px;
   color: var(--gray-700);
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.4;
 }
 
 .drawing-hud .hud-status.status-info { color: #1e5bb8; }
@@ -534,12 +545,13 @@ body {
 .drawing-hud .hud-status.status-success { color: #1b7f39; }
 
 /* HUD controls layout */
+.drawing-hud .hud-controls { max-width: 100%; }
 .drawing-hud .hud-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-.drawing-hud .hud-operations { display: flex; gap: 8px; justify-content: center; }
-.drawing-hud .hud-actions-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.drawing-hud .hud-operations { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.drawing-hud .hud-actions-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .drawing-hud .hud-actions-left { display: flex; gap: 8px; }
 .drawing-hud .hud-actions-right { display: flex; gap: 8px; }
-.drawing-hud .hud-name { width: 100%; }
+.drawing-hud .hud-name { width: 100%; max-width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--gray-300); border-radius: 8px; }
 .drawing-hud .hud-ok { border: 1px solid var(--gray-300); background: var(--primary, #1b7f39); color: #fff; padding: 10px 16px; border-radius: 10px; cursor: pointer; font-size: 14px; }
 .drawing-hud .hud-ok:hover { filter: brightness(0.95); }
 
