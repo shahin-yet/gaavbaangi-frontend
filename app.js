@@ -152,6 +152,83 @@ window.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  // Helper: Check if two polygons overlap
+  function polygonsOverlap(polygon1LatLngs, polygon2GeoJSON) {
+    // Convert polygon1 (overlay) latlngs to array format
+    const poly1Points = polygon1LatLngs.map(ll => ({ lat: ll.lat, lng: ll.lng }));
+    
+    // Extract coordinates from GeoJSON polygon2 (refuge)
+    let poly2Rings = [];
+    if (polygon2GeoJSON.type === 'Polygon') {
+      poly2Rings = polygon2GeoJSON.coordinates.map(ring => 
+        ring.map(([lng, lat]) => ({ lat, lng }))
+      );
+    } else if (polygon2GeoJSON.type === 'MultiPolygon') {
+      polygon2GeoJSON.coordinates.forEach(polygon => {
+        polygon.forEach(ring => {
+          poly2Rings.push(ring.map(([lng, lat]) => ({ lat, lng })));
+        });
+      });
+    }
+    
+    if (!poly2Rings.length) return false;
+    
+    // Point-in-polygon test using ray casting
+    const pointInPolygon = (point, polygon) => {
+      let inside = false;
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i].lng, yi = polygon[i].lat;
+        const xj = polygon[j].lng, yj = polygon[j].lat;
+        const intersect = ((yi > point.lat) !== (yj > point.lat)) &&
+          (point.lng < (xj - xi) * (point.lat - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    };
+    
+    // Check if any point of poly1 is inside any ring of poly2
+    for (const point of poly1Points) {
+      for (const ring of poly2Rings) {
+        if (pointInPolygon(point, ring)) {
+          return true;
+        }
+      }
+    }
+    
+    // Check if any point of poly2 is inside poly1
+    for (const ring of poly2Rings) {
+      for (const point of ring) {
+        if (pointInPolygon(point, poly1Points)) {
+          return true;
+        }
+      }
+    }
+    
+    // Check for edge intersections
+    const segmentsIntersect = (p1, p2, p3, p4) => {
+      const ccw = (A, B, C) => (C.lat - A.lat) * (B.lng - A.lng) > (B.lat - A.lat) * (C.lng - A.lng);
+      return ccw(p1, p3, p4) !== ccw(p2, p3, p4) && ccw(p1, p2, p3) !== ccw(p1, p2, p4);
+    };
+    
+    // Check each edge of poly1 against each edge of poly2
+    for (let i = 0; i < poly1Points.length; i++) {
+      const p1 = poly1Points[i];
+      const p2 = poly1Points[(i + 1) % poly1Points.length];
+      
+      for (const ring of poly2Rings) {
+        for (let j = 0; j < ring.length; j++) {
+          const p3 = ring[j];
+          const p4 = ring[(j + 1) % ring.length];
+          if (segmentsIntersect(p1, p2, p3, p4)) {
+            return true;
+          }
+        }
+      }
+    }
+    
+    return false;
+  }
+
   function openRefugeEditor(refuge) {
     // Reuse drawing HUD for a consistent look
     let overlayBtn = null;
@@ -182,6 +259,29 @@ window.addEventListener('DOMContentLoaded', function () {
       window.__editOverlayActive = false;
       resetOverlayButton();
     };
+    
+    // Highlight the refuge being edited by adding fill
+    const highlightEditingRefuge = () => {
+      refugeLayerGroup.eachLayer(layer => {
+        if (layer._refuge && layer._refuge.id === refuge.id) {
+          try {
+            layer.setStyle({ fillOpacity: 0.15 });
+            window.__editingRefugeLayer = layer;
+          } catch (e) {}
+        }
+      });
+    };
+    
+    // Remove fill from the refuge when done editing
+    const unhighlightEditingRefuge = () => {
+      if (window.__editingRefugeLayer) {
+        try {
+          window.__editingRefugeLayer.setStyle({ fillOpacity: 0 });
+        } catch (e) {}
+        window.__editingRefugeLayer = null;
+      }
+    };
+    
     const beginEditing = () => {
       try { document.body.classList.add('editing-active'); } catch (e) {}
       window.__editing = true;
@@ -192,6 +292,7 @@ window.addEventListener('DOMContentLoaded', function () {
       window.__editOverlayCache = [];
       window.__editOverlayActive = false;
       resetOverlayButton();
+      highlightEditingRefuge();
     };
     const endEditing = () => {
       stopOverlayLoop();
@@ -199,6 +300,7 @@ window.addEventListener('DOMContentLoaded', function () {
         teardownDrawing();
       }
       cleanupEditOverlays();
+      unhighlightEditingRefuge();
       try { document.body.classList.remove('editing-active'); } catch (e) {}
       window.__editing = false;
       try {
@@ -266,6 +368,34 @@ window.addEventListener('DOMContentLoaded', function () {
                 return;
               }
               const latlngs = result && Array.isArray(result.latlngs) ? result.latlngs : [];
+              
+              // Validate that the overlay overlaps with the refuge
+              if (latlngs.length >= 3) {
+                const overlaps = polygonsOverlap(latlngs, refuge.polygon);
+                if (!overlaps) {
+                  // Show error and restart drawing loop without adding this polygon
+                  if (statusEl) {
+                    statusEl.style.display = '';
+                    statusEl.innerHTML = 'Overlay must overlap with refuge';
+                    statusEl.classList.remove('status-info', 'status-error', 'status-success');
+                    statusEl.classList.add('status-error');
+                    setTimeout(() => {
+                      if (statusEl) {
+                        statusEl.innerHTML = 'Draw overlays to modify refuge';
+                        statusEl.classList.remove('status-info', 'status-error', 'status-success');
+                        statusEl.classList.add('status-info');
+                      }
+                    }, 2000);
+                  }
+                  if (window.__editing && window.__editOverlayActive) {
+                    setTimeout(run, 0);
+                  } else {
+                    stopOverlayLoop();
+                  }
+                  return;
+                }
+              }
+              
               let overlayLayer = result && result.previewLayer;
               if (!overlayLayer && latlngs.length >= 3) {
                 try {
@@ -422,7 +552,7 @@ window.addEventListener('DOMContentLoaded', function () {
                   color: '#1e90ff',
                   weight: 2,
                   fillColor: '#1e90ff',
-                  fillOpacity: 0.15
+                  fillOpacity: 0
                 });
                 polygon._refuge = { id: r.id, name: r.name, polygon: r.polygon };
                 const popupId = `ref-edit-${r.id}`;
