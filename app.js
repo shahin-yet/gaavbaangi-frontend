@@ -537,6 +537,155 @@ window.addEventListener('DOMContentLoaded', function () {
       
       actions.appendChild(mainActionsRow);
       
+      // Helper function to convert overlays to GeoJSON geometries
+      const getOverlayGeometries = () => {
+        const geometries = [];
+        if (Array.isArray(window.__editOverlayLayers)) {
+          window.__editOverlayLayers.forEach(layer => {
+            if (!layer || !layer.getLatLngs) return;
+            try {
+              const latlngs = layer.getLatLngs();
+              const coords = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
+              // Convert to GeoJSON format [lng, lat]
+              const ring = coords.map(ll => [ll.lng, ll.lat]);
+              // Ensure closed ring
+              if (ring.length >= 3) {
+                const first = ring[0];
+                const last = ring[ring.length - 1];
+                if (first[0] !== last[0] || first[1] !== last[1]) {
+                  ring.push(first);
+                }
+                geometries.push({
+                  type: 'Polygon',
+                  coordinates: [ring]
+                });
+              }
+            } catch (e) {
+              console.warn('Failed to convert overlay:', e);
+            }
+          });
+        }
+        return geometries;
+      };
+
+      // Add adjoin functionality
+      adjoinBtn.addEventListener('click', async () => {
+        if (statusEl) statusEl.style.display = '';
+        try {
+          const overlayGeoms = getOverlayGeometries();
+          if (overlayGeoms.length === 0) {
+            hudApi.setStatus && hudApi.setStatus('No overlays to adjoin', 'error');
+            return;
+          }
+
+          hudApi.setStatus && hudApi.setStatus('Adjoining areas…', 'info');
+
+          // Send request to backend to adjoin overlays
+          const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges/${refuge.id}/adjoin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ overlays: overlayGeoms })
+          });
+
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data || data.status !== 'success') {
+            const msg = (data && data.message) || `Failed to adjoin (${res.status})`;
+            throw new Error(msg);
+          }
+
+          // Update the refuge object with new geometry
+          refuge.polygon = data.refuge.polygon;
+          
+          // Clear overlays after successful adjoin
+          cleanupEditOverlays();
+          
+          // Reload and re-render refuges to show the updated geometry
+          await loadAndRenderRefuges();
+          
+          hudApi.setStatus && hudApi.setStatus('Areas adjoined successfully', 'success');
+          
+          // Re-enter edit mode for the updated refuge
+          setTimeout(() => {
+            const h = document.querySelector('.drawing-hud');
+            h && h.remove();
+            endEditing();
+            openRefugeEditor(data.refuge);
+          }, 1000);
+        } catch (e) {
+          if (statusEl) statusEl.style.display = '';
+          hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Adjoin failed', 'error');
+        }
+      });
+
+      // Add subtract functionality
+      subtractBtn.addEventListener('click', async () => {
+        if (statusEl) statusEl.style.display = '';
+        try {
+          const overlayGeoms = getOverlayGeometries();
+          if (overlayGeoms.length === 0) {
+            hudApi.setStatus && hudApi.setStatus('No overlays to subtract', 'error');
+            return;
+          }
+
+          hudApi.setStatus && hudApi.setStatus('Subtracting areas…', 'info');
+
+          // Send request to backend to subtract overlays
+          const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges/${refuge.id}/subtract`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ overlays: overlayGeoms })
+          });
+
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data || data.status !== 'success') {
+            const msg = (data && data.message) || `Failed to subtract (${res.status})`;
+            throw new Error(msg);
+          }
+
+          // Update the refuge object with new geometry
+          refuge.polygon = data.refuge.polygon;
+          
+          // Clear overlays after successful subtract
+          cleanupEditOverlays();
+          
+          // Reload and re-render refuges to show the updated geometry
+          await loadAndRenderRefuges();
+          
+          hudApi.setStatus && hudApi.setStatus('Areas subtracted successfully', 'success');
+          
+          // Re-enter edit mode for the updated refuge
+          setTimeout(() => {
+            const h = document.querySelector('.drawing-hud');
+            h && h.remove();
+            endEditing();
+            openRefugeEditor(data.refuge);
+          }, 1000);
+        } catch (e) {
+          if (statusEl) statusEl.style.display = '';
+          hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Subtract failed', 'error');
+        }
+      });
+
+      // Add save functionality (saves current state without operations)
+      saveBtn.addEventListener('click', async () => {
+        try {
+          if (statusEl) statusEl.style.display = '';
+          hudApi.setStatus && hudApi.setStatus('Saving…', 'info');
+          
+          // Just close the editor - changes are already saved via adjoin/subtract
+          await loadAndRenderRefuges();
+          const h = document.querySelector('.drawing-hud');
+          h && h.remove();
+          endEditing();
+          
+          // Show success message briefly
+          hudApi.setStatus && hudApi.setStatus('Saved successfully', 'success');
+        } catch (e) {
+          if (statusEl) statusEl.style.display = '';
+          hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Save failed', 'error');
+        }
+      });
+
       // Add delete functionality
       del.addEventListener('click', async () => {
         // Hide all buttons and operation row while processing to prevent repeat clicks
