@@ -59,11 +59,14 @@ window.addEventListener('DOMContentLoaded', function () {
   }
   
   // Initialize the map
+  const DEFAULT_CENTER = [20.5937, 78.9629];
+  const DEFAULT_ZOOM = 5;
   const map = L.map('map', {
-    center: [20.5937, 78.9629], // Centered on India as an example
-    zoom: 5,
+    center: DEFAULT_CENTER, // Centered on India as an example
+    zoom: DEFAULT_ZOOM,
     zoomControl: true
   });
+  let userLocationMarker = null;
 
   // Terrain layer (OpenTopoMap)
   const terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
@@ -936,9 +939,11 @@ window.addEventListener('DOMContentLoaded', function () {
                 // Block popups from opening while in edit mode
                 polygon.on('click', (e) => {
                   if (window.__editing) {
-                    L.DomEvent.stopPropagation(e);
-                    e.target.closePopup();
-                    return false;
+                    try { e.target.closePopup(); } catch (err) {}
+                    if (e && e.originalEvent && typeof e.originalEvent.preventDefault === 'function') {
+                      e.originalEvent.preventDefault();
+                    }
+                    return;
                   }
                 });
                 polygon.on('popupopen', () => {
@@ -1237,11 +1242,77 @@ window.addEventListener('DOMContentLoaded', function () {
     }
   ]);
 
-  // Center button (no options, just action)
-  document.getElementById('btn-center').onclick = function() {
-    try { map && map.closePopup && map.closePopup(); } catch (e) {}
-    map.setView([20.5937, 78.9629], 5);
-  };
+  // Center button: focus on user location when available
+  const centerBtn = document.getElementById('btn-center');
+  if (centerBtn) {
+    const fallbackToDefaultView = () => {
+      try {
+        map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+      } catch (err) {}
+    };
+
+    const highlightUserLocation = (lat, lng) => {
+      const latLng = [lat, lng];
+      if (!userLocationMarker) {
+        try {
+          userLocationMarker = L.circleMarker(latLng, {
+            radius: 8,
+            color: '#1e90ff',
+            weight: 2,
+            fillColor: '#1e90ff',
+            fillOpacity: 0.6
+          }).addTo(map);
+        } catch (err) {
+          userLocationMarker = null;
+        }
+      } else {
+        try { userLocationMarker.setLatLng(latLng); } catch (err) {}
+      }
+      try {
+        map.flyTo(latLng, Math.max(map.getZoom(), 12), { duration: 1.2 });
+      } catch (err) {
+        map.setView(latLng, Math.max(map.getZoom(), 12));
+      }
+    };
+
+    const handleLocationError = (error) => {
+      if (isMobile) {
+        alert('Unable to access your location. Please enable location services and try again.');
+      } else {
+        const localTime = new Date().toLocaleString();
+        alert(`Unable to access your location. Local time: ${localTime}`);
+      }
+      fallbackToDefaultView();
+    };
+
+    centerBtn.addEventListener('click', () => {
+      if ((typeof drawing !== 'undefined' && drawing) || (window.__editing)) {
+        return;
+      }
+      try { map && map.closePopup && map.closePopup(); } catch (err) {}
+
+      if (!navigator.geolocation) {
+        handleLocationError(new Error('Geolocation not supported'));
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          if (position && position.coords) {
+            highlightUserLocation(position.coords.latitude, position.coords.longitude);
+          } else {
+            handleLocationError(new Error('Location unavailable'));
+          }
+        },
+        handleLocationError,
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 60000
+        }
+      );
+    });
+  }
 
   // Floating menu and side panel logic
   const fabMenu = document.getElementById('fab-menu');
