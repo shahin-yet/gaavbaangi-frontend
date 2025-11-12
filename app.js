@@ -497,13 +497,9 @@ window.addEventListener('DOMContentLoaded', function () {
         const layer = evt && evt.target;
         if (!layer) return;
         const now = Date.now();
-        if (evt && evt.type === 'click' && layer._lastTouchSelection && (now - layer._lastTouchSelection) < 450) {
+        // Suppress duplicate synthetic clicks right after a touch/pointer tap
+        if (evt && evt.type === 'click' && layer._lastTapTime && (now - layer._lastTapTime) < 450) {
           return;
-        }
-        if (evt && evt.type === 'touchstart') {
-          layer._lastTouchSelection = now;
-        } else {
-          layer._lastTouchSelection = now;
         }
         if (!overlaySelectionState.mode) {
           showSelectionStatus('Tap Adjoin or Subtract to start selecting overlays.');
@@ -524,6 +520,10 @@ window.addEventListener('DOMContentLoaded', function () {
           evt.originalEvent.preventDefault();
         }
         if (evt && typeof evt.preventDefault === 'function') evt.preventDefault();
+        if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
+        if (evt && evt.originalEvent && typeof evt.originalEvent.stopPropagation === 'function') {
+          evt.originalEvent.stopPropagation();
+        }
       };
 
       const registerOverlayLayer = (layer) => {
@@ -533,8 +533,107 @@ window.addEventListener('DOMContentLoaded', function () {
         layer._overlayId = `edit-overlay-${overlayIdCounter}`;
         layer._selectionRole = null;
         if (typeof layer.on === 'function') {
-          layer.on('click', handleOverlayInteraction);
-          layer.on('touchstart', handleOverlayInteraction);
+          // Always have a click fallback (desktop + Leaflet tap synth)
+          const clickHandler = (e) => {
+            const now = Date.now();
+            if (layer._lastTapTime && (now - layer._lastTapTime) < 450) return;
+            handleOverlayInteraction(e);
+          };
+          layer.on('click', clickHandler);
+
+          // Pointer Events path (most modern mobile browsers)
+          if (window.PointerEvent) {
+            let activePointerId = null;
+            let downPoint = null;
+            let moved = false;
+            let downTime = 0;
+            const dist2 = (a, b) => {
+              const dx = (a.x - b.x);
+              const dy = (a.y - b.y);
+              return dx*dx + dy*dy;
+            };
+            const getPoint = (ev) => {
+              // Prefer Leaflet containerPoint if present
+              if (ev && ev.containerPoint) return { x: ev.containerPoint.x, y: ev.containerPoint.y };
+              const oe = ev && ev.originalEvent;
+              if (oe && typeof oe.clientX === 'number' && typeof oe.clientY === 'number') {
+                return { x: oe.clientX, y: oe.clientY };
+              }
+              return null;
+            };
+            const pointerdown = (e) => {
+              if (activePointerId !== null) return;
+              activePointerId = e && e.originalEvent ? e.originalEvent.pointerId : null;
+              downPoint = getPoint(e);
+              moved = false;
+              downTime = Date.now();
+            };
+            const pointermove = (e) => {
+              if (downPoint == null) return;
+              const p = getPoint(e);
+              if (!p) return;
+              // 9px threshold (~Finger jitter)
+              if (dist2(p, downPoint) > (9*9)) moved = true;
+            };
+            const finalizeTap = (e) => {
+              const duration = Date.now() - downTime;
+              const wasTap = !moved && duration < 600;
+              activePointerId = null;
+              downPoint = null;
+              if (wasTap) {
+                layer._lastTapTime = Date.now();
+                handleOverlayInteraction({ target: layer, type: 'pointertap', originalEvent: e && e.originalEvent });
+              }
+            };
+            const pointerup = (e) => { finalizeTap(e); };
+            const pointercancel = () => { activePointerId = null; downPoint = null; moved = false; downTime = 0; };
+            layer.on('pointerdown', pointerdown);
+            layer.on('pointermove', pointermove);
+            layer.on('pointerup', pointerup);
+            layer.on('pointercancel', pointercancel);
+          } else {
+            // Touch Events fallback
+            let downPoint = null;
+            let moved = false;
+            let downTime = 0;
+            const dist2 = (a, b) => {
+              const dx = (a.x - b.x);
+              const dy = (a.y - b.y);
+              return dx*dx + dy*dy;
+            };
+            const getTouchPoint = (ev) => {
+              if (ev && ev.containerPoint) return { x: ev.containerPoint.x, y: ev.containerPoint.y };
+              const oe = ev && ev.originalEvent;
+              const t = oe && (oe.changedTouches && oe.changedTouches[0] || oe.touches && oe.touches[0]);
+              if (t) return { x: t.clientX, y: t.clientY };
+              return null;
+            };
+            const touchstart = (e) => {
+              downPoint = getTouchPoint(e);
+              moved = false;
+              downTime = Date.now();
+            };
+            const touchmove = (e) => {
+              if (downPoint == null) return;
+              const p = getTouchPoint(e);
+              if (!p) return;
+              if (dist2(p, downPoint) > (9*9)) moved = true;
+            };
+            const touchend = (e) => {
+              const duration = Date.now() - downTime;
+              const wasTap = !moved && duration < 600;
+              downPoint = null;
+              if (wasTap) {
+                layer._lastTapTime = Date.now();
+                handleOverlayInteraction({ target: layer, type: 'touchtap', originalEvent: e && e.originalEvent });
+              }
+            };
+            const touchcancel = () => { downPoint = null; moved = false; downTime = 0; };
+            layer.on('touchstart', touchstart);
+            layer.on('touchmove', touchmove);
+            layer.on('touchend', touchend);
+            layer.on('touchcancel', touchcancel);
+          }
         }
         applyOverlayStyle(layer);
       };
@@ -614,7 +713,8 @@ window.addEventListener('DOMContentLoaded', function () {
                     color: '#ff9800',
                     weight: 2,
                     fillColor: '#ff9800',
-                    fillOpacity: 0.2
+                    fillOpacity: 0.2,
+                    interactive: true
                   }).addTo(refugeLayerGroup);
                 } catch (e) {
                   overlayLayer = null;
