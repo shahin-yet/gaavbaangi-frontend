@@ -1031,9 +1031,9 @@ window.addEventListener('DOMContentLoaded', function () {
                   </div>
                 `;
                 polygon.addTo(refugeLayerGroup).bindPopup(popupHtml);
-                // Block popups from opening while in edit mode
+                // Block popups from opening while in edit mode or drawing mode
                 polygon.on('click', (e) => {
-                  if (window.__editing) {
+                  if (window.__editing || drawing) {
                     try { e.target.closePopup(); } catch (err) {}
                     if (e && e.originalEvent && typeof e.originalEvent.preventDefault === 'function') {
                       e.originalEvent.preventDefault();
@@ -1042,8 +1042,8 @@ window.addEventListener('DOMContentLoaded', function () {
                   }
                 });
                 polygon.on('popupopen', () => {
-                  // Close popup immediately if editing mode is active
-                  if (window.__editing) {
+                  // Close popup immediately if editing mode or drawing mode is active
+                  if (window.__editing || drawing) {
                     polygon.closePopup();
                     return;
                   }
