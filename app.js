@@ -450,6 +450,101 @@ window.addEventListener('DOMContentLoaded', function () {
             }
           } catch (e) {}
         });
+        
+        // Check for fully overlapping overlays and remove smallest ones
+        if (window.__editOverlayLayers.length > 1) {
+          const fullyOverlappedLayers = new Set();
+          
+          // Helper function to check if polygon1 fully contains polygon2
+          const fullyContains = (poly1LatLngs, poly2LatLngs) => {
+            const poly1Points = poly1LatLngs.map(ll => ({ lat: ll.lat, lng: ll.lng }));
+            const poly2Points = poly2LatLngs.map(ll => ({ lat: ll.lat, lng: ll.lng }));
+            
+            // Point-in-polygon test
+            const pointInPolygon = (point, polygon) => {
+              let inside = false;
+              for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i].lng, yi = polygon[i].lat;
+                const xj = polygon[j].lng, yj = polygon[j].lat;
+                const intersect = ((yi > point.lat) !== (yj > point.lat)) &&
+                  (point.lng < (xj - xi) * (point.lat - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+              }
+              return inside;
+            };
+            
+            // Check if all points of poly2 are inside poly1
+            for (const point of poly2Points) {
+              if (!pointInPolygon(point, poly1Points)) {
+                return false;
+              }
+            }
+            return true;
+          };
+          
+          // Helper function to calculate polygon area (approximate)
+          const calculateArea = (latlngs) => {
+            let area = 0;
+            const n = latlngs.length;
+            for (let i = 0; i < n; i++) {
+              const j = (i + 1) % n;
+              area += latlngs[i].lng * latlngs[j].lat;
+              area -= latlngs[j].lng * latlngs[i].lat;
+            }
+            return Math.abs(area / 2);
+          };
+          
+          // Compare each pair of overlays
+          for (let i = 0; i < window.__editOverlayLayers.length; i++) {
+            const layer1 = window.__editOverlayLayers[i];
+            if (!layer1 || !layer1.getLatLngs || fullyOverlappedLayers.has(layer1)) continue;
+            
+            try {
+              const latlngs1 = layer1.getLatLngs();
+              const coords1 = Array.isArray(latlngs1[0]) ? latlngs1[0] : latlngs1;
+              const area1 = calculateArea(coords1);
+              
+              for (let j = 0; j < window.__editOverlayLayers.length; j++) {
+                if (i === j) continue;
+                
+                const layer2 = window.__editOverlayLayers[j];
+                if (!layer2 || !layer2.getLatLngs || fullyOverlappedLayers.has(layer2)) continue;
+                
+                try {
+                  const latlngs2 = layer2.getLatLngs();
+                  const coords2 = Array.isArray(latlngs2[0]) ? latlngs2[0] : latlngs2;
+                  const area2 = calculateArea(coords2);
+                  
+                  // Check if one fully contains the other
+                  const layer1ContainsLayer2 = fullyContains(coords1, coords2);
+                  const layer2ContainsLayer1 = fullyContains(coords2, coords1);
+                  
+                  if (layer1ContainsLayer2 || layer2ContainsLayer1) {
+                    // Mark the smaller one for removal
+                    if (area1 < area2) {
+                      fullyOverlappedLayers.add(layer1);
+                    } else {
+                      fullyOverlappedLayers.add(layer2);
+                    }
+                  }
+                } catch (e) {}
+              }
+            } catch (e) {}
+          }
+          
+          // Remove fully overlapped layers
+          fullyOverlappedLayers.forEach(layer => {
+            try {
+              refugeLayerGroup.removeLayer(layer);
+              overlaySelectionState.adjoin.delete(layer);
+              overlaySelectionState.subtract.delete(layer);
+              const idx = window.__editOverlayLayers.indexOf(layer);
+              if (idx > -1) {
+                window.__editOverlayLayers.splice(idx, 1);
+              }
+            } catch (e) {}
+          });
+        }
       }
       cleanupEditOverlays();
       unhighlightEditingRefuge();
@@ -1269,33 +1364,74 @@ window.addEventListener('DOMContentLoaded', function () {
         try { userLocationMarker.setLatLng(latLng); } catch (err) {}
       }
       try {
-        map.flyTo(latLng, Math.max(map.getZoom(), 12), { duration: 1.2 });
+        map.flyTo(latLng, Math.max(map.getZoom(), 15), { duration: 1.2 });
       } catch (err) {
-        map.setView(latLng, Math.max(map.getZoom(), 12));
+        map.setView(latLng, Math.max(map.getZoom(), 15));
       }
     };
 
     const handleLocationError = (error) => {
-      if (isMobile) {
-        alert('Unable to access your location. Please enable location services and try again.');
+      let message = '';
+      
+      if (error.code === 1) {
+        // PERMISSION_DENIED
+        message = 'Location access denied. Please enable location permissions in your browser settings and try again.';
+      } else if (error.code === 2) {
+        // POSITION_UNAVAILABLE
+        message = 'Location information is unavailable. Please check your device settings and try again.';
+      } else if (error.code === 3) {
+        // TIMEOUT
+        message = 'Location request timed out. Please try again.';
+      } else if (error.message === 'Geolocation not supported') {
+        message = 'Your browser does not support location services.';
       } else {
-        const localTime = new Date().toLocaleString();
-        alert(`Unable to access your location. Local time: ${localTime}`);
+        message = 'Unable to access your location. Please enable location services and try again.';
       }
-      fallbackToDefaultView();
+      
+      alert(message);
+      // Don't fallback to default view - let user stay where they are
     };
 
-    centerBtn.addEventListener('click', () => {
+    const requestLocation = async () => {
       if ((typeof drawing !== 'undefined' && drawing) || (window.__editing)) {
         return;
       }
       try { map && map.closePopup && map.closePopup(); } catch (err) {}
 
+      // Check if geolocation is supported
       if (!navigator.geolocation) {
         handleLocationError(new Error('Geolocation not supported'));
         return;
       }
 
+      // Check permission state if available (modern browsers)
+      if (navigator.permissions && navigator.permissions.query) {
+        try {
+          const permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
+          
+          if (permissionStatus.state === 'denied') {
+            alert('Location access is blocked. Please enable location permissions in your browser settings:\n\n' +
+                  '1. Click the lock icon in the address bar\n' +
+                  '2. Find "Location" permissions\n' +
+                  '3. Select "Allow"\n' +
+                  '4. Reload the page and try again');
+            return;
+          }
+          
+          if (permissionStatus.state === 'prompt') {
+            // Will prompt user - inform them
+            if (confirm('This app needs your location to center the map on your position. Allow location access?')) {
+              // User confirmed, proceed with request
+            } else {
+              return; // User declined
+            }
+          }
+        } catch (err) {
+          // Permission API not supported, continue with geolocation request
+        }
+      }
+
+      // Request location
       navigator.geolocation.getCurrentPosition(
         (position) => {
           if (position && position.coords) {
@@ -1308,10 +1444,12 @@ window.addEventListener('DOMContentLoaded', function () {
         {
           enableHighAccuracy: true,
           timeout: 15000,
-          maximumAge: 60000
+          maximumAge: 10000
         }
       );
-    });
+    };
+
+    centerBtn.addEventListener('click', requestLocation);
   }
 
   // Floating menu and side panel logic
