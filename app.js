@@ -1160,21 +1160,20 @@ window.addEventListener('DOMContentLoaded', function () {
       console.warn('Failed to load refuges', e);
     }
   }
-  // Helper functions to toggle refuge polygon interactivity
+  // Helper: toggle interactivity for refuge polygons (and edit overlays while drawing)
   function setRefugePolygonsInteractive(interactive) {
     refugeLayerGroup.eachLayer(layer => {
-      if (layer._isRefugePolygon && typeof layer.setStyle === 'function') {
+      const isRefugeOrOverlay = !!(layer._isRefugePolygon || layer._isEditOverlay);
+      if (isRefugeOrOverlay) {
         try {
-          layer.options.interactive = interactive;
-          // Force re-render by toggling a style property
-          if (interactive) {
-            layer.setStyle({ interactive: true });
-          } else {
-            // Remove interactivity by disabling all pointer events
-            const el = layer._path || layer.getElement();
-            if (el) {
-              el.style.pointerEvents = interactive ? '' : 'none';
-            }
+          // Let Leaflet know this layer should or shouldn't receive events
+          if (layer.options) {
+            layer.options.interactive = interactive;
+          }
+          // Pointer events on the SVG/DOM element actually control click/touch hit-testing
+          const el = layer._path || (typeof layer.getElement === 'function' && layer.getElement());
+          if (el && el.style) {
+            el.style.pointerEvents = interactive ? '' : 'none';
           }
         } catch (e) {}
       }
