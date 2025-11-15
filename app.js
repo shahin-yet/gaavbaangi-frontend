@@ -61,12 +61,54 @@ window.addEventListener('DOMContentLoaded', function () {
   // Initialize the map
   const DEFAULT_CENTER = [20.5937, 78.9629];
   const DEFAULT_ZOOM = 5;
+  let dynamicDefaultCenter = [...DEFAULT_CENTER];
+  let ipCenterPromise = null;
+
+  async function fetchDefaultCenterByIP() {
+    const supportsAbort = typeof AbortController === 'function';
+    const controller = supportsAbort ? new AbortController() : null;
+    const timeoutId = supportsAbort ? setTimeout(() => controller.abort(), 5000) : null;
+    try {
+      const fetchOptions = supportsAbort ? { signal: controller.signal } : {};
+      const res = await fetch('https://ipapi.co/json/', fetchOptions);
+      if (!res.ok) return null;
+      const data = await res.json().catch(() => null);
+      if (!data) return null;
+      const lat = parseFloat(data.latitude);
+      const lng = parseFloat(data.longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return [lat, lng];
+      }
+    } catch (err) {
+      console.warn('IP-based default center lookup failed', err);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+    return null;
+  }
+
   const map = L.map('map', {
-    center: DEFAULT_CENTER, // Centered on India as an example
+    center: dynamicDefaultCenter, // fallback while IP-based center resolves
     zoom: DEFAULT_ZOOM,
     zoomControl: true
   });
   let userLocationMarker = null;
+
+  ipCenterPromise = fetchDefaultCenterByIP()
+    .then((ipCenter) => {
+      if (Array.isArray(ipCenter)) {
+        dynamicDefaultCenter = ipCenter;
+        try {
+          map.setView(ipCenter, DEFAULT_ZOOM);
+        } catch (err) {}
+        return ipCenter;
+      }
+      return dynamicDefaultCenter;
+    })
+    .catch((err) => {
+      console.warn('Failed to determine center from IP', err);
+      return dynamicDefaultCenter;
+    });
 
   // Terrain layer (OpenTopoMap)
   const terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
@@ -1246,9 +1288,17 @@ window.addEventListener('DOMContentLoaded', function () {
   const centerBtn = document.getElementById('btn-center');
   if (centerBtn) {
     const fallbackToDefaultView = () => {
-      try {
-        map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
-      } catch (err) {}
+      const applyCenter = (center) => {
+        const target = (Array.isArray(center) && center.length === 2) ? center : dynamicDefaultCenter;
+        try {
+          map.setView(target, DEFAULT_ZOOM);
+        } catch (err) {}
+      };
+      if (ipCenterPromise && typeof ipCenterPromise.then === 'function') {
+        ipCenterPromise.then(applyCenter).catch(() => applyCenter(dynamicDefaultCenter));
+      } else {
+        applyCenter(dynamicDefaultCenter);
+      }
     };
 
     const highlightUserLocation = (lat, lng) => {
