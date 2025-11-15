@@ -271,9 +271,20 @@ window.addEventListener('DOMContentLoaded', function () {
         if (!Array.isArray(ring) || ring.length < 3) continue;
         const startInside = pointInRing(startPoint, ring);
         const endInside = pointInRing(endPoint, ring);
-        if (startInside || endInside) continue;
         const intersections = countIntersectionsWithRing(startPoint, endPoint, ring);
-        if (intersections >= 2) {
+
+        // Case 1: entering refuge (outside -> inside) is allowed
+        if (!startInside && endInside) {
+          continue;
+        }
+
+        // Case 2: already inside and attempting to exit elsewhere
+        if (startInside && !endInside && intersections >= 1) {
+          return true;
+        }
+
+        // Case 3: entirely outside but crossing through to the other side
+        if (!startInside && !endInside && intersections >= 2) {
           return true;
         }
       }
