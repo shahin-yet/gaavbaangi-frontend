@@ -1015,9 +1015,11 @@ window.addEventListener('DOMContentLoaded', function () {
                   color: '#1e90ff',
                   weight: 2,
                   fillColor: '#1e90ff',
-                  fillOpacity: 0
+                  fillOpacity: 0,
+                  interactive: true
                 });
                 polygon._refuge = { id: r.id, name: r.name, polygon: r.polygon };
+                polygon._isRefugePolygon = true;
                 const popupId = `ref-edit-${r.id}`;
                 const renameId = `ref-rename-${r.id}`;
                 const nameId = `ref-name-${r.id}`;
@@ -1158,6 +1160,27 @@ window.addEventListener('DOMContentLoaded', function () {
       console.warn('Failed to load refuges', e);
     }
   }
+  // Helper functions to toggle refuge polygon interactivity
+  function setRefugePolygonsInteractive(interactive) {
+    refugeLayerGroup.eachLayer(layer => {
+      if (layer._isRefugePolygon && typeof layer.setStyle === 'function') {
+        try {
+          layer.options.interactive = interactive;
+          // Force re-render by toggling a style property
+          if (interactive) {
+            layer.setStyle({ interactive: true });
+          } else {
+            // Remove interactivity by disabling all pointer events
+            const el = layer._path || layer.getElement();
+            if (el) {
+              el.style.pointerEvents = interactive ? '' : 'none';
+            }
+          }
+        } catch (e) {}
+      }
+    });
+  }
+
   // initial fetch
   loadAndRenderRefuges();
 
@@ -1630,6 +1653,8 @@ window.addEventListener('DOMContentLoaded', function () {
     if (!opts.keepDrawingActiveClass) {
       try { document.body.classList.remove('drawing-active'); } catch (e) {}
     }
+    // Restore refuge polygon interactivity
+    try { setRefugePolygonsInteractive(true); } catch (e) {}
     drawing = null;
   }
 
@@ -1713,6 +1738,8 @@ window.addEventListener('DOMContentLoaded', function () {
       try { typeof closeSidePanel === 'function' && closeSidePanel(); } catch (e) {}
       // Close any open map popups (refuge name popups)
       try { map && map.closePopup && map.closePopup(); } catch (e) {}
+      // Make refuge polygons non-interactive so clicks pass through to the map
+      try { setRefugePolygonsInteractive(false); } catch (e) {}
     } catch (e) {}
     const teardownOnCancel = opts.cancelTeardownOptions;
     const baseHudApi = opts.hudApi || createDrawingHud(() => {
