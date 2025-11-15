@@ -457,15 +457,7 @@ body {
 /* Side panel search bar */
 .side-panel-search {
   padding: 8px 12px 12px;
-  border-top: 1px solid var(--gray-200);
   background: var(--white);
-}
-
-.side-panel-search-label {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--gray-800);
-  margin-bottom: 6px;
 }
 
 .side-panel-search-row {
