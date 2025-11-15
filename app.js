@@ -1091,9 +1091,9 @@ window.addEventListener('DOMContentLoaded', function () {
                   </div>
                 `;
                 polygon.addTo(refugeLayerGroup).bindPopup(popupHtml);
-                // Block popups from opening while in edit mode
+                // Block popups from opening while in edit or drawing mode
                 polygon.on('click', (e) => {
-                  if (window.__editing) {
+                  if (window.__editing || drawing) {
                     try { e.target.closePopup(); } catch (err) {}
                     if (e && e.originalEvent && typeof e.originalEvent.preventDefault === 'function') {
                       e.originalEvent.preventDefault();
@@ -1102,8 +1102,8 @@ window.addEventListener('DOMContentLoaded', function () {
                   }
                 });
                 polygon.on('popupopen', () => {
-                  // Close popup immediately if editing mode is active
-                  if (window.__editing) {
+                  // Close popup immediately if editing or drawing mode is active
+                  if (window.__editing || drawing) {
                     polygon.closePopup();
                     return;
                   }
@@ -1555,18 +1555,6 @@ window.addEventListener('DOMContentLoaded', function () {
   // Refuge drawing logic
   // -----------------------------
   let drawing = null; // state holder when active
-  map.on('popupopen', (ev) => {
-    if (!drawing) return;
-    try {
-      if (ev && ev.popup && typeof ev.popup._close === 'function') {
-        ev.popup._close();
-      } else if (map && typeof map.closePopup === 'function') {
-        map.closePopup();
-      }
-    } catch (e) {
-      try { map && map.closePopup && map.closePopup(); } catch (err) {}
-    }
-  });
 
   function createDrawingHud(onCancel) {
     let hud = document.querySelector('.drawing-hud');
@@ -1737,7 +1725,6 @@ window.addEventListener('DOMContentLoaded', function () {
     const teardownBeforeStart = Object.prototype.hasOwnProperty.call(opts, 'teardownBeforeStartOptions')
       ? opts.teardownBeforeStartOptions
       : (opts.preserveHud ? { preserveHud: true, keepDrawingActiveClass: !!opts.keepDrawingActiveClass } : undefined);
-    try { map && map.closePopup && map.closePopup(); } catch (e) {}
     if (drawing) teardownDrawing(teardownBeforeStart);
     // Disable bottom UI interactions while drawing
     try {
