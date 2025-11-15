@@ -259,24 +259,22 @@ window.addEventListener('DOMContentLoaded', function () {
     if (!candidateLatLng || !Array.isArray(existingRefugesCache) || existingRefugesCache.length === 0) {
       return false;
     }
-    const candidatePoint = { lat: candidateLatLng.lat, lng: candidateLatLng.lng };
-    const prevPoint = prevLatLng ? { lat: prevLatLng.lat, lng: prevLatLng.lng } : null;
+    if (!prevLatLng) {
+      return false;
+    }
+    const startPoint = { lat: prevLatLng.lat, lng: prevLatLng.lng };
+    const endPoint = { lat: candidateLatLng.lat, lng: candidateLatLng.lng };
     for (const refuge of existingRefugesCache) {
       if (!refuge || !refuge.polygon) continue;
       const rings = geoJsonPolygonToRings(refuge.polygon);
       for (const ring of rings) {
         if (!Array.isArray(ring) || ring.length < 3) continue;
-        if (pointInRing(candidatePoint, ring)) {
+        const startInside = pointInRing(startPoint, ring);
+        const endInside = pointInRing(endPoint, ring);
+        if (startInside || endInside) continue;
+        const intersections = countIntersectionsWithRing(startPoint, endPoint, ring);
+        if (intersections >= 2) {
           return true;
-        }
-        if (prevPoint) {
-          if (pointInRing(prevPoint, ring)) {
-            return true;
-          }
-          const intersections = countIntersectionsWithRing(prevPoint, candidatePoint, ring);
-          if (intersections >= 2) {
-            return true;
-          }
         }
       }
     }
