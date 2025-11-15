@@ -1035,9 +1035,13 @@ window.addEventListener('DOMContentLoaded', function () {
                 polygon.on('click', (e) => {
                   if (window.__editing || drawing) {
                     try { e.target.closePopup(); } catch (err) {}
-                    if (e && e.originalEvent && typeof e.originalEvent.preventDefault === 'function') {
-                      e.originalEvent.preventDefault();
+                    // In edit mode, prevent the click from propagating
+                    if (window.__editing) {
+                      if (e && e.originalEvent && typeof e.originalEvent.preventDefault === 'function') {
+                        e.originalEvent.preventDefault();
+                      }
                     }
+                    // In drawing mode, let the click propagate to the map for vertex addition
                     return;
                   }
                 });
