@@ -1594,7 +1594,7 @@ window.addEventListener('DOMContentLoaded', function () {
       const serverMsg = (data && data.message) || '';
       const isDuplicate = res.status === 409 || /already exists/i.test(serverMsg);
       if (isDuplicate) {
-        setStatus && setStatus('That name is already in use.\nEnter a different name in the bar.', 'error');
+        setStatus && setStatus('That name is already in use. Enter a different name in the bar.', 'error');
         return false;
       }
       const msg = serverMsg || `Failed to save refuge (${res.status})`;
