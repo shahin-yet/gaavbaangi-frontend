@@ -1707,6 +1707,8 @@ window.addEventListener('DOMContentLoaded', function () {
       // Close any open option panels and side panel to avoid overlaying the map
       try { document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show')); } catch (e) {}
       try { typeof closeSidePanel === 'function' && closeSidePanel(); } catch (e) {}
+      // Close any open map popups (refuge name popups)
+      try { map && map.closePopup && map.closePopup(); } catch (e) {}
     } catch (e) {}
     const teardownOnCancel = opts.cancelTeardownOptions;
     const baseHudApi = opts.hudApi || createDrawingHud(() => {
