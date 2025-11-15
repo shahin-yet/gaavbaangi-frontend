@@ -1555,6 +1555,18 @@ window.addEventListener('DOMContentLoaded', function () {
   // Refuge drawing logic
   // -----------------------------
   let drawing = null; // state holder when active
+  map.on('popupopen', (ev) => {
+    if (!drawing) return;
+    try {
+      if (ev && ev.popup && typeof ev.popup._close === 'function') {
+        ev.popup._close();
+      } else if (map && typeof map.closePopup === 'function') {
+        map.closePopup();
+      }
+    } catch (e) {
+      try { map && map.closePopup && map.closePopup(); } catch (err) {}
+    }
+  });
 
   function createDrawingHud(onCancel) {
     let hud = document.querySelector('.drawing-hud');
@@ -1725,6 +1737,7 @@ window.addEventListener('DOMContentLoaded', function () {
     const teardownBeforeStart = Object.prototype.hasOwnProperty.call(opts, 'teardownBeforeStartOptions')
       ? opts.teardownBeforeStartOptions
       : (opts.preserveHud ? { preserveHud: true, keepDrawingActiveClass: !!opts.keepDrawingActiveClass } : undefined);
+    try { map && map.closePopup && map.closePopup(); } catch (e) {}
     if (drawing) teardownDrawing(teardownBeforeStart);
     // Disable bottom UI interactions while drawing
     try {
