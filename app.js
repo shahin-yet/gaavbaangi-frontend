@@ -61,54 +61,12 @@ window.addEventListener('DOMContentLoaded', function () {
   // Initialize the map
   const DEFAULT_CENTER = [20.5937, 78.9629];
   const DEFAULT_ZOOM = 5;
-  let dynamicDefaultCenter = [...DEFAULT_CENTER];
-  let ipCenterPromise = null;
-
-  async function fetchDefaultCenterByIP() {
-    const supportsAbort = typeof AbortController === 'function';
-    const controller = supportsAbort ? new AbortController() : null;
-    const timeoutId = supportsAbort ? setTimeout(() => controller.abort(), 5000) : null;
-    try {
-      const fetchOptions = supportsAbort ? { signal: controller.signal } : {};
-      const res = await fetch('https://ipapi.co/json/', fetchOptions);
-      if (!res.ok) return null;
-      const data = await res.json().catch(() => null);
-      if (!data) return null;
-      const lat = parseFloat(data.latitude);
-      const lng = parseFloat(data.longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        return [lat, lng];
-      }
-    } catch (err) {
-      console.warn('IP-based default center lookup failed', err);
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
-    }
-    return null;
-  }
-
   const map = L.map('map', {
-    center: dynamicDefaultCenter, // fallback while IP-based center resolves
+    center: DEFAULT_CENTER, // Centered on India as an example
     zoom: DEFAULT_ZOOM,
     zoomControl: true
   });
   let userLocationMarker = null;
-
-  ipCenterPromise = fetchDefaultCenterByIP()
-    .then((ipCenter) => {
-      if (Array.isArray(ipCenter)) {
-        dynamicDefaultCenter = ipCenter;
-        try {
-          map.setView(ipCenter, DEFAULT_ZOOM);
-        } catch (err) {}
-        return ipCenter;
-      }
-      return dynamicDefaultCenter;
-    })
-    .catch((err) => {
-      console.warn('Failed to determine center from IP', err);
-      return dynamicDefaultCenter;
-    });
 
   // Terrain layer (OpenTopoMap)
   const terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
@@ -130,8 +88,6 @@ window.addEventListener('DOMContentLoaded', function () {
   // -----------------------------
   const refugeLayerGroup = L.layerGroup().addTo(map);
   let lastDeletedRefuge = null; // for Undo restore
-  const REFUGE_SPLIT_ERROR_MSG = 'this will split refuge';
-  let existingRefugesCache = [];
 
   function escapeHtml(str) {
     try {
@@ -180,116 +136,6 @@ window.addEventListener('DOMContentLoaded', function () {
       throw new Error(msg);
     }
     return data.refuge;
-  }
-
-  function updateExistingRefugesCache(refuges) {
-    existingRefugesCache = Array.isArray(refuges) ? refuges.filter(Boolean) : [];
-    if (typeof window !== 'undefined') {
-      window.__existingRefugesCache = existingRefugesCache;
-    }
-  }
-
-  function geoJsonPolygonToRings(polygonGeoJSON) {
-    if (!polygonGeoJSON || !polygonGeoJSON.type || !polygonGeoJSON.coordinates) {
-      return [];
-    }
-    const convertRing = (ringCoords = []) => {
-      const ring = ringCoords.map(([lng, lat]) => ({ lat, lng }));
-      if (ring.length > 1) {
-        const first = ring[0];
-        const last = ring[ring.length - 1];
-        if (first.lat === last.lat && first.lng === last.lng) {
-          ring.pop();
-        }
-      }
-      return ring;
-    };
-    if (polygonGeoJSON.type === 'Polygon') {
-      return polygonGeoJSON.coordinates.map(convertRing);
-    }
-    if (polygonGeoJSON.type === 'MultiPolygon') {
-      const rings = [];
-      polygonGeoJSON.coordinates.forEach(poly => {
-        (poly || []).forEach(ringCoords => {
-          rings.push(convertRing(ringCoords));
-        });
-      });
-      return rings;
-    }
-    return [];
-  }
-
-  function pointInRing(point, ring) {
-    if (!point || !Array.isArray(ring) || ring.length < 3) return false;
-    let inside = false;
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const xi = ring[i].lng;
-      const yi = ring[i].lat;
-      const xj = ring[j].lng;
-      const yj = ring[j].lat;
-      const intersects = ((yi > point.lat) !== (yj > point.lat)) &&
-        (point.lng < ((xj - xi) * (point.lat - yi)) / ((yj - yi) || 1e-12) + xi);
-      if (intersects) inside = !inside;
-    }
-    return inside;
-  }
-
-  function segmentsIntersectLatLng(p1, p2, p3, p4) {
-    const ccw = (A, B, C) => (C.lat - A.lat) * (B.lng - A.lng) > (B.lat - A.lat) * (C.lng - A.lng);
-    return ccw(p1, p3, p4) !== ccw(p2, p3, p4) &&
-      ccw(p1, p2, p3) !== ccw(p1, p2, p4);
-  }
-
-  function countIntersectionsWithRing(start, end, ring) {
-    if (!start || !end || !Array.isArray(ring) || ring.length < 2) return 0;
-    let intersections = 0;
-    for (let i = 0; i < ring.length; i++) {
-      const p3 = ring[i];
-      const p4 = ring[(i + 1) % ring.length];
-      if (p3.lat === p4.lat && p3.lng === p4.lng) continue;
-      if (segmentsIntersectLatLng(start, end, p3, p4)) {
-        intersections += 1;
-        if (intersections >= 2) break;
-      }
-    }
-    return intersections;
-  }
-
-  function wouldSplitExistingRefuge(prevLatLng, candidateLatLng) {
-    if (!candidateLatLng || !Array.isArray(existingRefugesCache) || existingRefugesCache.length === 0) {
-      return false;
-    }
-    if (!prevLatLng) {
-      return false;
-    }
-    const startPoint = { lat: prevLatLng.lat, lng: prevLatLng.lng };
-    const endPoint = { lat: candidateLatLng.lat, lng: candidateLatLng.lng };
-    for (const refuge of existingRefugesCache) {
-      if (!refuge || !refuge.polygon) continue;
-      const rings = geoJsonPolygonToRings(refuge.polygon);
-      for (const ring of rings) {
-        if (!Array.isArray(ring) || ring.length < 3) continue;
-        const startInside = pointInRing(startPoint, ring);
-        const endInside = pointInRing(endPoint, ring);
-        const intersections = countIntersectionsWithRing(startPoint, endPoint, ring);
-
-        // Case 1: entering refuge (outside -> inside) is allowed
-        if (!startInside && endInside) {
-          continue;
-        }
-
-        // Case 2: already inside and attempting to exit elsewhere
-        if (startInside && !endInside && intersections >= 1) {
-          return true;
-        }
-
-        // Case 3: entirely outside but crossing through to the other side
-        if (!startInside && !endInside && intersections >= 2) {
-          return true;
-        }
-      }
-    }
-    return false;
   }
 
   function showUndoToast(message, onUndo, timeoutMs = 12000) {
@@ -1061,8 +907,7 @@ window.addEventListener('DOMContentLoaded', function () {
     try {
       const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges`);
       const data = await res.json();
-    if (data && data.status === 'success' && Array.isArray(data.refuges)) {
-      updateExistingRefugesCache(data.refuges);
+      if (data && data.status === 'success' && Array.isArray(data.refuges)) {
         refugeLayerGroup.clearLayers();
         data.refuges.forEach(r => {
           try {
@@ -1091,9 +936,9 @@ window.addEventListener('DOMContentLoaded', function () {
                   </div>
                 `;
                 polygon.addTo(refugeLayerGroup).bindPopup(popupHtml);
-                // Block popups from opening while in edit or drawing mode
+                // Block popups from opening while in edit mode
                 polygon.on('click', (e) => {
-                  if (window.__editing || drawing) {
+                  if (window.__editing) {
                     try { e.target.closePopup(); } catch (err) {}
                     if (e && e.originalEvent && typeof e.originalEvent.preventDefault === 'function') {
                       e.originalEvent.preventDefault();
@@ -1102,8 +947,8 @@ window.addEventListener('DOMContentLoaded', function () {
                   }
                 });
                 polygon.on('popupopen', () => {
-                  // Close popup immediately if editing or drawing mode is active
-                  if (window.__editing || drawing) {
+                  // Close popup immediately if editing mode is active
+                  if (window.__editing) {
                     polygon.closePopup();
                     return;
                   }
@@ -1401,17 +1246,9 @@ window.addEventListener('DOMContentLoaded', function () {
   const centerBtn = document.getElementById('btn-center');
   if (centerBtn) {
     const fallbackToDefaultView = () => {
-      const applyCenter = (center) => {
-        const target = (Array.isArray(center) && center.length === 2) ? center : dynamicDefaultCenter;
-        try {
-          map.setView(target, DEFAULT_ZOOM);
-        } catch (err) {}
-      };
-      if (ipCenterPromise && typeof ipCenterPromise.then === 'function') {
-        ipCenterPromise.then(applyCenter).catch(() => applyCenter(dynamicDefaultCenter));
-      } else {
-        applyCenter(dynamicDefaultCenter);
-      }
+      try {
+        map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+      } catch (err) {}
     };
 
     const highlightUserLocation = (lat, lng) => {
@@ -1774,16 +1611,6 @@ window.addEventListener('DOMContentLoaded', function () {
       showNameBar: hudApi.showNameBar,
       hideNameBar: hudApi.hideNameBar
     };
-    const canAddVertexAtLatLng = (latlng) => {
-      if (!latlng) return false;
-      if (skipSaving) return true;
-      const lastVertex = state.vertices.length > 0 ? state.vertices[state.vertices.length - 1] : null;
-      if (wouldSplitExistingRefuge(lastVertex, latlng)) {
-        state.setStatus && state.setStatus(REFUGE_SPLIT_ERROR_MSG, 'error');
-        return false;
-      }
-      return true;
-    };
     drawing = state;
     const teardownAfterFinish = Object.prototype.hasOwnProperty.call(opts, 'teardownOptions')
       ? opts.teardownOptions
@@ -2005,9 +1832,6 @@ window.addEventListener('DOMContentLoaded', function () {
         if (state.closedPreview) return;
         // Immediate add (no defer)
         const centerLatLng = map.getCenter();
-        if (!canAddVertexAtLatLng(centerLatLng)) {
-          return;
-        }
         state.vertices.push(centerLatLng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
@@ -2193,9 +2017,6 @@ window.addEventListener('DOMContentLoaded', function () {
       // No deferred single-click timer anymore
       const clearSingleClickTimer = () => {};
       const addVertexAt = (latlng, source = 'click') => {
-        if (!canAddVertexAtLatLng(latlng)) {
-          return false;
-        }
         state.vertices.push(latlng);
         setFirstMarker(state.vertices[0]);
         updatePolyline();
@@ -2208,7 +2029,6 @@ window.addEventListener('DOMContentLoaded', function () {
         state.lastVertexAddedAt = Date.now();
         state.lastVertexAddedBy = source;
         state.pendingVertexLatLng = null;
-        return true;
       };
 
       const onMouseDown = (ev) => {
@@ -2356,13 +2176,19 @@ window.addEventListener('DOMContentLoaded', function () {
           lastTouchTimeWeb = now;
           suppressNextClick = true;
           setTimeout(() => { suppressNextClick = false; }, 350);
+          // Immediate add (no defer)
           const latlngToAdd = info.latlng;
-          const added = addVertexAt(latlngToAdd, 'tap');
-          if (!added) {
-            lastTouchTimeWeb = 0;
-            suppressNextClick = false;
-            return;
+          state.vertices.push(latlngToAdd);
+          setFirstMarker(state.vertices[0]);
+          updatePolyline();
+          setDrawingCursor('cross');
+          if (state.vertices.length >= 1) {
+            showDragToDraw();
+          } else {
+            showClickToAdd();
           }
+          state.lastVertexAddedAt = Date.now();
+          state.lastVertexAddedBy = 'tap';
         }
       };
       map.on('click', onClick); state.mouseHandlers.push({ evt: 'click', fn: onClick });
