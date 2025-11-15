@@ -1316,6 +1316,48 @@ window.addEventListener('DOMContentLoaded', function () {
     }
   });
 
+  // Center button: on mobile, snap map center (selector) to device GPS
+  const centerBtn = document.getElementById('btn-center');
+  if (centerBtn) {
+    // Hide center button entirely on desktop; only show on phone-style UIs
+    if (!isMobile) {
+      centerBtn.style.display = 'none';
+    } else {
+      centerBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+      // Do not interfere while drawing or editing
+      if ((typeof drawing !== 'undefined' && drawing) || window.__editing) return;
+      if (!navigator.geolocation) {
+        console.warn('Geolocation not available');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          try {
+            if (!pos || !pos.coords) return;
+            const lat = typeof pos.coords.latitude === 'number' ? pos.coords.latitude : null;
+            const lng = typeof pos.coords.longitude === 'number' ? pos.coords.longitude : null;
+            if (lat == null || lng == null) return;
+            const target = L.latLng(lat, lng);
+            // For phone versions, just move the map under the center cursor — no style changes
+            map.setView(target, map.getZoom() || DEFAULT_ZOOM);
+          } catch (err) {
+            console.warn('Failed to center on GPS position', err);
+          }
+        },
+        (err) => {
+          console.warn('Geolocation error', err);
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 30000,
+          timeout: 10000
+        }
+      );
+      });
+    }
+  }
+
   // Initialize toolbar with option panels
   let currentLayer = 'satellite';
   
@@ -1362,121 +1404,6 @@ window.addEventListener('DOMContentLoaded', function () {
       }
     }
   ]);
-
-  // Center button: focus on user location when available
-  const centerBtn = document.getElementById('btn-center');
-  if (centerBtn) {
-    const fallbackToDefaultView = () => {
-      try {
-        map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
-      } catch (err) {}
-    };
-
-    const highlightUserLocation = (lat, lng) => {
-      const latLng = [lat, lng];
-      if (!userLocationMarker) {
-        try {
-          userLocationMarker = L.circleMarker(latLng, {
-            radius: 8,
-            color: '#1e90ff',
-            weight: 2,
-            fillColor: '#1e90ff',
-            fillOpacity: 0.6
-          }).addTo(map);
-        } catch (err) {
-          userLocationMarker = null;
-        }
-      } else {
-        try { userLocationMarker.setLatLng(latLng); } catch (err) {}
-      }
-      try {
-        map.flyTo(latLng, Math.max(map.getZoom(), 15), { duration: 1.2 });
-      } catch (err) {
-        map.setView(latLng, Math.max(map.getZoom(), 15));
-      }
-    };
-
-    const handleLocationError = (error) => {
-      let message = '';
-      
-      if (error.code === 1) {
-        // PERMISSION_DENIED
-        message = 'Location access denied. Please enable location permissions in your browser settings and try again.';
-      } else if (error.code === 2) {
-        // POSITION_UNAVAILABLE
-        message = 'Location information is unavailable. Please check your device settings and try again.';
-      } else if (error.code === 3) {
-        // TIMEOUT
-        message = 'Location request timed out. Please try again.';
-      } else if (error.message === 'Geolocation not supported') {
-        message = 'Your browser does not support location services.';
-      } else {
-        message = 'Unable to access your location. Please enable location services and try again.';
-      }
-      
-      alert(message);
-      // Don't fallback to default view - let user stay where they are
-    };
-
-    const requestLocation = async () => {
-      if ((typeof drawing !== 'undefined' && drawing) || (window.__editing)) {
-        return;
-      }
-      try { map && map.closePopup && map.closePopup(); } catch (err) {}
-
-      // Check if geolocation is supported
-      if (!navigator.geolocation) {
-        handleLocationError(new Error('Geolocation not supported'));
-        return;
-      }
-
-      // Check permission state if available (modern browsers)
-      if (navigator.permissions && navigator.permissions.query) {
-        try {
-          const permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
-          
-          if (permissionStatus.state === 'denied') {
-            alert('Location access is blocked. Please enable location permissions in your browser settings:\n\n' +
-                  '1. Click the lock icon in the address bar\n' +
-                  '2. Find "Location" permissions\n' +
-                  '3. Select "Allow"\n' +
-                  '4. Reload the page and try again');
-            return;
-          }
-          
-          if (permissionStatus.state === 'prompt') {
-            // Will prompt user - inform them
-            if (confirm('This app needs your location to center the map on your position. Allow location access?')) {
-              // User confirmed, proceed with request
-            } else {
-              return; // User declined
-            }
-          }
-        } catch (err) {
-          // Permission API not supported, continue with geolocation request
-        }
-      }
-
-      // Request location
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          if (position && position.coords) {
-            highlightUserLocation(position.coords.latitude, position.coords.longitude);
-          } else {
-            handleLocationError(new Error('Location unavailable'));
-          }
-        },
-        handleLocationError,
-        {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 10000
-        }
-      );
-    };
-
-    centerBtn.addEventListener('click', requestLocation);
-  }
 
   // Floating menu and side panel logic
   const fabMenu = document.getElementById('fab-menu');
@@ -1552,6 +1479,81 @@ window.addEventListener('DOMContentLoaded', function () {
       if (typeof handler === 'function') handler();
     });
   });
+
+  // Location search: search by place name or "lat,lng" and move map
+  (function setupLocationSearch() {
+    const input = document.getElementById('location-search-input');
+    const button = document.getElementById('location-search-btn');
+    if (!input || !button) return;
+
+    const parseLatLng = (text) => {
+      if (!text) return null;
+      const cleaned = text.trim();
+      // Match "lat,lng" or "lat lng"
+      const m = cleaned.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+      if (!m) return null;
+      const lat = parseFloat(m[1]);
+      const lng = parseFloat(m[2]);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+      return { lat, lng };
+    };
+
+    const performSearch = async () => {
+      const query = (input.value || '').trim();
+      if (!query) return;
+      // Block while drawing or editing
+      if ((typeof drawing !== 'undefined' && drawing) || window.__editing) return;
+
+      // 1) Try coordinates first
+      const coords = parseLatLng(query);
+      if (coords) {
+        map.setView([coords.lat, coords.lng], Math.max(map.getZoom() || DEFAULT_ZOOM, 10));
+        try { closeSidePanel && closeSidePanel(); } catch (e) {}
+        return;
+      }
+
+      // 2) Fallback to name search via Nominatim
+      try {
+        const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q='
+          + encodeURIComponent(query);
+        const res = await fetch(url, {
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+        const results = await res.json().catch(() => []);
+        if (Array.isArray(results) && results.length > 0) {
+          const best = results[0];
+          const lat = parseFloat(best.lat);
+          const lng = parseFloat(best.lon);
+          if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            map.setView([lat, lng], Math.max(map.getZoom() || DEFAULT_ZOOM, 10));
+            try { closeSidePanel && closeSidePanel(); } catch (e) {}
+          }
+        } else {
+          alert('No results found for that search.');
+        }
+      } catch (err) {
+        console.warn('Location search failed', err);
+        alert('Search failed. Please try again.');
+      }
+    };
+
+    button.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      performSearch();
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        performSearch();
+      }
+    });
+  })();
+
   // -----------------------------
   // Refuge drawing logic
   // -----------------------------
