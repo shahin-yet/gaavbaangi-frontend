@@ -654,6 +654,14 @@ body.desktop-fullscreen-map {
   min-width: 60px;
 }
 .drawing-hud .hud-undo:hover { filter: brightness(0.95); }
+.drawing-hud .hud-undo:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: none;
+}
+.drawing-hud .hud-undo:disabled:hover {
+  filter: none;
+}
 
 .drawing-hud .hud-save {
   border: 1px solid var(--gray-300);
