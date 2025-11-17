@@ -249,6 +249,15 @@ window.addEventListener('DOMContentLoaded', function () {
     // Default no-op placeholders; assigned once HUD actions are ready
     let showSelectionStatus = () => {};
     let startOverlayLoop = () => {};
+    let updateUndoButtonState = () => {};
+    const selectionHistory = {
+      adjoin: [],
+      subtract: []
+    };
+    const overlayDrawingUndoState = {
+      enabled: false,
+      handler: null
+    };
 
     window.__overlayDrawingLocked = false;
 
@@ -306,14 +315,17 @@ window.addEventListener('DOMContentLoaded', function () {
       const skipStyles = !!opts.skipStyles;
       overlaySelectionState.adjoin.clear();
       overlaySelectionState.subtract.clear();
+      selectionHistory.adjoin = [];
+      selectionHistory.subtract = [];
       if (!preserveMode) {
         overlaySelectionState.mode = null;
-      window.__overlayDrawingLocked = false;
+        window.__overlayDrawingLocked = false;
       }
       if (!skipStyles) {
         updateAllOverlayStyles();
       }
       updateSelectionButtons();
+      updateUndoButtonState();
     };
 
     const setSelectionMode = (mode) => {
@@ -378,6 +390,13 @@ window.addEventListener('DOMContentLoaded', function () {
       }
     };
 
+    const pruneSelectionHistoryForLayer = (layer) => {
+      if (!layer) return;
+      ['adjoin', 'subtract'].forEach(mode => {
+        selectionHistory[mode] = selectionHistory[mode].filter(entry => entry !== layer);
+      });
+    };
+
     const toggleOverlaySelection = (layer) => {
       const activeMode = overlaySelectionState.mode;
       if (!layer || !activeMode) {
@@ -395,6 +414,10 @@ window.addEventListener('DOMContentLoaded', function () {
       activeSet.add(layer);
       layer._selectionRole = activeMode;
       applyOverlayStyle(layer);
+      if (selectionHistory[activeMode]) {
+        selectionHistory[activeMode].push(layer);
+      }
+      updateUndoButtonState();
       return { changed: true, selected: true, mode: activeMode };
     };
 
@@ -417,6 +440,7 @@ window.addEventListener('DOMContentLoaded', function () {
           try {
             overlaySelectionState.adjoin.delete(layer);
             overlaySelectionState.subtract.delete(layer);
+            pruneSelectionHistoryForLayer(layer);
             if (refugeLayerGroup && typeof refugeLayerGroup.removeLayer === 'function') {
               refugeLayerGroup.removeLayer(layer);
             }
@@ -430,6 +454,9 @@ window.addEventListener('DOMContentLoaded', function () {
     const stopOverlayLoop = () => {
       window.__editOverlayActive = false;
       resetOverlayButton();
+      overlayDrawingUndoState.enabled = false;
+      overlayDrawingUndoState.handler = null;
+      updateUndoButtonState();
       try {
         teardownDrawing({ preserveHud: true });
       } catch (e) {}
@@ -496,6 +523,7 @@ window.addEventListener('DOMContentLoaded', function () {
             refugeLayerGroup.removeLayer(layer);
             overlaySelectionState.adjoin.delete(layer);
             overlaySelectionState.subtract.delete(layer);
+            pruneSelectionHistoryForLayer(layer);
             const idx = window.__editOverlayLayers.indexOf(layer);
             if (idx > -1) {
               window.__editOverlayLayers.splice(idx, 1);
@@ -590,6 +618,7 @@ window.addEventListener('DOMContentLoaded', function () {
               refugeLayerGroup.removeLayer(layer);
               overlaySelectionState.adjoin.delete(layer);
               overlaySelectionState.subtract.delete(layer);
+              pruneSelectionHistoryForLayer(layer);
               const idx = window.__editOverlayLayers.indexOf(layer);
               if (idx > -1) {
                 window.__editOverlayLayers.splice(idx, 1);
@@ -720,7 +749,16 @@ window.addEventListener('DOMContentLoaded', function () {
         showNameBar: () => {},
         hideNameBar: () => {},
         hideOk: () => {},
-        showOk: () => {}
+        showOk: () => {},
+        setUndoEnabled: (enabled) => {
+          overlayDrawingUndoState.enabled = !!enabled;
+          updateUndoButtonState();
+        },
+        hideUndoRow: () => {},
+        showUndoRow: () => {},
+        setUndoHandler: (cb) => {
+          overlayDrawingUndoState.handler = (typeof cb === 'function') ? cb : null;
+        }
       });
       startOverlayLoop = () => {
         if (window.__editOverlayActive) return;
@@ -733,6 +771,9 @@ window.addEventListener('DOMContentLoaded', function () {
         }
         window.__editOverlayActive = true;
         resetOverlayButton();
+        overlayDrawingUndoState.enabled = false;
+        overlayDrawingUndoState.handler = null;
+        updateUndoButtonState();
         const overlayHudApi = createOverlayHudApi();
         const run = () => {
           if (!window.__editing || !window.__editOverlayActive) {
@@ -823,6 +864,8 @@ window.addEventListener('DOMContentLoaded', function () {
                 window.__editOverlayLayers.push(overlayLayer);
               }
               updateOperationButtonsState();
+              overlayDrawingUndoState.enabled = false;
+              overlayDrawingUndoState.handler = null;
               // Update undo button state after adding overlay
               if (typeof updateUndoButtonState === 'function') {
                 updateUndoButtonState();
@@ -913,60 +956,91 @@ window.addEventListener('DOMContentLoaded', function () {
       updateSelectionButtons();
       updateOperationButtonsState();
       
-      // Update undo button state based on overlays
-      const updateUndoButtonState = () => {
+      const undoSelectionInMode = (mode) => {
+        if (!mode) return false;
+        const activeSet = mode === 'adjoin' ? overlaySelectionState.adjoin : overlaySelectionState.subtract;
+        const history = selectionHistory[mode] || [];
+        if (!activeSet || activeSet.size === 0 || history.length === 0) return false;
+        while (history.length) {
+          const layer = history.pop();
+          if (layer && activeSet.has(layer)) {
+            activeSet.delete(layer);
+            layer._selectionRole = null;
+            applyOverlayStyle(layer);
+            const message = mode === 'adjoin'
+              ? 'Removed last adjoin selection.'
+              : 'Removed last subtract selection.';
+            showSelectionStatus(message);
+            return true;
+          }
+        }
+        return false;
+      };
+
+      const showOverlayRemovedStatus = () => {
+        if (!statusEl) return;
+        statusEl.style.display = '';
+        statusEl.innerHTML = 'Last overlay removed';
+        statusEl.classList.remove('status-info', 'status-error', 'status-success');
+        statusEl.classList.add('status-info');
+        setTimeout(() => {
+          if (statusEl) {
+            statusEl.innerHTML = 'Draw overlays to modify refuge';
+            statusEl.classList.remove('status-info', 'status-error', 'status-success');
+            statusEl.classList.add('status-info');
+          }
+        }, 1500);
+      };
+
+      const removeLastOverlay = () => {
+        if (!Array.isArray(window.__editOverlayLayers) || window.__editOverlayLayers.length === 0) return false;
+        const lastOverlay = window.__editOverlayLayers.pop();
+        if (!lastOverlay) return false;
+        try {
+          refugeLayerGroup.removeLayer(lastOverlay);
+        } catch (e) {}
+        overlaySelectionState.adjoin.delete(lastOverlay);
+        overlaySelectionState.subtract.delete(lastOverlay);
+        pruneSelectionHistoryForLayer(lastOverlay);
+        updateOperationButtonsState();
+        if (Array.isArray(window.__editOverlayCache) && window.__editOverlayCache.length > 0) {
+          window.__editOverlayCache.pop();
+        }
+        showOverlayRemovedStatus();
+        return true;
+      };
+
+      updateUndoButtonState = () => {
         if (!undoBtn) return;
-        const hasOverlays = Array.isArray(window.__editOverlayLayers) && window.__editOverlayLayers.length > 0;
-        undoBtn.disabled = !hasOverlays || overlaySelectionState.mode !== null;
+        const activeMode = overlaySelectionState.mode;
+        const hasSelectionUndo = !!activeMode
+          && overlaySelectionState[activeMode]
+          && overlaySelectionState[activeMode].size > 0;
+        const hasDrawingUndo = overlayDrawingUndoState.enabled;
+        const hasOverlayUndo = !activeMode
+          && Array.isArray(window.__editOverlayLayers)
+          && window.__editOverlayLayers.length > 0;
+        undoBtn.disabled = !(hasSelectionUndo || hasDrawingUndo || hasOverlayUndo);
       };
       
       // Initialize undo button state
       updateUndoButtonState();
       
-      // Undo button handler - removes the last drawn overlay
+      // Undo button handler
       undoBtn.addEventListener('click', () => {
-        if (!Array.isArray(window.__editOverlayLayers) || window.__editOverlayLayers.length === 0) return;
-        
-        // Get the last overlay
-        const lastOverlay = window.__editOverlayLayers[window.__editOverlayLayers.length - 1];
-        
-        if (lastOverlay) {
-          // Remove from map
-          try {
-            refugeLayerGroup.removeLayer(lastOverlay);
-          } catch (e) {}
-          
-          // Remove from selection state
-          overlaySelectionState.adjoin.delete(lastOverlay);
-          overlaySelectionState.subtract.delete(lastOverlay);
-          
-          // Remove from layers array
-          window.__editOverlayLayers.pop();
-          updateOperationButtonsState();
-          
-          // Remove from cache if it exists
-          if (Array.isArray(window.__editOverlayCache) && window.__editOverlayCache.length > 0) {
-            window.__editOverlayCache.pop();
-          }
-          
-          // Show status message
-          if (statusEl) {
-            statusEl.style.display = '';
-            statusEl.innerHTML = 'Last overlay removed';
-            statusEl.classList.remove('status-info', 'status-error', 'status-success');
-            statusEl.classList.add('status-info');
-            setTimeout(() => {
-              if (statusEl) {
-                statusEl.innerHTML = 'Draw overlays to modify refuge';
-                statusEl.classList.remove('status-info', 'status-error', 'status-success');
-                statusEl.classList.add('status-info');
-              }
-            }, 1500);
-          }
+        const activeMode = overlaySelectionState.mode;
+        if (activeMode && undoSelectionInMode(activeMode)) {
+          updateUndoButtonState();
+          return;
         }
-        
-        // Update button state
-        updateUndoButtonState();
+        if (overlayDrawingUndoState.enabled && typeof overlayDrawingUndoState.handler === 'function') {
+          overlayDrawingUndoState.handler();
+          setTimeout(() => updateUndoButtonState(), 0);
+          return;
+        }
+        if (removeLastOverlay()) {
+          updateUndoButtonState();
+        }
       });
       
       // Helper function to convert overlays to GeoJSON geometries
