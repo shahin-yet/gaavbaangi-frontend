@@ -359,21 +359,16 @@ window.addEventListener('DOMContentLoaded', function () {
       const activeSet = activeMode === 'adjoin' ? overlaySelectionState.adjoin : overlaySelectionState.subtract;
       const otherSet = activeMode === 'adjoin' ? overlaySelectionState.subtract : overlaySelectionState.adjoin;
       if (activeSet.has(layer)) {
-        activeSet.delete(layer);
-      } else {
-        activeSet.add(layer);
+        return { changed: false, selected: true, mode: activeMode, reason: 'already-selected' };
       }
-      otherSet.delete(layer);
-      if (activeSet.has(layer)) {
-        layer._selectionRole = activeMode;
-      } else if (otherSet.has(layer)) {
-        layer._selectionRole = activeMode === 'adjoin' ? 'subtract' : 'adjoin';
-      } else {
-        layer._selectionRole = null;
+      if (otherSet.has(layer)) {
+        const lockedRole = activeMode === 'adjoin' ? 'subtract' : 'adjoin';
+        return { changed: false, selected: false, mode: activeMode, reason: 'locked-to-other', lockedRole };
       }
-      const selected = activeSet.has(layer);
+      activeSet.add(layer);
+      layer._selectionRole = activeMode;
       applyOverlayStyle(layer);
-      return { changed: true, selected, mode: activeMode };
+      return { changed: true, selected: true, mode: activeMode };
     };
 
     const resetOverlayButton = () => {
@@ -655,8 +650,19 @@ window.addEventListener('DOMContentLoaded', function () {
         const result = toggleOverlaySelection(layer);
         if (result.changed) {
           const prefix = result.mode === 'adjoin'
-            ? (result.selected ? 'Marked for adjoin.' : 'Removed from adjoin.')
-            : (result.selected ? 'Marked for subtract.' : 'Removed from subtract.');
+            ? 'Marked for adjoin.'
+            : 'Marked for subtract.';
+          showSelectionStatus(prefix);
+        } else if (result.reason === 'already-selected') {
+          const prefix = result.mode === 'adjoin'
+            ? 'Already marked for adjoin.'
+            : 'Already marked for subtract.';
+          showSelectionStatus(prefix);
+        } else if (result.reason === 'locked-to-other') {
+          const lockedRole = result.lockedRole || (overlaySelectionState.adjoin.has(layer) ? 'adjoin' : 'subtract');
+          const prefix = lockedRole === 'adjoin'
+            ? 'Overlay already marked for adjoin.'
+            : 'Overlay already marked for subtract.';
           showSelectionStatus(prefix);
         }
         if (evt && evt.originalEvent && typeof evt.originalEvent.preventDefault === 'function') {
