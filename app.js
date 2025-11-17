@@ -246,6 +246,10 @@ window.addEventListener('DOMContentLoaded', function () {
       subtract: new Set()
     };
 
+    // Default no-op placeholders; assigned once HUD actions are ready
+    let showSelectionStatus = () => {};
+    let startOverlayLoop = () => {};
+
     window.__overlayDrawingLocked = false;
 
     const baseOverlayStyle = {
@@ -620,7 +624,7 @@ window.addEventListener('DOMContentLoaded', function () {
         return parts.length ? `Selected overlays — ${parts.join(', ')}` : 'No overlays selected.';
       };
 
-      const showSelectionStatus = (message) => {
+      showSelectionStatus = (message) => {
         if (!hudApi || typeof hudApi.setStatus !== 'function') return;
         const summary = buildSelectionSummary();
         const text = message ? `${message} ${summary}`.trim() : summary;
@@ -684,7 +688,7 @@ window.addEventListener('DOMContentLoaded', function () {
         hideOk: () => {},
         showOk: () => {}
       });
-      const startOverlayLoop = () => {
+      startOverlayLoop = () => {
         if (window.__editOverlayActive) return;
         // Block overlay drawing if a selection mode is active
         if (overlaySelectionState.mode !== null) return;
