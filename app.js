@@ -245,6 +245,8 @@ window.addEventListener('DOMContentLoaded', function () {
       adjoin: new Set(),
       subtract: new Set()
     };
+    const overlaySelectionHistory = [];
+    const MAX_SELECTION_HISTORY = 64;
 
     window.__overlayDrawingLocked = false;
 
@@ -302,9 +304,10 @@ window.addEventListener('DOMContentLoaded', function () {
       const skipStyles = !!opts.skipStyles;
       overlaySelectionState.adjoin.clear();
       overlaySelectionState.subtract.clear();
+      overlaySelectionHistory.length = 0;
       if (!preserveMode) {
         overlaySelectionState.mode = null;
-      window.__overlayDrawingLocked = false;
+        window.__overlayDrawingLocked = false;
       }
       if (!skipStyles) {
         updateAllOverlayStyles();
@@ -329,22 +332,26 @@ window.addEventListener('DOMContentLoaded', function () {
       }
       const activeSet = activeMode === 'adjoin' ? overlaySelectionState.adjoin : overlaySelectionState.subtract;
       const otherSet = activeMode === 'adjoin' ? overlaySelectionState.subtract : overlaySelectionState.adjoin;
-      if (activeSet.has(layer)) {
+      const prevRole = layer._selectionRole || null;
+      const wasInActive = activeSet.has(layer);
+      if (wasInActive) {
         activeSet.delete(layer);
       } else {
         activeSet.add(layer);
       }
       otherSet.delete(layer);
-      if (activeSet.has(layer)) {
-        layer._selectionRole = activeMode;
-      } else if (otherSet.has(layer)) {
-        layer._selectionRole = activeMode === 'adjoin' ? 'subtract' : 'adjoin';
-      } else {
-        layer._selectionRole = null;
-      }
+      const newRole = activeSet.has(layer) ? activeMode : null;
+      layer._selectionRole = newRole;
       const selected = activeSet.has(layer);
       applyOverlayStyle(layer);
-      return { changed: true, selected, mode: activeMode };
+      const changed = prevRole !== newRole;
+      if (changed) {
+        overlaySelectionHistory.push({ layer, prevRole, newRole });
+        if (overlaySelectionHistory.length > MAX_SELECTION_HISTORY) {
+          overlaySelectionHistory.shift();
+        }
+      }
+      return { changed, selected, mode: activeMode };
     };
 
     const resetOverlayButton = () => {
@@ -600,6 +607,66 @@ window.addEventListener('DOMContentLoaded', function () {
         if (statusEl) statusEl.style.display = '';
       };
 
+      const getSetForRole = (role) => {
+        if (role === 'adjoin') return overlaySelectionState.adjoin;
+        if (role === 'subtract') return overlaySelectionState.subtract;
+        return null;
+      };
+
+      const pruneSelectionHistoryForLayer = (layer) => {
+        if (!layer) return;
+        for (let i = overlaySelectionHistory.length - 1; i >= 0; i--) {
+          if (overlaySelectionHistory[i].layer === layer) {
+            overlaySelectionHistory.splice(i, 1);
+          }
+        }
+      };
+
+      const undoSelection = () => {
+        if (!overlaySelectionState.mode || overlaySelectionHistory.length === 0) return false;
+        const entry = overlaySelectionHistory.pop();
+        if (!entry || !entry.layer) return false;
+        const { layer, prevRole } = entry;
+        overlaySelectionState.adjoin.delete(layer);
+        overlaySelectionState.subtract.delete(layer);
+        if (prevRole) {
+          const prevSet = getSetForRole(prevRole);
+          prevSet && prevSet.add(layer);
+        }
+        layer._selectionRole = prevRole || null;
+        applyOverlayStyle(layer);
+        showSelectionStatus('Selection undone.');
+        return true;
+      };
+
+      const removeLatestOverlayLayer = () => {
+        const layers = Array.isArray(window.__editOverlayLayers) ? window.__editOverlayLayers : [];
+        if (!layers.length) return false;
+        const layer = layers.pop();
+        if (!layer) return false;
+        try { refugeLayerGroup.removeLayer(layer); } catch (e) {}
+        overlaySelectionState.adjoin.delete(layer);
+        overlaySelectionState.subtract.delete(layer);
+        layer._selectionRole = null;
+        pruneSelectionHistoryForLayer(layer);
+        if (Array.isArray(window.__editOverlayCache) && window.__editOverlayCache.length > 0) {
+          window.__editOverlayCache.pop();
+        }
+        hudApi.setStatus && hudApi.setStatus('Removed last overlay.', 'info');
+        if (statusEl) statusEl.style.display = '';
+        return true;
+      };
+
+      const handleUndoAction = () => {
+        if (overlaySelectionState.mode && undoSelection()) return;
+        if (drawing && typeof drawing.removeLastVertex === 'function' && drawing.removeLastVertex()) return;
+        if (removeLatestOverlayLayer()) return;
+        if (hudApi && typeof hudApi.setStatus === 'function') {
+          hudApi.setStatus('Nothing to undo right now.', 'info');
+          if (statusEl) statusEl.style.display = '';
+        }
+      };
+
       const handleOverlayInteraction = (evt) => {
         const layer = evt && evt.target;
         if (!layer) return;
@@ -825,6 +892,9 @@ window.addEventListener('DOMContentLoaded', function () {
       undoBtn.type = 'button';
       undoBtn.textContent = 'Undo';
       rightContainer.appendChild(undoBtn);
+      undoBtn.addEventListener('click', () => {
+        try { handleUndoAction(); } catch (e) {}
+      });
       
       // Create save button for right side (no functionality)
       saveBtn = document.createElement('button');
@@ -1875,6 +1945,21 @@ window.addEventListener('DOMContentLoaded', function () {
         }
       }
     };
+
+    const removeLastVertex = () => {
+      if (!state.vertices.length || state.closedPreview) return false;
+      state.vertices.pop();
+      updatePolyline();
+      if (state.vertices.length === 0 && state.firstMarker) {
+        try { refugeLayerGroup.removeLayer(state.firstMarker); } catch (e) {}
+        state.firstMarker = null;
+      }
+      state.setStatus && state.setStatus('Removed last vertex', 'info');
+      return true;
+    };
+
+    state.removeLastVertex = removeLastVertex;
+    drawing && (drawing.removeLastVertex = removeLastVertex);
 
     const showClosedPreview = () => {
       if (state.closedPreview || state.vertices.length < 3) return;
