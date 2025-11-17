@@ -867,7 +867,7 @@ window.addEventListener('DOMContentLoaded', function () {
                     }, 2000);
                   }
                   if (window.__editing && window.__editOverlayActive) {
-                    setTimeout(run, 0);
+                    setTimeout(run, 500);
                   } else {
                     stopOverlayLoop();
                   }
