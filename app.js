@@ -574,6 +574,9 @@ window.addEventListener('DOMContentLoaded', function () {
     // Keep the drawing helper/status area visible in edit mode
     const statusEl = hud.querySelector('.hud-status');
     if (statusEl) { statusEl.innerHTML = 'Draw overlays to modify refuge'; statusEl.style.display = ''; }
+    // Hide the drawing undo row in edit mode (edit mode has its own undo button)
+    const drawingUndoRow = hud.querySelector('.hud-drawing-undo-row');
+    if (drawingUndoRow) { try { drawingUndoRow.style.display = 'none'; } catch (e) {} }
     // Remove name input and Save button entirely in edit mode; keep actions area visible
     const controls = hud.querySelector('.hud-controls');
     const inputEl = hud.querySelector('.hud-name');
