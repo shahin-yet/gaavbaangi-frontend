@@ -886,10 +886,11 @@ window.addEventListener('DOMContentLoaded', function () {
           if (window.__editOverlayActive) {
             stopOverlayLoop();
           }
-          showSelectionStatus('Adjoin mode on.');
+          // Clarify that selection mode pauses reactive drawing
+          showSelectionStatus('Adjoin mode on. Tap overlays to add them; reactive drawing is paused.');
         } else {
           // Resume overlay drawing when exiting selection mode
-          showSelectionStatus('Adjoin mode off.');
+          showSelectionStatus('Adjoin mode off. Reactive drawing resumed; you can draw overlays again.');
           if (window.__editing && !window.__editOverlayActive) {
             startOverlayLoop();
           }
@@ -905,10 +906,11 @@ window.addEventListener('DOMContentLoaded', function () {
           if (window.__editOverlayActive) {
             stopOverlayLoop();
           }
-          showSelectionStatus('Subtract mode on.');
+          // Clarify that selection mode pauses reactive drawing
+          showSelectionStatus('Subtract mode on. Tap overlays to subtract them; reactive drawing is paused.');
         } else {
           // Resume overlay drawing when exiting selection mode
-          showSelectionStatus('Subtract mode off.');
+          showSelectionStatus('Subtract mode off. Reactive drawing resumed; you can draw overlays again.');
           if (window.__editing && !window.__editOverlayActive) {
             startOverlayLoop();
           }
@@ -1573,6 +1575,9 @@ window.addEventListener('DOMContentLoaded', function () {
         <button class="hud-cancel" title="Cancel" aria-label="Cancel drawing">✕</button>
       </div>
       <div class="hud-status status-info">${initialMsg}</div>
+      <div class="hud-drawing-undo-row">
+        <button class="hud-undo" type="button" aria-label="Undo last point" disabled>Undo</button>
+      </div>
       <div class="hud-controls" style="display:none;">
         <input class="hud-name" type="text" placeholder="Refuge name" aria-label="Refuge name" />
         <div class="hud-actions">
@@ -1584,6 +1589,8 @@ window.addEventListener('DOMContentLoaded', function () {
     hud.querySelector('.hud-cancel').addEventListener('click', () => { onCancel && onCancel(); });
     const statusEl = hud.querySelector('.hud-status');
     const controlsEl = hud.querySelector('.hud-controls');
+    const undoRowEl = hud.querySelector('.hud-drawing-undo-row');
+    const undoBtnEl = hud.querySelector('.hud-undo');
     const setStatus = (text, kind = 'info') => {
       if (!statusEl) return;
       const safe = (text || '')
@@ -1614,7 +1621,43 @@ window.addEventListener('DOMContentLoaded', function () {
       nameInput.addEventListener('keydown', handler);
     };
     const onOkClick = (cb) => { if (okButton) okButton.addEventListener('click', () => cb && cb()); };
-    return { hud, setStatus, getName, focusName, onNameEnter, onOkClick, showNameBar, hideNameBar, hideOk, showOk };
+    const setUndoEnabled = (enabled) => {
+      if (!undoBtnEl) return;
+      undoBtnEl.disabled = !enabled;
+    };
+    const hideUndoRow = () => {
+      if (!undoRowEl) return;
+      undoRowEl.style.display = 'none';
+    };
+    const showUndoRow = () => {
+      if (!undoRowEl) return;
+      undoRowEl.style.display = '';
+    };
+    const setUndoHandler = (cb) => {
+      if (!undoBtnEl) return;
+      undoBtnEl.onclick = (ev) => {
+        ev && ev.preventDefault && ev.preventDefault();
+        ev && ev.stopPropagation && ev.stopPropagation();
+        if (undoBtnEl.disabled) return;
+        cb && cb();
+      };
+    };
+    return {
+      hud,
+      setStatus,
+      getName,
+      focusName,
+      onNameEnter,
+      onOkClick,
+      showNameBar,
+      hideNameBar,
+      hideOk,
+      showOk,
+      setUndoEnabled,
+      hideUndoRow,
+      showUndoRow,
+      setUndoHandler
+    };
   }
 
   function teardownDrawing(options = {}) {
@@ -1758,7 +1801,11 @@ window.addEventListener('DOMContentLoaded', function () {
       hideOk: () => {},
       showOk: () => {},
       onNameEnter: null,
-      onOkClick: null
+      onOkClick: null,
+      setUndoEnabled: () => {},
+      hideUndoRow: () => {},
+      showUndoRow: () => {},
+      setUndoHandler: () => {}
     }, baseHudApi || {});
 
     const state = {
@@ -1784,6 +1831,9 @@ window.addEventListener('DOMContentLoaded', function () {
       hideNameBar: hudApi.hideNameBar
     };
     drawing = state;
+    // Initially keep undo disabled and visible
+    try { hudApi.setUndoEnabled(false); } catch (e) {}
+    try { hudApi.showUndoRow(); } catch (e) {}
     const teardownAfterFinish = Object.prototype.hasOwnProperty.call(opts, 'teardownOptions')
       ? opts.teardownOptions
       : (opts.preserveHud ? { preserveHud: true } : undefined);
@@ -1796,6 +1846,41 @@ window.addEventListener('DOMContentLoaded', function () {
     const showDoubleToClose = () => { if (state.helpersMuted) return; state.setStatus && state.setStatus(getMsgDoubleToClose(), 'info'); };
     // Show initial message on start
     showClickToAdd();
+    const updateUndoButtonState = () => {
+      try {
+        hudApi.setUndoEnabled(state.vertices.length > 0 && !state.closedPreview);
+      } catch (e) {}
+    };
+    const performUndo = () => {
+      if (!state.vertices || state.vertices.length === 0 || state.closedPreview) return;
+      // Remove last vertex
+      state.vertices.pop();
+      // Reset first marker
+      if (state.firstMarker) {
+        try { refugeLayerGroup.removeLayer(state.firstMarker); } catch (e) {}
+        state.firstMarker = null;
+      }
+      if (state.vertices.length > 0) {
+        setFirstMarker(state.vertices[0]);
+      }
+      // Update drawing aids
+      if (state.vertices.length === 0) {
+        try {
+          state.polyline && state.polyline.setLatLngs([]);
+          state.tempGuide && state.tempGuide.setLatLngs([]);
+        } catch (e) {}
+        showClickToAdd();
+      } else {
+        updatePolyline();
+        showClickToAdd();
+      }
+      updateUndoButtonState();
+    };
+    try {
+      hudApi.setUndoHandler(() => {
+        performUndo();
+      });
+    } catch (e) {}
     const attemptSave = async () => {
       // From the moment we ask for a name or attempt to save, freeze helper texts
       state.helpersMuted = true;
@@ -1891,6 +1976,8 @@ window.addEventListener('DOMContentLoaded', function () {
           fillOpacity: 0.15
         }).addTo(refugeLayerGroup);
         setDrawingCursor('default');
+        // Once polygon is closed, hide the undo button
+        try { hudApi.hideUndoRow(); } catch (e) {}
       } catch (e) {
         // keep fallback to line if preview fails
       }
