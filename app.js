@@ -349,6 +349,8 @@ window.addEventListener('DOMContentLoaded', function () {
     let saveBtn = null;
     let overlayIdCounter = 0;
 
+    const OVERLAY_LOOP_DELAY_MS = 500; // delay between overlay drawing runs
+
     const overlaySelectionState = {
       mode: null,
       adjoin: new Set(),
@@ -867,7 +869,7 @@ window.addEventListener('DOMContentLoaded', function () {
                     }, 2000);
                   }
                   if (window.__editing && window.__editOverlayActive) {
-                    setTimeout(run, 500);
+                    setTimeout(run, OVERLAY_LOOP_DELAY_MS);
                   } else {
                     stopOverlayLoop();
                   }
@@ -915,14 +917,15 @@ window.addEventListener('DOMContentLoaded', function () {
               }
               updateUndoButtonState();
               if (window.__editing && window.__editOverlayActive) {
-                setTimeout(run, 500);
+                setTimeout(run, OVERLAY_LOOP_DELAY_MS);
               } else {
                 stopOverlayLoop();
               }
             }
           });
         };
-        run();
+        // small delay before the first overlay drawing run for consistency
+        setTimeout(run, OVERLAY_LOOP_DELAY_MS);
       };
       // Auto-start overlay loop immediately on entering edit mode
       startOverlayLoop();
