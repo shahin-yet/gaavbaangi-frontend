@@ -351,6 +351,33 @@ window.addEventListener('DOMContentLoaded', function () {
       return overlaySelectionState.mode;
     };
 
+    const hasAvailableOverlays = () =>
+      Array.isArray(window.__editOverlayLayers) && window.__editOverlayLayers.some(layer => !!layer);
+
+    const updateOperationButtonsState = () => {
+      const hasOverlays = hasAvailableOverlays();
+      if (adjoinBtn) {
+        adjoinBtn.disabled = !hasOverlays;
+        if (!hasOverlays) {
+          adjoinBtn.title = 'Draw an overlay to enable adjoin';
+        } else {
+          adjoinBtn.removeAttribute('title');
+        }
+      }
+      if (subtractBtn) {
+        subtractBtn.disabled = !hasOverlays;
+        if (!hasOverlays) {
+          subtractBtn.title = 'Draw an overlay to enable subtract';
+        } else {
+          subtractBtn.removeAttribute('title');
+        }
+      }
+      if (!hasOverlays && overlaySelectionState.mode !== null) {
+        setSelectionMode(null);
+        showSelectionStatus('No overlays available. Draw an overlay to modify the refuge.');
+      }
+    };
+
     const toggleOverlaySelection = (layer) => {
       const activeMode = overlaySelectionState.mode;
       if (!layer || !activeMode) {
@@ -398,6 +425,7 @@ window.addEventListener('DOMContentLoaded', function () {
       }
       window.__editOverlayLayers = [];
       clearSelectionState({ skipStyles: true });
+      updateOperationButtonsState();
     };
     const stopOverlayLoop = () => {
       window.__editOverlayActive = false;
@@ -794,6 +822,7 @@ window.addEventListener('DOMContentLoaded', function () {
                 overlayLayer._isEditOverlay = true;
                 window.__editOverlayLayers.push(overlayLayer);
               }
+              updateOperationButtonsState();
               // Update undo button state after adding overlay
               if (typeof updateUndoButtonState === 'function') {
                 updateUndoButtonState();
@@ -882,6 +911,7 @@ window.addEventListener('DOMContentLoaded', function () {
       
       actions.appendChild(mainActionsRow);
       updateSelectionButtons();
+      updateOperationButtonsState();
       
       // Update undo button state based on overlays
       const updateUndoButtonState = () => {
@@ -912,6 +942,7 @@ window.addEventListener('DOMContentLoaded', function () {
           
           // Remove from layers array
           window.__editOverlayLayers.pop();
+          updateOperationButtonsState();
           
           // Remove from cache if it exists
           if (Array.isArray(window.__editOverlayCache) && window.__editOverlayCache.length > 0) {
