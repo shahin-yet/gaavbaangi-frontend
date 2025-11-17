@@ -245,8 +245,32 @@ window.addEventListener('DOMContentLoaded', function () {
       adjoin: new Set(),
       subtract: new Set()
     };
-    const overlaySelectionHistory = [];
-    const MAX_SELECTION_HISTORY = 64;
+    const selectionHistory = [];
+    const MAX_SELECTION_HISTORY = 50;
+
+    const getOverlayRole = (layer) => {
+      if (!layer) return null;
+      if (overlaySelectionState.adjoin.has(layer)) return 'adjoin';
+      if (overlaySelectionState.subtract.has(layer)) return 'subtract';
+      return null;
+    };
+
+    const recordSelectionChange = (layer, prevRole, newRole) => {
+      if (!layer || prevRole === newRole) return;
+      selectionHistory.push({ layer, prevRole, newRole });
+      if (selectionHistory.length > MAX_SELECTION_HISTORY) {
+        selectionHistory.shift();
+      }
+    };
+
+    const discardSelectionHistoryForLayer = (layer) => {
+      if (!layer || selectionHistory.length === 0) return;
+      for (let i = selectionHistory.length - 1; i >= 0; i--) {
+        if (selectionHistory[i].layer === layer) {
+          selectionHistory.splice(i, 1);
+        }
+      }
+    };
 
     window.__overlayDrawingLocked = false;
 
@@ -304,7 +328,7 @@ window.addEventListener('DOMContentLoaded', function () {
       const skipStyles = !!opts.skipStyles;
       overlaySelectionState.adjoin.clear();
       overlaySelectionState.subtract.clear();
-      overlaySelectionHistory.length = 0;
+      selectionHistory.length = 0;
       if (!preserveMode) {
         overlaySelectionState.mode = null;
         window.__overlayDrawingLocked = false;
@@ -325,32 +349,30 @@ window.addEventListener('DOMContentLoaded', function () {
       return overlaySelectionState.mode;
     };
 
-    const toggleOverlaySelection = (layer) => {
+    const toggleOverlaySelection = (layer, options = {}) => {
       const activeMode = overlaySelectionState.mode;
       if (!layer || !activeMode) {
         return { changed: false, selected: false, mode: activeMode };
       }
+      const opts = options || {};
+      const trackHistory = opts.trackHistory !== false;
+      const prevRole = getOverlayRole(layer);
       const activeSet = activeMode === 'adjoin' ? overlaySelectionState.adjoin : overlaySelectionState.subtract;
       const otherSet = activeMode === 'adjoin' ? overlaySelectionState.subtract : overlaySelectionState.adjoin;
-      const prevRole = layer._selectionRole || null;
-      const wasInActive = activeSet.has(layer);
-      if (wasInActive) {
+      if (activeSet.has(layer)) {
         activeSet.delete(layer);
       } else {
         activeSet.add(layer);
       }
       otherSet.delete(layer);
-      const newRole = activeSet.has(layer) ? activeMode : null;
-      layer._selectionRole = newRole;
-      const selected = activeSet.has(layer);
-      applyOverlayStyle(layer);
-      const changed = prevRole !== newRole;
-      if (changed) {
-        overlaySelectionHistory.push({ layer, prevRole, newRole });
-        if (overlaySelectionHistory.length > MAX_SELECTION_HISTORY) {
-          overlaySelectionHistory.shift();
-        }
+      const currentRole = getOverlayRole(layer);
+      layer._selectionRole = currentRole;
+      const selected = currentRole === activeMode;
+      const changed = currentRole !== prevRole;
+      if (trackHistory && changed) {
+        recordSelectionChange(layer, prevRole, currentRole);
       }
+      applyOverlayStyle(layer);
       return { changed, selected, mode: activeMode };
     };
 
@@ -373,6 +395,7 @@ window.addEventListener('DOMContentLoaded', function () {
           try {
             overlaySelectionState.adjoin.delete(layer);
             overlaySelectionState.subtract.delete(layer);
+            discardSelectionHistoryForLayer(layer);
             if (refugeLayerGroup && typeof refugeLayerGroup.removeLayer === 'function') {
               refugeLayerGroup.removeLayer(layer);
             }
@@ -451,6 +474,7 @@ window.addEventListener('DOMContentLoaded', function () {
             refugeLayerGroup.removeLayer(layer);
             overlaySelectionState.adjoin.delete(layer);
             overlaySelectionState.subtract.delete(layer);
+            discardSelectionHistoryForLayer(layer);
             const idx = window.__editOverlayLayers.indexOf(layer);
             if (idx > -1) {
               window.__editOverlayLayers.splice(idx, 1);
@@ -545,6 +569,7 @@ window.addEventListener('DOMContentLoaded', function () {
               refugeLayerGroup.removeLayer(layer);
               overlaySelectionState.adjoin.delete(layer);
               overlaySelectionState.subtract.delete(layer);
+            discardSelectionHistoryForLayer(layer);
               const idx = window.__editOverlayLayers.indexOf(layer);
               if (idx > -1) {
                 window.__editOverlayLayers.splice(idx, 1);
@@ -607,64 +632,60 @@ window.addEventListener('DOMContentLoaded', function () {
         if (statusEl) statusEl.style.display = '';
       };
 
-      const getSetForRole = (role) => {
-        if (role === 'adjoin') return overlaySelectionState.adjoin;
-        if (role === 'subtract') return overlaySelectionState.subtract;
-        return null;
-      };
-
-      const pruneSelectionHistoryForLayer = (layer) => {
-        if (!layer) return;
-        for (let i = overlaySelectionHistory.length - 1; i >= 0; i--) {
-          if (overlaySelectionHistory[i].layer === layer) {
-            overlaySelectionHistory.splice(i, 1);
+      const undoLastSelectionChange = () => {
+        while (selectionHistory.length > 0) {
+          const entry = selectionHistory.pop();
+          if (!entry || !entry.layer) continue;
+          if (!Array.isArray(window.__editOverlayLayers) ||
+              window.__editOverlayLayers.indexOf(entry.layer) === -1) {
+            continue;
           }
+          overlaySelectionState.adjoin.delete(entry.layer);
+          overlaySelectionState.subtract.delete(entry.layer);
+          if (entry.prevRole === 'adjoin') {
+            overlaySelectionState.adjoin.add(entry.layer);
+            entry.layer._selectionRole = 'adjoin';
+          } else if (entry.prevRole === 'subtract') {
+            overlaySelectionState.subtract.add(entry.layer);
+            entry.layer._selectionRole = 'subtract';
+          } else {
+            entry.layer._selectionRole = null;
+          }
+          applyOverlayStyle(entry.layer);
+          const msg = entry.prevRole
+            ? `Reverted to ${entry.prevRole} selection.`
+            : 'Removed last selection.';
+          showSelectionStatus(msg);
+          return true;
         }
+        return false;
       };
 
-      const undoSelection = () => {
-        if (!overlaySelectionState.mode || overlaySelectionHistory.length === 0) return false;
-        const entry = overlaySelectionHistory.pop();
-        if (!entry || !entry.layer) return false;
-        const { layer, prevRole } = entry;
-        overlaySelectionState.adjoin.delete(layer);
-        overlaySelectionState.subtract.delete(layer);
-        if (prevRole) {
-          const prevSet = getSetForRole(prevRole);
-          prevSet && prevSet.add(layer);
+      const removeLastOverlayLayer = () => {
+        if (!Array.isArray(window.__editOverlayLayers) || window.__editOverlayLayers.length === 0) {
+          return false;
         }
-        layer._selectionRole = prevRole || null;
-        applyOverlayStyle(layer);
-        showSelectionStatus('Selection undone.');
-        return true;
-      };
-
-      const removeLatestOverlayLayer = () => {
-        const layers = Array.isArray(window.__editOverlayLayers) ? window.__editOverlayLayers : [];
-        if (!layers.length) return false;
-        const layer = layers.pop();
+        let layer = null;
+        while (window.__editOverlayLayers.length > 0 && !layer) {
+          layer = window.__editOverlayLayers.pop();
+        }
         if (!layer) return false;
         try { refugeLayerGroup.removeLayer(layer); } catch (e) {}
         overlaySelectionState.adjoin.delete(layer);
         overlaySelectionState.subtract.delete(layer);
-        layer._selectionRole = null;
-        pruneSelectionHistoryForLayer(layer);
+        discardSelectionHistoryForLayer(layer);
         if (Array.isArray(window.__editOverlayCache) && window.__editOverlayCache.length > 0) {
           window.__editOverlayCache.pop();
         }
-        hudApi.setStatus && hudApi.setStatus('Removed last overlay.', 'info');
-        if (statusEl) statusEl.style.display = '';
-        return true;
-      };
-
-      const handleUndoAction = () => {
-        if (overlaySelectionState.mode && undoSelection()) return;
-        if (drawing && typeof drawing.removeLastVertex === 'function' && drawing.removeLastVertex()) return;
-        if (removeLatestOverlayLayer()) return;
-        if (hudApi && typeof hudApi.setStatus === 'function') {
-          hudApi.setStatus('Nothing to undo right now.', 'info');
-          if (statusEl) statusEl.style.display = '';
+        if (layer && typeof layer.off === 'function') {
+          try {
+            layer.off('click', handleOverlayInteraction);
+            layer.off('touchstart', handleOverlayInteraction);
+          } catch (e) {}
         }
+        if (layer) layer._selectionRole = null;
+        showSelectionStatus('Removed latest overlay.');
+        return true;
       };
 
       const handleOverlayInteraction = (evt) => {
@@ -886,15 +907,12 @@ window.addEventListener('DOMContentLoaded', function () {
       del.textContent = 'Delete';
       leftContainer.appendChild(del);
       
-      // Create undo button for right side (no functionality)
+      // Create undo button for right side
       const undoBtn = document.createElement('button');
       undoBtn.className = 'hud-undo';
       undoBtn.type = 'button';
       undoBtn.textContent = 'Undo';
       rightContainer.appendChild(undoBtn);
-      undoBtn.addEventListener('click', () => {
-        try { handleUndoAction(); } catch (e) {}
-      });
       
       // Create save button for right side (no functionality)
       saveBtn = document.createElement('button');
@@ -1033,6 +1051,28 @@ window.addEventListener('DOMContentLoaded', function () {
           if (statusEl) statusEl.style.display = '';
           hudApi.setStatus && hudApi.setStatus((e && e.message) || 'Save failed', 'error');
         }
+      });
+
+      undoBtn.addEventListener('click', () => {
+        const removedVertex = undoDrawingVertex();
+        if (removedVertex) {
+          hudApi.setStatus && hudApi.setStatus('Removed last vertex.', 'info');
+          if (statusEl) statusEl.style.display = '';
+          return;
+        }
+        if (drawing) {
+          hudApi.setStatus && hudApi.setStatus('No vertices to undo.', 'info');
+          if (statusEl) statusEl.style.display = '';
+          return;
+        }
+        if (undoLastSelectionChange()) {
+          return;
+        }
+        if (removeLastOverlayLayer()) {
+          return;
+        }
+        hudApi.setStatus && hudApi.setStatus('Nothing to undo.', 'info');
+        if (statusEl) statusEl.style.display = '';
       });
 
       // Add delete functionality
@@ -1946,21 +1986,6 @@ window.addEventListener('DOMContentLoaded', function () {
       }
     };
 
-    const removeLastVertex = () => {
-      if (!state.vertices.length || state.closedPreview) return false;
-      state.vertices.pop();
-      updatePolyline();
-      if (state.vertices.length === 0 && state.firstMarker) {
-        try { refugeLayerGroup.removeLayer(state.firstMarker); } catch (e) {}
-        state.firstMarker = null;
-      }
-      state.setStatus && state.setStatus('Removed last vertex', 'info');
-      return true;
-    };
-
-    state.removeLastVertex = removeLastVertex;
-    drawing && (drawing.removeLastVertex = removeLastVertex);
-
     const showClosedPreview = () => {
       if (state.closedPreview || state.vertices.length < 3) return;
       try {
@@ -2043,6 +2068,61 @@ window.addEventListener('DOMContentLoaded', function () {
         });
       }
     };
+
+    const removeLastVertex = () => {
+      if (!state.vertices.length) return false;
+      if (state.closedPreview) {
+        try { refugeLayerGroup.removeLayer(state.closedPreview); } catch (e) {}
+        state.closedPreview = null;
+        state.isClosing = false;
+        if (state.polyline && typeof state.polyline.addTo === 'function') {
+          try { state.polyline.addTo(refugeLayerGroup); } catch (e) {}
+        } else {
+          state.polyline = L.polyline([], { color: '#ff5722', weight: 2 }).addTo(refugeLayerGroup);
+        }
+        if (state.vertices.length) {
+          setFirstMarker(state.vertices[0]);
+        }
+        if (state.mode === 'web') {
+          setDrawingCursor('cross');
+        } else {
+          setDrawingCursor('default');
+          const container = map.getContainer();
+          if (container && state.mode === 'telegram') {
+            container.style.cursor = 'none';
+          }
+        }
+      }
+      state.vertices.pop();
+      if (state.vertices.length === 0) {
+        if (state.polyline && typeof state.polyline.setLatLngs === 'function') {
+          try { state.polyline.setLatLngs([]); } catch (e) {}
+        }
+        if (state.tempGuide) {
+          try { refugeLayerGroup.removeLayer(state.tempGuide); } catch (e) {}
+          state.tempGuide = null;
+        }
+        if (state.firstMarker) {
+          try { refugeLayerGroup.removeLayer(state.firstMarker); } catch (e) {}
+          state.firstMarker = null;
+        }
+        const dot = document.querySelector('.map-center-dot');
+        if (dot) dot.classList.remove('near-first');
+        showClickToAdd();
+      } else {
+        if (!state.firstMarker) {
+          setFirstMarker(state.vertices[0]);
+        }
+        updatePolyline();
+        if (state.vertices.length >= 3) {
+          showDoubleToClose();
+        } else {
+          showDragToDraw();
+        }
+      }
+      return true;
+    };
+    state.removeLastVertex = removeLastVertex;
 
     if (state.mode === 'telegram') {
       // Telegram: tapping anywhere adds center point; double tap closes
@@ -2461,6 +2541,17 @@ window.addEventListener('DOMContentLoaded', function () {
       container.addEventListener('touchend', onTouchEndWeb, { passive: false });
       state.domHandlers.push({ el: container, evt: 'touchend', fn: onTouchEndWeb, opts: { passive: false } });
     }
+  }
+
+  function undoDrawingVertex() {
+    if (drawing && typeof drawing.removeLastVertex === 'function') {
+      try {
+        return drawing.removeLastVertex();
+      } catch (e) {
+        return false;
+      }
+    }
+    return false;
   }
 
   // expose for other modules if needed
