@@ -942,6 +942,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
       // Add adjoin functionality (selection mode with toggle)
       adjoinBtn.addEventListener('click', () => {
+        const wasActive = overlaySelectionState.mode === 'adjoin';
         const activeMode = setSelectionMode('adjoin'); // This calls updateSelectionButtons() internally
         resetOverlayButton();
         updateUndoButtonState(); // Update undo button when mode changes
@@ -952,25 +953,23 @@ window.addEventListener('DOMContentLoaded', function () {
           }
           // Clarify that selection mode pauses reactive drawing
           showSelectionStatus('Adjoin mode on. Tap overlays to add them; reactive drawing is paused.');
-        } else {
+        } else if (wasActive) {
           // Mode toggled off - resume overlay drawing and preserve selections
           showSelectionStatus('Adjoin mode off. Reactive drawing resumed; selected overlays preserved.');
           // Ensure overlay styles remain visible for selected overlays
           updateAllOverlayStyles();
-          // Force resume of overlay drawing
-          if (window.__editing) {
+          // Force resume of overlay drawing - directly call without delay
+          if (window.__editing && overlaySelectionState.mode === null) {
             window.__editOverlayActive = false; // Reset flag to allow restart
-            setTimeout(() => {
-              if (!overlaySelectionState.mode) { // Only start if no other mode is active
-                startOverlayLoop();
-              }
-            }, 50); // Small delay to ensure clean state transition
+            window.__overlayDrawingLocked = false; // Ensure lock is cleared
+            startOverlayLoop();
           }
         }
       });
 
       // Add subtract functionality (selection mode with toggle)
       subtractBtn.addEventListener('click', () => {
+        const wasActive = overlaySelectionState.mode === 'subtract';
         const activeMode = setSelectionMode('subtract'); // This calls updateSelectionButtons() internally
         resetOverlayButton();
         updateUndoButtonState(); // Update undo button when mode changes
@@ -981,19 +980,16 @@ window.addEventListener('DOMContentLoaded', function () {
           }
           // Clarify that selection mode pauses reactive drawing
           showSelectionStatus('Subtract mode on. Tap overlays to subtract them; reactive drawing is paused.');
-        } else {
+        } else if (wasActive) {
           // Mode toggled off - resume overlay drawing and preserve selections
           showSelectionStatus('Subtract mode off. Reactive drawing resumed; selected overlays preserved.');
           // Ensure overlay styles remain visible for selected overlays
           updateAllOverlayStyles();
-          // Force resume of overlay drawing
-          if (window.__editing) {
+          // Force resume of overlay drawing - directly call without delay
+          if (window.__editing && overlaySelectionState.mode === null) {
             window.__editOverlayActive = false; // Reset flag to allow restart
-            setTimeout(() => {
-              if (!overlaySelectionState.mode) { // Only start if no other mode is active
-                startOverlayLoop();
-              }
-            }, 50); // Small delay to ensure clean state transition
+            window.__overlayDrawingLocked = false; // Ensure lock is cleared
+            startOverlayLoop();
           }
         }
       });
