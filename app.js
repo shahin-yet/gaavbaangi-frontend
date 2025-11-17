@@ -927,25 +927,24 @@ window.addEventListener('DOMContentLoaded', function () {
         if (!Array.isArray(window.__editOverlayLayers) || window.__editOverlayLayers.length === 0) {
           return false;
         }
-        const layers = window.__editOverlayLayers;
-        const latestLayer = layers[layers.length - 1];
+        let latestLayer = null;
+        while (window.__editOverlayLayers.length > 0 && !latestLayer) {
+          latestLayer = window.__editOverlayLayers.pop();
+          if (Array.isArray(window.__editOverlayCache) && window.__editOverlayCache.length > 0) {
+            window.__editOverlayCache.pop();
+          }
+        }
         if (!latestLayer) {
-          layers.pop();
           return false;
         }
-        layers.pop();
         try {
           overlaySelectionState.adjoin.delete(latestLayer);
           overlaySelectionState.subtract.delete(latestLayer);
         } catch (e) {}
         if (typeof latestLayer.off === 'function') {
-          latestLayer.off('click', handleOverlayInteraction);
-          latestLayer.off('touchstart', handleOverlayInteraction);
+          try { latestLayer.off(); } catch (e) {}
         }
         try { refugeLayerGroup.removeLayer(latestLayer); } catch (e) {}
-        if (Array.isArray(window.__editOverlayCache) && window.__editOverlayCache.length > 0) {
-          window.__editOverlayCache.pop();
-        }
         showSelectionStatus('Removed latest overlay.');
         return true;
       };
