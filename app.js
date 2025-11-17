@@ -53,129 +53,20 @@ window.addEventListener('DOMContentLoaded', function () {
   } else {
     document.body.classList.remove('mobile-ui');
   }
-  if (!isMobile) {
-    document.body.classList.add('desktop-fullscreen-map');
-  } else {
-    document.body.classList.remove('desktop-fullscreen-map');
-  }
   // Keep dot element in DOM; CSS controls visibility by class
   if (centerDotEl) {
     centerDotEl.style.display = '';
   }
   
   // Initialize the map
-  const FALLBACK_CENTER = [20.5937, 78.9629];
+  const DEFAULT_CENTER = [20.5937, 78.9629];
   const DEFAULT_ZOOM = 5;
-  const COUNTRY_SCALE_ZOOM = 5;
-  const MOBILE_IP_TARGET_ZOOM = 7;
   const map = L.map('map', {
-    center: FALLBACK_CENTER, // Fallback center until we derive one per-user
+    center: DEFAULT_CENTER, // Centered on India as an example
     zoom: DEFAULT_ZOOM,
     zoomControl: true
   });
   let userLocationMarker = null;
-
-  // Resolve a rough location for mobile devices via IP if GPS is unavailable or blocked
-  const IP_LOCATION_TIMEOUT_MS = 6000;
-  const IP_LOCATION_PROVIDERS = [
-    {
-      url: 'https://ipapi.co/json/',
-      parse: (data) => {
-        if (!data) return null;
-        const lat = Number(data.latitude);
-        const lng = Number(data.longitude);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-        return {
-          lat,
-          lng,
-          ip: data.ip || null,
-          city: data.city || '',
-          region: data.region || data.region_code || '',
-          country: data.country_name || data.country || ''
-        };
-      }
-    },
-    {
-      url: 'https://ipwho.is/',
-      parse: (data) => {
-        if (!data || data.success === false) return null;
-        const lat = Number(data.latitude);
-        const lng = Number(data.longitude);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-        return {
-          lat,
-          lng,
-          ip: data.ip || null,
-          city: data.city || '',
-          region: data.region || data.region_name || '',
-          country: data.country || data.country_name || ''
-        };
-      }
-    }
-  ];
-
-  async function fetchIpLocationWithFallback(timeoutMs = IP_LOCATION_TIMEOUT_MS) {
-    for (const provider of IP_LOCATION_PROVIDERS) {
-      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      let timeoutHandle = null;
-      try {
-        if (controller) {
-          timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
-        }
-        const response = await fetch(provider.url, controller ? { signal: controller.signal } : undefined);
-        if (!response || !response.ok) continue;
-        const payload = await response.json().catch(() => null);
-        const parsed = provider.parse(payload);
-        if (parsed) {
-          return parsed;
-        }
-      } catch (err) {
-        // Continue to next provider on failure/timeouts
-      } finally {
-        if (timeoutHandle) clearTimeout(timeoutHandle);
-      }
-    }
-    return null;
-  }
-
-  async function applyMobileDefaultCenterFromIp() {
-    try {
-      const result = await fetchIpLocationWithFallback();
-      if (!result) return;
-      window.__userIpDefault = Object.assign({}, result);
-      const latlng = L.latLng(result.lat, result.lng);
-      const currentZoom = map.getZoom() || DEFAULT_ZOOM;
-      const targetZoom = Math.max(currentZoom, MOBILE_IP_TARGET_ZOOM);
-      map.setView(latlng, targetZoom);
-      console.info('Map centered using IP location', window.__userIpDefault);
-    } catch (err) {
-      console.warn('Unable to derive IP-based default location', err);
-    }
-  }
-
-  if (isMobile) {
-    applyMobileDefaultCenterFromIp();
-  }
-
-  if (!isMobile) {
-    if (map.doubleClickZoom && typeof map.doubleClickZoom.disable === 'function') {
-      try { map.doubleClickZoom.disable(); } catch (err) {}
-    }
-    const handleDesktopDoubleClick = (ev) => {
-      if (!ev || !ev.latlng) return;
-      if (document.body.classList.contains('drawing-active')) {
-        return; // Drawing UI handles double-click separately
-      }
-      const currentZoom = map.getZoom() || DEFAULT_ZOOM;
-      const preferredZoom = Math.max(currentZoom, COUNTRY_SCALE_ZOOM);
-      const maxZoom = typeof map.getMaxZoom === 'function' ? map.getMaxZoom() : null;
-      const targetZoom = (typeof maxZoom === 'number' && Number.isFinite(maxZoom))
-        ? Math.min(preferredZoom, maxZoom)
-        : preferredZoom;
-      map.flyTo(ev.latlng, targetZoom, { animate: true, duration: 0.75, easeLinearity: 0.25 });
-    };
-    map.on('dblclick', handleDesktopDoubleClick);
-  }
 
   // Terrain layer (OpenTopoMap)
   const terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
@@ -349,25 +240,13 @@ window.addEventListener('DOMContentLoaded', function () {
     let saveBtn = null;
     let overlayIdCounter = 0;
 
-    const OVERLAY_LOOP_DELAY_MS = 500; // delay between overlay drawing runs
-
     const overlaySelectionState = {
       mode: null,
       adjoin: new Set(),
       subtract: new Set()
     };
-    const selectionHistory = [];
 
     window.__overlayDrawingLocked = false;
-
-    const pruneSelectionHistoryForLayer = (targetLayer) => {
-      if (!targetLayer || selectionHistory.length === 0) return;
-      for (let i = selectionHistory.length - 1; i >= 0; i -= 1) {
-        if (selectionHistory[i] && selectionHistory[i].layer === targetLayer) {
-          selectionHistory.splice(i, 1);
-        }
-      }
-    };
 
     const baseOverlayStyle = {
       color: '#ff9800',
@@ -423,7 +302,6 @@ window.addEventListener('DOMContentLoaded', function () {
       const skipStyles = !!opts.skipStyles;
       overlaySelectionState.adjoin.clear();
       overlaySelectionState.subtract.clear();
-      selectionHistory.length = 0;
       if (!preserveMode) {
         overlaySelectionState.mode = null;
       window.__overlayDrawingLocked = false;
@@ -451,25 +329,22 @@ window.addEventListener('DOMContentLoaded', function () {
       }
       const activeSet = activeMode === 'adjoin' ? overlaySelectionState.adjoin : overlaySelectionState.subtract;
       const otherSet = activeMode === 'adjoin' ? overlaySelectionState.subtract : overlaySelectionState.adjoin;
-      const prevRole = layer._selectionRole || null;
-
-      if (prevRole === activeMode && activeSet.has(layer)) {
-        return { changed: false, selected: true, mode: activeMode };
+      if (activeSet.has(layer)) {
+        activeSet.delete(layer);
+      } else {
+        activeSet.add(layer);
       }
-
-      activeSet.add(layer);
       otherSet.delete(layer);
-
-      const newRole = activeMode;
-      const changed = prevRole !== newRole;
-
-      if (changed) {
-        selectionHistory.push({ layer, prevRole });
+      if (activeSet.has(layer)) {
+        layer._selectionRole = activeMode;
+      } else if (otherSet.has(layer)) {
+        layer._selectionRole = activeMode === 'adjoin' ? 'subtract' : 'adjoin';
+      } else {
+        layer._selectionRole = null;
       }
-
-      layer._selectionRole = newRole;
+      const selected = activeSet.has(layer);
       applyOverlayStyle(layer);
-      return { changed, selected: true, mode: activeMode };
+      return { changed: true, selected, mode: activeMode };
     };
 
     const resetOverlayButton = () => {
@@ -491,7 +366,6 @@ window.addEventListener('DOMContentLoaded', function () {
           try {
             overlaySelectionState.adjoin.delete(layer);
             overlaySelectionState.subtract.delete(layer);
-            pruneSelectionHistoryForLayer(layer);
             if (refugeLayerGroup && typeof refugeLayerGroup.removeLayer === 'function') {
               refugeLayerGroup.removeLayer(layer);
             }
@@ -570,7 +444,6 @@ window.addEventListener('DOMContentLoaded', function () {
             refugeLayerGroup.removeLayer(layer);
             overlaySelectionState.adjoin.delete(layer);
             overlaySelectionState.subtract.delete(layer);
-            pruneSelectionHistoryForLayer(layer);
             const idx = window.__editOverlayLayers.indexOf(layer);
             if (idx > -1) {
               window.__editOverlayLayers.splice(idx, 1);
@@ -665,7 +538,6 @@ window.addEventListener('DOMContentLoaded', function () {
               refugeLayerGroup.removeLayer(layer);
               overlaySelectionState.adjoin.delete(layer);
               overlaySelectionState.subtract.delete(layer);
-              pruneSelectionHistoryForLayer(layer);
               const idx = window.__editOverlayLayers.indexOf(layer);
               if (idx > -1) {
                 window.__editOverlayLayers.splice(idx, 1);
@@ -702,7 +574,6 @@ window.addEventListener('DOMContentLoaded', function () {
     // Keep the drawing helper/status area visible in edit mode
     const statusEl = hud.querySelector('.hud-status');
     if (statusEl) { statusEl.innerHTML = 'Draw overlays to modify refuge'; statusEl.style.display = ''; }
-    hudApi.hideUndoButton && hudApi.hideUndoButton();
     // Remove name input and Save button entirely in edit mode; keep actions area visible
     const controls = hud.querySelector('.hud-controls');
     const inputEl = hud.querySelector('.hud-name');
@@ -727,23 +598,6 @@ window.addEventListener('DOMContentLoaded', function () {
         const text = message ? `${message} ${summary}`.trim() : summary;
         hudApi.setStatus(text, 'info');
         if (statusEl) statusEl.style.display = '';
-      };
-
-      const disableSelectionMode = (options = {}) => {
-        if (!overlaySelectionState.mode) return false;
-        const previousMode = overlaySelectionState.mode;
-        overlaySelectionState.mode = null;
-        window.__overlayDrawingLocked = false;
-        updateSelectionButtons();
-        resetOverlayButton();
-        if (!options.skipStatus) {
-          const msg = previousMode === 'subtract' ? 'Subtract mode off.' : 'Adjoin mode off.';
-          showSelectionStatus(msg);
-        }
-        if (window.__editing && !window.__editOverlayActive) {
-          startOverlayLoop();
-        }
-        return true;
       };
 
       const handleOverlayInteraction = (evt) => {
@@ -772,7 +626,6 @@ window.addEventListener('DOMContentLoaded', function () {
             ? (result.selected ? 'Marked for adjoin.' : 'Removed from adjoin.')
             : (result.selected ? 'Marked for subtract.' : 'Removed from subtract.');
           showSelectionStatus(prefix);
-          updateUndoButtonState();
         }
         if (evt && evt.originalEvent && typeof evt.originalEvent.preventDefault === 'function') {
           evt.originalEvent.preventDefault();
@@ -869,7 +722,7 @@ window.addEventListener('DOMContentLoaded', function () {
                     }, 2000);
                   }
                   if (window.__editing && window.__editOverlayActive) {
-                    setTimeout(run, OVERLAY_LOOP_DELAY_MS);
+                    setTimeout(run, 0);
                   } else {
                     stopOverlayLoop();
                   }
@@ -915,17 +768,15 @@ window.addEventListener('DOMContentLoaded', function () {
                 }
                 window.__editOverlayCache.push(storedCoords);
               }
-              updateUndoButtonState();
               if (window.__editing && window.__editOverlayActive) {
-                setTimeout(run, OVERLAY_LOOP_DELAY_MS);
+                setTimeout(run, 500);
               } else {
                 stopOverlayLoop();
               }
             }
           });
         };
-        // small delay before the first overlay drawing run for consistency
-        setTimeout(run, OVERLAY_LOOP_DELAY_MS);
+        run();
       };
       // Auto-start overlay loop immediately on entering edit mode
       startOverlayLoop();
@@ -968,37 +819,12 @@ window.addEventListener('DOMContentLoaded', function () {
       del.textContent = 'Delete';
       leftContainer.appendChild(del);
       
-      // Create undo button for right side
+      // Create undo button for right side (no functionality)
       const undoBtn = document.createElement('button');
       undoBtn.className = 'hud-undo';
       undoBtn.type = 'button';
       undoBtn.textContent = 'Undo';
       rightContainer.appendChild(undoBtn);
-      
-      // Function to check if there's anything to undo
-      const canUndo = () => {
-        // Check if there's selection history to undo
-        if (selectionHistory.length > 0) {
-          return true;
-        }
-        // Check if there are drawing vertices to undo
-        if (window.__editOverlayActive && drawing && Array.isArray(drawing.vertices) && 
-            !drawing.closedPreview && drawing.vertices.length > 0) {
-          return true;
-        }
-        // Check if there are overlay polygons to remove
-        if (Array.isArray(window.__editOverlayLayers) && window.__editOverlayLayers.length > 0) {
-          return true;
-        }
-        return false;
-      };
-
-      // Function to update undo button state
-      const updateUndoButtonState = () => {
-        if (undoBtn) {
-          undoBtn.disabled = !canUndo();
-        }
-      };
       
       // Create save button for right side (no functionality)
       saveBtn = document.createElement('button');
@@ -1013,9 +839,6 @@ window.addEventListener('DOMContentLoaded', function () {
       
       actions.appendChild(mainActionsRow);
       updateSelectionButtons();
-      
-      // Initialize undo button state
-      updateUndoButtonState();
       
       // Helper function to convert overlays to GeoJSON geometries
       const getOverlayGeometries = (layersOverride) => {
@@ -1054,132 +877,8 @@ window.addEventListener('DOMContentLoaded', function () {
         return geometries;
       };
 
-      const undoLastSelectionChange = () => {
-        while (selectionHistory.length > 0) {
-          const entry = selectionHistory.pop();
-          if (!entry || !entry.layer) {
-            continue;
-          }
-          const { layer, prevRole } = entry;
-          overlaySelectionState.adjoin.delete(layer);
-          overlaySelectionState.subtract.delete(layer);
-          if (prevRole === 'adjoin') {
-            overlaySelectionState.adjoin.add(layer);
-          } else if (prevRole === 'subtract') {
-            overlaySelectionState.subtract.add(layer);
-          }
-          layer._selectionRole = prevRole || null;
-          applyOverlayStyle(layer);
-          showSelectionStatus('Selection undone.');
-          return true;
-        }
-        return false;
-      };
-
-      const undoLastDrawingVertex = () => {
-        if (!window.__editOverlayActive || !drawing || !Array.isArray(drawing.vertices)) {
-          return false;
-        }
-        if (drawing.closedPreview || drawing.vertices.length === 0) {
-          return false;
-        }
-        drawing.vertices.pop();
-        try {
-          if (drawing.polyline && typeof drawing.polyline.setLatLngs === 'function') {
-            drawing.polyline.setLatLngs(drawing.vertices);
-          }
-        } catch (e) {}
-        if (drawing.vertices.length === 0) {
-          if (drawing.firstMarker) {
-            try { refugeLayerGroup.removeLayer(drawing.firstMarker); } catch (e) {}
-            drawing.firstMarker = null;
-          }
-          if (drawing.tempGuide) {
-            try { refugeLayerGroup.removeLayer(drawing.tempGuide); } catch (e) {}
-            drawing.tempGuide = null;
-          }
-          if (hudApi && typeof hudApi.setStatus === 'function') {
-            hudApi.setStatus('Overlay cleared. Click to add vertex.', 'info');
-            if (statusEl) statusEl.style.display = '';
-          }
-        } else {
-          if (drawing.tempGuide) {
-            const lastVertex = drawing.vertices[drawing.vertices.length - 1];
-            const guideTarget = drawing.lastMouseLatLng || null;
-            try {
-              if (guideTarget) {
-                drawing.tempGuide.setLatLngs([lastVertex, guideTarget]);
-              } else {
-                drawing.tempGuide.setLatLngs([lastVertex]);
-              }
-            } catch (e) {}
-          }
-          if (hudApi && typeof hudApi.setStatus === 'function') {
-            hudApi.setStatus('Removed last vertex. Continue drawing.', 'info');
-            if (statusEl) statusEl.style.display = '';
-          }
-        }
-        return true;
-      };
-
-      const removeLatestOverlayPolygon = () => {
-        if (!Array.isArray(window.__editOverlayLayers) || window.__editOverlayLayers.length === 0) {
-          return false;
-        }
-        let latestLayer = null;
-        while (window.__editOverlayLayers.length > 0 && !latestLayer) {
-          latestLayer = window.__editOverlayLayers.pop();
-          if (Array.isArray(window.__editOverlayCache) && window.__editOverlayCache.length > 0) {
-            window.__editOverlayCache.pop();
-          }
-        }
-        if (!latestLayer) {
-          return false;
-        }
-        try {
-          overlaySelectionState.adjoin.delete(latestLayer);
-          overlaySelectionState.subtract.delete(latestLayer);
-        } catch (e) {}
-        pruneSelectionHistoryForLayer(latestLayer);
-        latestLayer._selectionRole = null;
-        if (typeof latestLayer.off === 'function') {
-          try { latestLayer.off(); } catch (e) {}
-        }
-        try { refugeLayerGroup.removeLayer(latestLayer); } catch (e) {}
-        showSelectionStatus('Removed latest overlay.');
-        return true;
-      };
-
-      undoBtn.addEventListener('click', () => {
-        if (disableSelectionMode()) {
-          updateUndoButtonState();
-          return;
-        }
-        if (undoLastSelectionChange()) {
-          updateUndoButtonState();
-          return;
-        }
-        if (undoLastDrawingVertex()) {
-          updateUndoButtonState();
-          return;
-        }
-        if (removeLatestOverlayPolygon()) {
-          updateUndoButtonState();
-          return;
-        }
-        if (hudApi && typeof hudApi.setStatus === 'function') {
-          hudApi.setStatus('Nothing to undo.', 'info');
-          if (statusEl) statusEl.style.display = '';
-        }
-        updateUndoButtonState();
-      });
-
       // Add adjoin functionality (selection mode)
       adjoinBtn.addEventListener('click', () => {
-        if (overlaySelectionState.mode === 'adjoin') {
-          disableSelectionMode();
-          return;
-        }
         const activeMode = setSelectionMode('adjoin');
         resetOverlayButton();
         if (activeMode === 'adjoin') {
@@ -1188,15 +887,17 @@ window.addEventListener('DOMContentLoaded', function () {
             stopOverlayLoop();
           }
           showSelectionStatus('Adjoin mode on.');
+        } else {
+          // Resume overlay drawing when exiting selection mode
+          showSelectionStatus('Adjoin mode off.');
+          if (window.__editing && !window.__editOverlayActive) {
+            startOverlayLoop();
+          }
         }
       });
 
       // Add subtract functionality (selection mode)
       subtractBtn.addEventListener('click', () => {
-        if (overlaySelectionState.mode === 'subtract') {
-          disableSelectionMode();
-          return;
-        }
         const activeMode = setSelectionMode('subtract');
         resetOverlayButton();
         if (activeMode === 'subtract') {
@@ -1205,6 +906,12 @@ window.addEventListener('DOMContentLoaded', function () {
             stopOverlayLoop();
           }
           showSelectionStatus('Subtract mode on.');
+        } else {
+          // Resume overlay drawing when exiting selection mode
+          showSelectionStatus('Subtract mode off.');
+          if (window.__editing && !window.__editOverlayActive) {
+            startOverlayLoop();
+          }
         }
       });
 
@@ -1866,9 +1573,6 @@ window.addEventListener('DOMContentLoaded', function () {
         <button class="hud-cancel" title="Cancel" aria-label="Cancel drawing">✕</button>
       </div>
       <div class="hud-status status-info">${initialMsg}</div>
-      <div class="hud-drawing-undo-row">
-        <button class="hud-undo hud-drawing-undo" type="button" title="Undo last vertex" aria-label="Undo last vertex">Undo</button>
-      </div>
       <div class="hud-controls" style="display:none;">
         <input class="hud-name" type="text" placeholder="Refuge name" aria-label="Refuge name" />
         <div class="hud-actions">
@@ -1880,11 +1584,6 @@ window.addEventListener('DOMContentLoaded', function () {
     hud.querySelector('.hud-cancel').addEventListener('click', () => { onCancel && onCancel(); });
     const statusEl = hud.querySelector('.hud-status');
     const controlsEl = hud.querySelector('.hud-controls');
-    const undoRow = hud.querySelector('.hud-drawing-undo-row');
-    const undoButton = hud.querySelector('.hud-drawing-undo');
-    if (undoButton) undoButton.disabled = true;
-    const hideUndoButton = () => { if (undoRow) undoRow.style.display = 'none'; };
-    const showUndoButton = () => { if (undoRow) undoRow.style.display = ''; };
     const setStatus = (text, kind = 'info') => {
       if (!statusEl) return;
       const safe = (text || '')
@@ -1900,14 +1599,8 @@ window.addEventListener('DOMContentLoaded', function () {
     const okButton = hud.querySelector('.hud-ok');
     const getName = () => (nameInput && typeof nameInput.value === 'string' ? nameInput.value.trim() : '');
     const focusName = () => { try { nameInput && nameInput.focus(); nameInput && nameInput.select && nameInput.select(); } catch (e) {} };
-    const showNameBar = () => {
-      if (controlsEl) controlsEl.style.display = '';
-      hideUndoButton();
-    };
-    const hideNameBar = () => {
-      if (controlsEl) controlsEl.style.display = 'none';
-      showUndoButton();
-    };
+    const showNameBar = () => { if (controlsEl) controlsEl.style.display = ''; };
+    const hideNameBar = () => { if (controlsEl) controlsEl.style.display = 'none'; };
     const hideOk = () => { try { okButton && (okButton.style.display = 'none'); } catch (e) {} };
     const showOk = () => { try { okButton && (okButton.style.display = ''); } catch (e) {} };
     const onNameEnter = (cb) => {
@@ -1921,36 +1614,7 @@ window.addEventListener('DOMContentLoaded', function () {
       nameInput.addEventListener('keydown', handler);
     };
     const onOkClick = (cb) => { if (okButton) okButton.addEventListener('click', () => cb && cb()); };
-    const onUndoClick = (cb) => {
-      if (!undoButton) return;
-      undoButton.addEventListener('click', (evt) => {
-        evt.preventDefault();
-        cb && cb(evt);
-      });
-    };
-    const setUndoEnabled = (enabled) => {
-      if (!undoButton) return;
-      undoButton.disabled = !enabled;
-      if (undoRow) {
-        undoRow.style.opacity = enabled ? '' : '0.7';
-      }
-    };
-    return {
-      hud,
-      setStatus,
-      getName,
-      focusName,
-      onNameEnter,
-      onOkClick,
-      showNameBar,
-      hideNameBar,
-      hideOk,
-      showOk,
-      onUndoClick,
-      setUndoEnabled,
-      hideUndoButton,
-      showUndoButton
-    };
+    return { hud, setStatus, getName, focusName, onNameEnter, onOkClick, showNameBar, hideNameBar, hideOk, showOk };
   }
 
   function teardownDrawing(options = {}) {
@@ -2094,11 +1758,7 @@ window.addEventListener('DOMContentLoaded', function () {
       hideOk: () => {},
       showOk: () => {},
       onNameEnter: null,
-      onOkClick: null,
-      onUndoClick: null,
-      setUndoEnabled: () => {},
-      hideUndoButton: () => {},
-      showUndoButton: () => {}
+      onOkClick: null
     }, baseHudApi || {});
 
     const state = {
@@ -2207,12 +1867,6 @@ window.addEventListener('DOMContentLoaded', function () {
     const NEAR_FIRST_THRESHOLD_PX_TG = 8; // tighter proximity: require near-exact overlap on Telegram
     const NEAR_FIRST_THRESHOLD_PX = 8; // tighter proximity: require near-exact overlap on web
 
-    const updateUndoButtonState = () => {
-      if (!hudApi || typeof hudApi.setUndoEnabled !== 'function') return;
-      const canUndo = !state.closedPreview && state.vertices.length > 0;
-      hudApi.setUndoEnabled(canUndo);
-    };
-
     const updatePolyline = () => {
       state.polyline.setLatLngs(state.vertices);
       if (state.vertices.length > 0) {
@@ -2221,63 +1875,6 @@ window.addEventListener('DOMContentLoaded', function () {
         }
       }
     };
-
-    const undoLastVertex = () => {
-      if (!state || state.closedPreview || state.vertices.length === 0) {
-        return false;
-      }
-      state.vertices.pop();
-      updatePolyline();
-      if (state.vertices.length === 0) {
-        if (state.firstMarker) {
-          try { refugeLayerGroup.removeLayer(state.firstMarker); } catch (e) {}
-          state.firstMarker = null;
-        }
-        if (state.tempGuide) {
-          try { refugeLayerGroup.removeLayer(state.tempGuide); } catch (e) {}
-          state.tempGuide = null;
-        }
-        const dot = document.querySelector('.map-center-dot');
-        if (dot) dot.classList.remove('near-first');
-        state.setStatus && state.setStatus('All vertices cleared. Click to add vertex.', 'info');
-        showClickToAdd();
-      } else {
-        if (state.tempGuide) {
-          const lastVertex = state.vertices[state.vertices.length - 1];
-          let guideTarget = null;
-          if (state.mode === 'telegram') {
-            guideTarget = map.getCenter();
-          } else if (state.lastMouseLatLng) {
-            guideTarget = state.lastMouseLatLng;
-          }
-          try {
-            if (guideTarget) {
-              state.tempGuide.setLatLngs([lastVertex, guideTarget]);
-            } else {
-              state.tempGuide.setLatLngs([lastVertex]);
-            }
-          } catch (e) {}
-        }
-        state.setStatus && state.setStatus('Removed last vertex. Continue drawing.', 'info');
-        showDragToDraw();
-      }
-      updateUndoButtonState();
-      return true;
-    };
-
-    if (typeof hudApi.onUndoClick === 'function') {
-      hudApi.onUndoClick(() => {
-        if (undoLastVertex()) {
-          return;
-        }
-        const msg = state.closedPreview
-          ? 'Area already closed. Undo unavailable.'
-          : 'Add a vertex before undoing.';
-        state.setStatus && state.setStatus(msg, 'info');
-      });
-    }
-    hudApi.showUndoButton && hudApi.showUndoButton();
-    updateUndoButtonState();
 
     const showClosedPreview = () => {
       if (state.closedPreview || state.vertices.length < 3) return;
@@ -2294,7 +1891,6 @@ window.addEventListener('DOMContentLoaded', function () {
           fillOpacity: 0.15
         }).addTo(refugeLayerGroup);
         setDrawingCursor('default');
-        updateUndoButtonState();
       } catch (e) {
         // keep fallback to line if preview fails
       }
@@ -2409,7 +2005,6 @@ window.addEventListener('DOMContentLoaded', function () {
         // Immediate add (no defer)
         const centerLatLng = map.getCenter();
         state.vertices.push(centerLatLng);
-        updateUndoButtonState();
         setFirstMarker(state.vertices[0]);
         updatePolyline();
         // After first vertex, mirror desktop guidance
@@ -2500,7 +2095,6 @@ window.addEventListener('DOMContentLoaded', function () {
               if (state.vertices.length > 0) {
                 state.vertices.pop();
                 updatePolyline();
-                updateUndoButtonState();
               }
             }
             await attemptSave();
@@ -2596,7 +2190,6 @@ window.addEventListener('DOMContentLoaded', function () {
       const clearSingleClickTimer = () => {};
       const addVertexAt = (latlng, source = 'click') => {
         state.vertices.push(latlng);
-        updateUndoButtonState();
         setFirstMarker(state.vertices[0]);
         updatePolyline();
         setDrawingCursor('cross');
@@ -2640,7 +2233,6 @@ window.addEventListener('DOMContentLoaded', function () {
             if (state.vertices.length > 0) {
               state.vertices.pop();
               updatePolyline();
-              updateUndoButtonState();
             }
           }
           // Show preview immediately to detach line
@@ -2665,7 +2257,6 @@ window.addEventListener('DOMContentLoaded', function () {
               if (state.vertices.length > 0) {
                 state.vertices.pop();
                 updatePolyline();
-                updateUndoButtonState();
               }
             }
             state.isClosing = true;
@@ -2743,7 +2334,6 @@ window.addEventListener('DOMContentLoaded', function () {
                 if (state.vertices.length > 0) {
                   state.vertices.pop();
                   updatePolyline();
-                  updateUndoButtonState();
                 }
               }
               // Detach line immediately
@@ -2761,7 +2351,6 @@ window.addEventListener('DOMContentLoaded', function () {
           // Immediate add (no defer)
           const latlngToAdd = info.latlng;
           state.vertices.push(latlngToAdd);
-          updateUndoButtonState();
           setFirstMarker(state.vertices[0]);
           updatePolyline();
           setDrawingCursor('cross');
