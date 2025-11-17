@@ -756,6 +756,10 @@ window.addEventListener('DOMContentLoaded', function () {
                 overlayLayer._isEditOverlay = true;
                 window.__editOverlayLayers.push(overlayLayer);
               }
+              // Update undo button state after adding overlay
+              if (typeof updateUndoButtonState === 'function') {
+                updateUndoButtonState();
+              }
               if (!Array.isArray(window.__editOverlayCache)) window.__editOverlayCache = [];
               if (latlngs && latlngs.length) {
                 const storedCoords = latlngs.map(ll => ({ lat: ll.lat, lng: ll.lng }));
@@ -819,14 +823,15 @@ window.addEventListener('DOMContentLoaded', function () {
       del.textContent = 'Delete';
       leftContainer.appendChild(del);
       
-      // Create undo button for right side (no functionality)
+      // Create undo button for right side
       const undoBtn = document.createElement('button');
       undoBtn.className = 'hud-undo';
       undoBtn.type = 'button';
       undoBtn.textContent = 'Undo';
+      undoBtn.disabled = true; // Initially disabled until an overlay is drawn
       rightContainer.appendChild(undoBtn);
       
-      // Create save button for right side (no functionality)
+      // Create save button for right side
       saveBtn = document.createElement('button');
       saveBtn.className = 'hud-save';
       saveBtn.type = 'button';
@@ -839,6 +844,61 @@ window.addEventListener('DOMContentLoaded', function () {
       
       actions.appendChild(mainActionsRow);
       updateSelectionButtons();
+      
+      // Update undo button state based on overlays
+      const updateUndoButtonState = () => {
+        if (!undoBtn) return;
+        const hasOverlays = Array.isArray(window.__editOverlayLayers) && window.__editOverlayLayers.length > 0;
+        undoBtn.disabled = !hasOverlays || overlaySelectionState.mode !== null;
+      };
+      
+      // Initialize undo button state
+      updateUndoButtonState();
+      
+      // Undo button handler - removes the last drawn overlay
+      undoBtn.addEventListener('click', () => {
+        if (!Array.isArray(window.__editOverlayLayers) || window.__editOverlayLayers.length === 0) return;
+        
+        // Get the last overlay
+        const lastOverlay = window.__editOverlayLayers[window.__editOverlayLayers.length - 1];
+        
+        if (lastOverlay) {
+          // Remove from map
+          try {
+            refugeLayerGroup.removeLayer(lastOverlay);
+          } catch (e) {}
+          
+          // Remove from selection state
+          overlaySelectionState.adjoin.delete(lastOverlay);
+          overlaySelectionState.subtract.delete(lastOverlay);
+          
+          // Remove from layers array
+          window.__editOverlayLayers.pop();
+          
+          // Remove from cache if it exists
+          if (Array.isArray(window.__editOverlayCache) && window.__editOverlayCache.length > 0) {
+            window.__editOverlayCache.pop();
+          }
+          
+          // Show status message
+          if (statusEl) {
+            statusEl.style.display = '';
+            statusEl.innerHTML = 'Last overlay removed';
+            statusEl.classList.remove('status-info', 'status-error', 'status-success');
+            statusEl.classList.add('status-info');
+            setTimeout(() => {
+              if (statusEl) {
+                statusEl.innerHTML = 'Draw overlays to modify refuge';
+                statusEl.classList.remove('status-info', 'status-error', 'status-success');
+                statusEl.classList.add('status-info');
+              }
+            }, 1500);
+          }
+        }
+        
+        // Update button state
+        updateUndoButtonState();
+      });
       
       // Helper function to convert overlays to GeoJSON geometries
       const getOverlayGeometries = (layersOverride) => {
@@ -881,6 +941,7 @@ window.addEventListener('DOMContentLoaded', function () {
       adjoinBtn.addEventListener('click', () => {
         const activeMode = setSelectionMode('adjoin');
         resetOverlayButton();
+        updateUndoButtonState(); // Update undo button when mode changes
         if (activeMode === 'adjoin') {
           // Stop overlay drawing when entering selection mode
           if (window.__editOverlayActive) {
@@ -901,6 +962,7 @@ window.addEventListener('DOMContentLoaded', function () {
       subtractBtn.addEventListener('click', () => {
         const activeMode = setSelectionMode('subtract');
         resetOverlayButton();
+        updateUndoButtonState(); // Update undo button when mode changes
         if (activeMode === 'subtract') {
           // Stop overlay drawing when entering selection mode
           if (window.__editOverlayActive) {
