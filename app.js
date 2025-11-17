@@ -450,26 +450,24 @@ window.addEventListener('DOMContentLoaded', function () {
       const activeSet = activeMode === 'adjoin' ? overlaySelectionState.adjoin : overlaySelectionState.subtract;
       const otherSet = activeMode === 'adjoin' ? overlaySelectionState.subtract : overlaySelectionState.adjoin;
       const prevRole = layer._selectionRole || null;
-      if (activeSet.has(layer)) {
-        activeSet.delete(layer);
-      } else {
-        activeSet.add(layer);
+
+      if (prevRole === activeMode && activeSet.has(layer)) {
+        return { changed: false, selected: true, mode: activeMode };
       }
+
+      activeSet.add(layer);
       otherSet.delete(layer);
-      let newRole = null;
-      if (activeSet.has(layer)) {
-        newRole = activeMode;
-      } else if (otherSet.has(layer)) {
-        newRole = activeMode === 'adjoin' ? 'subtract' : 'adjoin';
-      }
-      layer._selectionRole = newRole;
-      const selected = activeSet.has(layer);
+
+      const newRole = activeMode;
       const changed = prevRole !== newRole;
+
       if (changed) {
         selectionHistory.push({ layer, prevRole });
       }
+
+      layer._selectionRole = newRole;
       applyOverlayStyle(layer);
-      return { changed, selected, mode: activeMode };
+      return { changed, selected: true, mode: activeMode };
     };
 
     const resetOverlayButton = () => {
@@ -729,6 +727,23 @@ window.addEventListener('DOMContentLoaded', function () {
         if (statusEl) statusEl.style.display = '';
       };
 
+      const disableSelectionMode = (options = {}) => {
+        if (!overlaySelectionState.mode) return false;
+        const previousMode = overlaySelectionState.mode;
+        overlaySelectionState.mode = null;
+        window.__overlayDrawingLocked = false;
+        updateSelectionButtons();
+        resetOverlayButton();
+        if (!options.skipStatus) {
+          const msg = previousMode === 'subtract' ? 'Subtract mode off.' : 'Adjoin mode off.';
+          showSelectionStatus(msg);
+        }
+        if (window.__editing && !window.__editOverlayActive) {
+          startOverlayLoop();
+        }
+        return true;
+      };
+
       const handleOverlayInteraction = (evt) => {
         const layer = evt && evt.target;
         if (!layer) return;
@@ -755,6 +770,7 @@ window.addEventListener('DOMContentLoaded', function () {
             ? (result.selected ? 'Marked for adjoin.' : 'Removed from adjoin.')
             : (result.selected ? 'Marked for subtract.' : 'Removed from subtract.');
           showSelectionStatus(prefix);
+          updateUndoButtonState();
         }
         if (evt && evt.originalEvent && typeof evt.originalEvent.preventDefault === 'function') {
           evt.originalEvent.preventDefault();
@@ -897,6 +913,7 @@ window.addEventListener('DOMContentLoaded', function () {
                 }
                 window.__editOverlayCache.push(storedCoords);
               }
+              updateUndoButtonState();
               if (window.__editing && window.__editOverlayActive) {
                 setTimeout(run, 500);
               } else {
@@ -948,12 +965,37 @@ window.addEventListener('DOMContentLoaded', function () {
       del.textContent = 'Delete';
       leftContainer.appendChild(del);
       
-      // Create undo button for right side (no functionality)
+      // Create undo button for right side
       const undoBtn = document.createElement('button');
       undoBtn.className = 'hud-undo';
       undoBtn.type = 'button';
       undoBtn.textContent = 'Undo';
       rightContainer.appendChild(undoBtn);
+      
+      // Function to check if there's anything to undo
+      const canUndo = () => {
+        // Check if there's selection history to undo
+        if (selectionHistory.length > 0) {
+          return true;
+        }
+        // Check if there are drawing vertices to undo
+        if (window.__editOverlayActive && drawing && Array.isArray(drawing.vertices) && 
+            !drawing.closedPreview && drawing.vertices.length > 0) {
+          return true;
+        }
+        // Check if there are overlay polygons to remove
+        if (Array.isArray(window.__editOverlayLayers) && window.__editOverlayLayers.length > 0) {
+          return true;
+        }
+        return false;
+      };
+
+      // Function to update undo button state
+      const updateUndoButtonState = () => {
+        if (undoBtn) {
+          undoBtn.disabled = !canUndo();
+        }
+      };
       
       // Create save button for right side (no functionality)
       saveBtn = document.createElement('button');
@@ -968,6 +1010,9 @@ window.addEventListener('DOMContentLoaded', function () {
       
       actions.appendChild(mainActionsRow);
       updateSelectionButtons();
+      
+      // Initialize undo button state
+      updateUndoButtonState();
       
       // Helper function to convert overlays to GeoJSON geometries
       const getOverlayGeometries = (layersOverride) => {
@@ -1103,23 +1148,35 @@ window.addEventListener('DOMContentLoaded', function () {
       };
 
       undoBtn.addEventListener('click', () => {
+        if (disableSelectionMode()) {
+          updateUndoButtonState();
+          return;
+        }
         if (undoLastSelectionChange()) {
+          updateUndoButtonState();
           return;
         }
         if (undoLastDrawingVertex()) {
+          updateUndoButtonState();
           return;
         }
         if (removeLatestOverlayPolygon()) {
+          updateUndoButtonState();
           return;
         }
         if (hudApi && typeof hudApi.setStatus === 'function') {
           hudApi.setStatus('Nothing to undo.', 'info');
           if (statusEl) statusEl.style.display = '';
         }
+        updateUndoButtonState();
       });
 
       // Add adjoin functionality (selection mode)
       adjoinBtn.addEventListener('click', () => {
+        if (overlaySelectionState.mode === 'adjoin') {
+          disableSelectionMode();
+          return;
+        }
         const activeMode = setSelectionMode('adjoin');
         resetOverlayButton();
         if (activeMode === 'adjoin') {
@@ -1128,17 +1185,15 @@ window.addEventListener('DOMContentLoaded', function () {
             stopOverlayLoop();
           }
           showSelectionStatus('Adjoin mode on.');
-        } else {
-          // Resume overlay drawing when exiting selection mode
-          showSelectionStatus('Adjoin mode off.');
-          if (window.__editing && !window.__editOverlayActive) {
-            startOverlayLoop();
-          }
         }
       });
 
       // Add subtract functionality (selection mode)
       subtractBtn.addEventListener('click', () => {
+        if (overlaySelectionState.mode === 'subtract') {
+          disableSelectionMode();
+          return;
+        }
         const activeMode = setSelectionMode('subtract');
         resetOverlayButton();
         if (activeMode === 'subtract') {
@@ -1147,12 +1202,6 @@ window.addEventListener('DOMContentLoaded', function () {
             stopOverlayLoop();
           }
           showSelectionStatus('Subtract mode on.');
-        } else {
-          // Resume overlay drawing when exiting selection mode
-          showSelectionStatus('Subtract mode off.');
-          if (window.__editing && !window.__editOverlayActive) {
-            startOverlayLoop();
-          }
         }
       });
 
@@ -1831,6 +1880,8 @@ window.addEventListener('DOMContentLoaded', function () {
     const undoRow = hud.querySelector('.hud-drawing-undo-row');
     const undoButton = hud.querySelector('.hud-drawing-undo');
     if (undoButton) undoButton.disabled = true;
+    const hideUndoButton = () => { if (undoRow) undoRow.style.display = 'none'; };
+    const showUndoButton = () => { if (undoRow) undoRow.style.display = ''; };
     const setStatus = (text, kind = 'info') => {
       if (!statusEl) return;
       const safe = (text || '')
@@ -1846,8 +1897,14 @@ window.addEventListener('DOMContentLoaded', function () {
     const okButton = hud.querySelector('.hud-ok');
     const getName = () => (nameInput && typeof nameInput.value === 'string' ? nameInput.value.trim() : '');
     const focusName = () => { try { nameInput && nameInput.focus(); nameInput && nameInput.select && nameInput.select(); } catch (e) {} };
-    const showNameBar = () => { if (controlsEl) controlsEl.style.display = ''; };
-    const hideNameBar = () => { if (controlsEl) controlsEl.style.display = 'none'; };
+    const showNameBar = () => {
+      if (controlsEl) controlsEl.style.display = '';
+      hideUndoButton();
+    };
+    const hideNameBar = () => {
+      if (controlsEl) controlsEl.style.display = 'none';
+      showUndoButton();
+    };
     const hideOk = () => { try { okButton && (okButton.style.display = 'none'); } catch (e) {} };
     const showOk = () => { try { okButton && (okButton.style.display = ''); } catch (e) {} };
     const onNameEnter = (cb) => {
@@ -1875,8 +1932,6 @@ window.addEventListener('DOMContentLoaded', function () {
         undoRow.style.opacity = enabled ? '' : '0.7';
       }
     };
-    const hideUndoButton = () => { if (undoRow) undoRow.style.display = 'none'; };
-    const showUndoButton = () => { if (undoRow) undoRow.style.display = ''; };
     return {
       hud,
       setStatus,
