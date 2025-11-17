@@ -2092,6 +2092,7 @@ window.addEventListener('DOMContentLoaded', function () {
         // Immediate add (no defer)
         const centerLatLng = map.getCenter();
         state.vertices.push(centerLatLng);
+        updateUndoButtonState();
         setFirstMarker(state.vertices[0]);
         updatePolyline();
         // After first vertex, mirror desktop guidance
@@ -2277,6 +2278,7 @@ window.addEventListener('DOMContentLoaded', function () {
       const clearSingleClickTimer = () => {};
       const addVertexAt = (latlng, source = 'click') => {
         state.vertices.push(latlng);
+        updateUndoButtonState();
         setFirstMarker(state.vertices[0]);
         updatePolyline();
         setDrawingCursor('cross');
@@ -2438,6 +2440,7 @@ window.addEventListener('DOMContentLoaded', function () {
           // Immediate add (no defer)
           const latlngToAdd = info.latlng;
           state.vertices.push(latlngToAdd);
+          updateUndoButtonState();
           setFirstMarker(state.vertices[0]);
           updatePolyline();
           setDrawingCursor('cross');
