@@ -126,6 +126,18 @@ body {
   padding: 0;
 }
 
+body.desktop-fullscreen-map {
+  --app-height: 100vh;
+  overflow: hidden;
+}
+
+.desktop-fullscreen-map .main-content,
+.desktop-fullscreen-map .map-container,
+.desktop-fullscreen-map #map {
+  width: 100vw;
+  height: 100vh;
+}
+
 .map-controls {
   padding: var(--spacing-6);
   display: flex;
@@ -589,6 +601,18 @@ body {
   word-wrap: break-word;
   overflow-wrap: break-word;
   line-height: 1.4;
+}
+
+.drawing-hud .hud-drawing-undo-row {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drawing-hud .hud-drawing-undo-row .hud-undo:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: none;
 }
 
 .drawing-hud .hud-status.status-info { color: #1e5bb8; }
