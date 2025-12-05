@@ -74,6 +74,12 @@ window.addEventListener('DOMContentLoaded', function () {
     zoomSnap: 0.5,
     zoomDelta: 0.5
   });
+  let hasCompletedFirstZoom = false;
+  const markFirstZoomComplete = () => {
+    if (hasCompletedFirstZoom) return;
+    hasCompletedFirstZoom = true;
+    try { setRefugePolygonsInteractive(true); } catch (e) {}
+  };
   map.whenReady(() => {
     try {
       map.fitWorld({ animate: false });
@@ -89,22 +95,16 @@ window.addEventListener('DOMContentLoaded', function () {
     } catch (err) {
       map.setView(firstTapTarget, COUNTRY_ZOOM);
     }
+    // Release initial interaction guard after the first zoom attempt
+    markFirstZoomComplete();
   });
   if (isMobile) {
     try { map.doubleClickZoom.disable(); } catch (e) {}
-    map.on('dblclick', () => {
-      const centerTarget = map.getCenter();
-      const currentZoom = map.getZoom();
-      let maxZoom = typeof map.getMaxZoom === 'function' ? map.getMaxZoom() : null;
-      if (!Number.isFinite(maxZoom) || maxZoom === null) {
-        maxZoom = 19;
-      }
-      const nextZoom = Math.min(maxZoom, currentZoom + DOUBLE_TAP_ZOOM_INCREMENT);
-      if (nextZoom <= currentZoom) return;
-      try {
-        map.flyTo(centerTarget, nextZoom, { duration: 0.45, easeLinearity: 0.45 });
-      } catch (err) {
-        map.setView(centerTarget, nextZoom);
+    // Block double-click zoom on mobile; touch handler below dispatches events without zooming
+    map.on('dblclick', (ev) => {
+      if (ev && ev.originalEvent) {
+        ev.originalEvent.preventDefault && ev.originalEvent.preventDefault();
+        ev.originalEvent.stopPropagation && ev.originalEvent.stopPropagation();
       }
     });
   }
@@ -130,6 +130,9 @@ window.addEventListener('DOMContentLoaded', function () {
   // -----------------------------
   const refugeLayerGroup = L.layerGroup().addTo(map);
   let lastDeletedRefuge = null; // for Undo restore
+  if (!hasCompletedFirstZoom) {
+    try { setRefugePolygonsInteractive(false); } catch (e) {}
+  }
 
   function escapeHtml(str) {
     try {
@@ -1413,13 +1416,6 @@ window.addEventListener('DOMContentLoaded', function () {
         try {
           const adjoinGeoms = getOverlayGeometries(overlaySelectionState.adjoin);
           const subtractGeoms = getOverlayGeometries(overlaySelectionState.subtract);
-          if (adjoinGeoms.length === 0 && subtractGeoms.length === 0) {
-            if (hudApi && typeof hudApi.setStatus === 'function') {
-            hudApi.setStatus('No overlays selected. Tap Adjoin or Subtract, pick overlays, then save.', 'error');
-            }
-            if (statusEl) statusEl.style.display = '';
-            return;
-          }
           if (statusEl) statusEl.style.display = '';
           hudApi.setStatus && hudApi.setStatus('Saving…', 'info');
           
@@ -1526,10 +1522,21 @@ window.addEventListener('DOMContentLoaded', function () {
                   </div>
                 `;
                 polygon.addTo(refugeLayerGroup).bindPopup(popupHtml);
-                // Block popups from opening while in edit mode or drawing mode
-                polygon.on('click', (e) => {
+
+                // Gate popup opening so double-click zooms do not count as a single click
+                const REFUGE_DOUBLE_CLICK_MS = 320;
+                let refugeClickTimer = null;
+                let refugeLastClickAt = 0;
+
+                const handleRefugeClick = (e) => {
+                  // Ignore refuge interactions until the first zoom-in is done
+                  if (!hasCompletedFirstZoom) {
+                    return;
+                  }
+
+                  // Block popups from opening while in edit mode or drawing mode
                   if (window.__editing || drawing) {
-                    try { e.target.closePopup(); } catch (err) {}
+                    try { polygon.closePopup(); } catch (err) {}
                     // In edit mode, prevent the click from propagating
                     if (window.__editing) {
                       if (e && e.originalEvent && typeof e.originalEvent.preventDefault === 'function') {
@@ -1539,8 +1546,40 @@ window.addEventListener('DOMContentLoaded', function () {
                     // In drawing mode, let the click propagate to the map for vertex addition
                     return;
                   }
-                });
+
+                  const now = Date.now();
+                  const sinceLast = now - refugeLastClickAt;
+                  refugeLastClickAt = now;
+
+                  if (refugeClickTimer) {
+                    clearTimeout(refugeClickTimer);
+                    refugeClickTimer = null;
+                  }
+
+                  if (sinceLast < REFUGE_DOUBLE_CLICK_MS) {
+                    // Treat as double-click: suppress popup so map zoom can proceed
+                    try { map.closePopup(); } catch (err) {}
+                    return;
+                  }
+
+                  refugeClickTimer = setTimeout(() => {
+                    refugeClickTimer = null;
+                    if (!hasCompletedFirstZoom) return;
+                    if (window.__editing || drawing) return;
+                    try { polygon.openPopup(e.latlng); } catch (err) {}
+                  }, REFUGE_DOUBLE_CLICK_MS + 20);
+                };
+
+                // Replace Leaflet's default click-to-open handler so we can apply timing
+                polygon.off('click');
+                polygon.on('click', handleRefugeClick);
+
                 polygon.on('popupopen', () => {
+                  // Block refuge popups until the initial zoom completes
+                  if (!hasCompletedFirstZoom) {
+                    polygon.closePopup();
+                    return;
+                  }
                   // Close popup immediately if editing mode or drawing mode is active
                   if (window.__editing || drawing) {
                     polygon.closePopup();
@@ -1549,6 +1588,24 @@ window.addEventListener('DOMContentLoaded', function () {
                   const editBtn = document.getElementById(popupId);
                   const renameBtn = document.getElementById(renameId);
                   const nameEl = document.getElementById(nameId);
+                  
+                  // Allow tapping the name to zoom to the refuge bounds
+                  if (nameEl) {
+                    nameEl.style.cursor = 'pointer';
+                    nameEl.title = 'Zoom to refuge';
+                    nameEl.onclick = (ev) => {
+                      ev && ev.stopPropagation && ev.stopPropagation();
+                      if (!hasCompletedFirstZoom) return;
+                      try {
+                        const bounds = (typeof polygon.getBounds === 'function') ? polygon.getBounds() : null;
+                        if (bounds && bounds.isValid && bounds.isValid()) {
+                          map.fitBounds(bounds, { padding: [24, 24], maxZoom: Math.max(map.getZoom() || COUNTRY_ZOOM, 13) });
+                        } else if (bounds && typeof bounds.getCenter === 'function') {
+                          map.flyTo(bounds.getCenter(), Math.max(map.getZoom() || COUNTRY_ZOOM, 13));
+                        }
+                      } catch (err) {}
+                    };
+                  }
                   
                   if (editBtn) {
                     editBtn.onclick = (ev) => {
@@ -1649,6 +1706,9 @@ window.addEventListener('DOMContentLoaded', function () {
           }
         });
       }
+      if (!hasCompletedFirstZoom) {
+        try { setRefugePolygonsInteractive(false); } catch (e) {}
+      }
     } catch (e) {
       console.warn('Failed to load refuges', e);
     }
@@ -1708,11 +1768,7 @@ window.addEventListener('DOMContentLoaded', function () {
     const applyCenterDoubleAction = () => {
       const center = map.getCenter();
       const pixel = map.latLngToContainerPoint(center);
-      // If not suppressed, perform default zoom. Always dispatch event.
-      if (!window.__suppressCenterDoubleAction) {
-        map.zoomIn(DOUBLE_TAP_ZOOM_INCREMENT);
-      }
-      // Dispatch a custom event in case the host app wants to consume it
+      // Dispatch a custom event in case the host app wants to consume it (no zoom on mobile)
       window.dispatchEvent(new CustomEvent('map-center-doubletap', {
         detail: { latlng: { lat: center.lat, lng: center.lng }, pixel }
       }));
@@ -2052,6 +2108,32 @@ window.addEventListener('DOMContentLoaded', function () {
   // -----------------------------
   let drawing = null; // state holder when active
 
+  // Desktop: align double-click zoom amount with mobile (2-level jump)
+  if (!isMobile) {
+    try {
+      if (map.doubleClickZoom && typeof map.doubleClickZoom.disable === 'function') {
+        map.doubleClickZoom.disable();
+      }
+    } catch (e) {}
+    map.on('dblclick', (ev) => {
+      // Skip zooming while drawing polygons so double-click can close shapes
+      if (drawing) return;
+      const centerTarget = (ev && ev.latlng) ? ev.latlng : map.getCenter();
+      const currentZoom = map.getZoom();
+      let maxZoom = typeof map.getMaxZoom === 'function' ? map.getMaxZoom() : null;
+      if (!Number.isFinite(maxZoom) || maxZoom === null) {
+        maxZoom = 19;
+      }
+      const nextZoom = Math.min(maxZoom, currentZoom + DOUBLE_TAP_ZOOM_INCREMENT);
+      if (nextZoom <= currentZoom) return;
+      try {
+        map.flyTo(centerTarget, nextZoom, { duration: 0.45, easeLinearity: 0.45 });
+      } catch (err) {
+        map.setView(centerTarget, nextZoom);
+      }
+    });
+  }
+
   function createDrawingHud(onCancel) {
     let hud = document.querySelector('.drawing-hud');
     if (hud) hud.remove();
@@ -2219,7 +2301,7 @@ window.addEventListener('DOMContentLoaded', function () {
     // Block saving with fewer than 3 vertices (no area with two angles)
     if (ring.length < 3) {
       setStatus && setStatus('Need at least 3 points', 'error');
-      return false;
+      return { ok: false, reason: 'too_few_points' };
     }
     if (ring.length >= 3) {
       const first = ring[0];
@@ -2228,7 +2310,7 @@ window.addEventListener('DOMContentLoaded', function () {
     }
     if (!name || !name.trim()) {
       setStatus && setStatus('Enter a name in the bar to save.', 'info');
-      return false;
+      return { ok: false, reason: 'missing_name' };
     }
     try {
       setStatus && setStatus('Saving…', 'info');
@@ -2241,20 +2323,26 @@ window.addEventListener('DOMContentLoaded', function () {
       if (res.ok && data && data.status === 'success') {
         await loadAndRenderRefuges();
         setStatus && setStatus('Saved.', 'success');
-        return true;
+        return { ok: true };
       }
       const serverMsg = (data && data.message) || '';
       const isDuplicate = res.status === 409 || /already exists/i.test(serverMsg);
       if (isDuplicate) {
         setStatus && setStatus('That name is already in use. Enter a different name in the bar.', 'error');
-        return false;
+        return { ok: false, reason: 'duplicate', message: serverMsg };
+      }
+      const isFullOverlap = /overlaps existing areas completely/i.test(serverMsg) || /nothing to save/i.test(serverMsg);
+      if (isFullOverlap) {
+        const overlapMsg = serverMsg || 'Refuge overlaps existing areas completely; nothing to save';
+        setStatus && setStatus(overlapMsg, 'error');
+        return { ok: false, reason: 'full_overlap', message: overlapMsg };
       }
       const msg = serverMsg || `Failed to save refuge (${res.status})`;
       setStatus && setStatus(msg, 'error');
-      return false;
+      return { ok: false, reason: 'server', message: msg };
     } catch (e) {
       setStatus && setStatus('Error saving refuge.', 'error');
-      return false;
+      return { ok: false, reason: 'exception', message: (e && e.message) || '' };
     }
   }
 
@@ -2276,7 +2364,8 @@ window.addEventListener('DOMContentLoaded', function () {
       // Make refuge polygons non-interactive so clicks pass through to the map
       try { setRefugePolygonsInteractive(false); } catch (e) {}
     } catch (e) {}
-    const teardownOnCancel = opts.cancelTeardownOptions;
+    const teardownOnCancel = Object.assign({}, opts.cancelTeardownOptions || {});
+    teardownOnCancel.removePreview = true;
     const baseHudApi = opts.hudApi || createDrawingHud(() => {
       teardownDrawing(teardownOnCancel);
       if (typeof opts.onCancel === 'function') {
@@ -2418,9 +2507,16 @@ window.addEventListener('DOMContentLoaded', function () {
         return;
       }
       hudApi.hideOk && hudApi.hideOk();
-      const ok = await saveRefugePolygon(state.vertices, name, state.setStatus);
+      const result = await saveRefugePolygon(state.vertices, name, state.setStatus);
+      const ok = result === true || (result && result.ok === true);
+      const fullOverlap = result && result.reason === 'full_overlap';
       if (ok) {
         teardownDrawing();
+      } else if (fullOverlap) {
+        // For complete-overlap errors, block inputs and clear the drawn refuge
+        hudApi.hideNameBar && hudApi.hideNameBar();
+        hudApi.hideOk && hudApi.hideOk();
+        teardownDrawing({ preserveHud: true, removePreview: true });
       } else {
         hudApi.showOk && hudApi.showOk();
       }
