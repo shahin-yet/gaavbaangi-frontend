@@ -80,6 +80,30 @@ window.addEventListener('DOMContentLoaded', function () {
     hasCompletedFirstZoom = true;
     try { setRefugePolygonsInteractive(true); } catch (e) {}
   };
+  // Guard: on phones block all UI (except menu + map pan/zoom) until the first zoom-in tap.
+  const shouldBlockInitialUi = () => isMobile && !hasCompletedFirstZoom;
+  const isAllowedDuringInitialGuard = (target) => {
+    if (!target) return false;
+    // Keep map interactions and Leaflet controls usable
+    if (target.closest('#map')) return true;
+    if (target.closest('.leaflet-control-zoom')) return true;
+    // Menu button and related surfaces remain available
+    if (target.closest('#fab-menu')) return true;
+    if (target.closest('#side-panel')) return true;
+    if (target.closest('#side-close')) return true;
+    if (target.closest('#menu-overlay')) return true;
+    return false;
+  };
+  const initialGuardInterceptor = (ev) => {
+    if (!shouldBlockInitialUi()) return;
+    if (isAllowedDuringInitialGuard(ev.target)) return;
+    if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+    ev.stopPropagation();
+    ev.preventDefault();
+  };
+  ['click', 'pointerdown', 'touchstart'].forEach((evtName) => {
+    document.addEventListener(evtName, initialGuardInterceptor, true);
+  });
   map.whenReady(() => {
     try {
       map.fitWorld({ animate: false });
@@ -2161,11 +2185,18 @@ window.addEventListener('DOMContentLoaded', function () {
     document.body.appendChild(hud);
     hud.querySelector('.hud-cancel').addEventListener('click', () => { onCancel && onCancel(); });
     const statusEl = hud.querySelector('.hud-status');
+    let statusClearTimer = null;
     const controlsEl = hud.querySelector('.hud-controls');
     const undoRowEl = hud.querySelector('.hud-drawing-undo-row');
     const undoBtnEl = hud.querySelector('.hud-undo');
-    const setStatus = (text, kind = 'info') => {
+    const setStatus = (text, kind = 'info', options = {}) => {
       if (!statusEl) return;
+      const opts = (kind && typeof kind === 'object' && !Array.isArray(kind)) ? kind : (options || {});
+      const normalizedKind = (typeof kind === 'string') ? kind : (opts.kind || 'info');
+      if (statusClearTimer) {
+        try { clearTimeout(statusClearTimer); } catch (e) {}
+        statusClearTimer = null;
+      }
       const safe = (text || '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -2173,7 +2204,18 @@ window.addEventListener('DOMContentLoaded', function () {
         .replace(/\n/g, '<br>');
       statusEl.innerHTML = safe;
       statusEl.classList.remove('status-info', 'status-error', 'status-success');
-      statusEl.classList.add(`status-${kind}`);
+      statusEl.classList.add(`status-${normalizedKind}`);
+      statusEl.style.display = '';
+      if (opts && Number.isFinite(opts.autoHideMs)) {
+        statusClearTimer = setTimeout(() => {
+          if (!statusEl) return;
+          statusEl.innerHTML = '';
+          statusEl.classList.remove('status-info', 'status-error', 'status-success');
+          if (opts.hideBar) {
+            statusEl.style.display = 'none';
+          }
+        }, opts.autoHideMs);
+      }
     };
     const nameInput = hud.querySelector('.hud-name');
     const okButton = hud.querySelector('.hud-ok');
@@ -2334,7 +2376,7 @@ window.addEventListener('DOMContentLoaded', function () {
       const isFullOverlap = /overlaps existing areas completely/i.test(serverMsg) || /nothing to save/i.test(serverMsg);
       if (isFullOverlap) {
         const overlapMsg = serverMsg || 'Refuge overlaps existing areas completely; nothing to save';
-        setStatus && setStatus(overlapMsg, 'error');
+        setStatus && setStatus(overlapMsg, 'error', { autoHideMs: 2500, hideBar: true });
         return { ok: false, reason: 'full_overlap', message: overlapMsg };
       }
       const msg = serverMsg || `Failed to save refuge (${res.status})`;
