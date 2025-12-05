@@ -290,6 +290,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
     // Default no-op placeholders; assigned once HUD actions are ready
     let showSelectionStatus = () => {};
+    let showDrawOverlayPrompt = () => {};
     let startOverlayLoop = () => {};
     let updateUndoButtonState = () => {};
     const selectionHistory = {
@@ -380,6 +381,9 @@ window.addEventListener('DOMContentLoaded', function () {
       overlaySelectionState.mode = newMode;
       window.__overlayDrawingLocked = newMode !== null;
       updateSelectionButtons();
+      if (newMode !== null) {
+        showSelectionStatus('select the overlays');
+      }
 
       // When entering a selection mode, immediately pause any active overlay drawing
       if (newMode !== null && previousMode === null) {
@@ -400,6 +404,7 @@ window.addEventListener('DOMContentLoaded', function () {
             startOverlayLoop();
           } catch (e) {}
         }
+        showDrawOverlayPrompt();
       }
 
       return overlaySelectionState.mode;
@@ -758,40 +763,43 @@ window.addEventListener('DOMContentLoaded', function () {
     if (controls) { controls.style.display = ''; }
     const actions = hud.querySelector('.hud-actions');
     if (actions) {
-      const buildSelectionSummary = () => {
-        const parts = [];
-        const addCount = overlaySelectionState.adjoin.size;
-        const subCount = overlaySelectionState.subtract.size;
-        if (addCount) parts.push(`add: ${addCount}`);
-        if (subCount) parts.push(`sub: ${subCount}`);
-        return parts.length ? parts.join(', ') : 'No overlays selected.';
-      };
+      const getSelectionCountsText = () =>
+        `add: ${overlaySelectionState.adjoin.size}, sub: ${overlaySelectionState.subtract.size}`;
 
-      const buildDrawStatusMessage = (
-        summary,
-        baseText = 'draw overlays to modify refuge',
-        activeBaseText = 'select overlays'
-      ) => {
-        const normalized = typeof summary === 'string'
-          ? summary.trim()
-          : (summary === undefined || summary === null ? '' : `${summary}`.trim());
-        if (overlaySelectionState.mode === null) {
-          return normalized ? `${baseText}\n${normalized}` : baseText;
+      const setHelperStatus = (text) => {
+        const normalized = typeof text === 'string' ? text.trim() : '';
+        if (!normalized) return;
+        if (baseSetStatus) {
+          baseSetStatus(normalized, 'info');
+        } else if (statusEl) {
+          statusEl.innerHTML = normalized;
+          statusEl.classList.remove('status-error', 'status-success');
+          statusEl.classList.add('status-info');
         }
-        // When mode is active but no overlays selected yet, show "select overlays"
-        if (normalized === 'No overlays selected.') {
-          return activeBaseText;
+        if (statusEl) {
+          statusEl.style.display = '';
         }
-        return normalized;
       };
 
-      const showDrawOverlayPrompt = () => {
-        // Helper prompts removed; status reserved for alerts.
+      showSelectionStatus = (message) => {
+        const normalized = typeof message === 'string' ? message.trim() : '';
+        if (normalized) {
+          setHelperStatus(normalized);
+          return;
+        }
+        if (overlaySelectionState.mode !== null) {
+          const hasSelection = overlaySelectionState.adjoin.size > 0 || overlaySelectionState.subtract.size > 0;
+          setHelperStatus(hasSelection ? getSelectionCountsText() : 'select the overlays');
+          return;
+        }
+        setHelperStatus('draw overlays to modify refuge');
       };
 
-      showSelectionStatus = () => {
-        // Helper prompts removed; status reserved for alerts.
+      showDrawOverlayPrompt = () => {
+        setHelperStatus('draw to modify refuge');
       };
+
+      showSelectionStatus('draw overlays to modify refuge');
 
       const handleOverlayInteraction = (evt) => {
         const layer = evt && evt.target;
@@ -815,11 +823,7 @@ window.addEventListener('DOMContentLoaded', function () {
         }
         const result = toggleOverlaySelection(layer);
         if (result.changed || result.reason === 'already-selected' || result.reason === 'locked-to-other') {
-          const summary = buildSelectionSummary();
-          if (hudApi && typeof hudApi.setStatus === 'function') {
-            hudApi.setStatus(buildDrawStatusMessage(summary), 'info');
-          }
-          if (statusEl) statusEl.style.display = '';
+          showSelectionStatus(getSelectionCountsText());
         }
         if (evt && evt.originalEvent && typeof evt.originalEvent.preventDefault === 'function') {
           evt.originalEvent.preventDefault();
@@ -1204,8 +1208,6 @@ window.addEventListener('DOMContentLoaded', function () {
         updateUndoButtonState(); // Update undo button when mode changes
 
         if (!activeMode && wasActive) {
-          // Mode toggled off - drawing has been resumed by setSelectionMode, keep selections
-          showDrawOverlayPrompt();
           // Ensure overlay styles remain visible for selected overlays
           updateAllOverlayStyles();
         }
@@ -1219,8 +1221,6 @@ window.addEventListener('DOMContentLoaded', function () {
         updateUndoButtonState(); // Update undo button when mode changes
 
         if (!activeMode && wasActive) {
-          // Mode toggled off - drawing has been resumed by setSelectionMode, keep selections
-          showDrawOverlayPrompt();
           // Ensure overlay styles remain visible for selected overlays
           updateAllOverlayStyles();
         }
