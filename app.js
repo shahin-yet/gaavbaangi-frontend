@@ -274,6 +274,42 @@ window.addEventListener('DOMContentLoaded', function () {
     return false;
   }
 
+  // Helper: determine if an overlay fully contains the refuge (all refuge points are inside)
+  function overlayFullyContainsRefuge(overlayLatLngs, refugeGeoJSON) {
+    if (!Array.isArray(overlayLatLngs) || !refugeGeoJSON) return false;
+
+    const overlayPoints = overlayLatLngs.map(ll => ({ lat: ll.lat, lng: ll.lng }));
+
+    let refugeRings = [];
+    if (refugeGeoJSON.type === 'Polygon') {
+      refugeRings = refugeGeoJSON.coordinates.map(ring =>
+        ring.map(([lng, lat]) => ({ lat, lng }))
+      );
+    } else if (refugeGeoJSON.type === 'MultiPolygon') {
+      refugeGeoJSON.coordinates.forEach(polygon => {
+        polygon.forEach(ring => {
+          refugeRings.push(ring.map(([lng, lat]) => ({ lat, lng })));
+        });
+      });
+    }
+    if (!refugeRings.length) return false;
+
+    const pointInPolygon = (point, polygon) => {
+      let inside = false;
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i].lng, yi = polygon[i].lat;
+        const xj = polygon[j].lng, yj = polygon[j].lat;
+        const intersect = ((yi > point.lat) !== (yj > point.lat)) &&
+          (point.lng < (xj - xi) * (point.lat - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    };
+
+    // All points of every refuge ring must be inside overlay
+    return refugeRings.every(ring => ring.every(point => pointInPolygon(point, overlayPoints)));
+  }
+
   function openRefugeEditor(refuge) {
     // Reuse drawing HUD for a consistent look
     let overlayBtn = null;
@@ -444,10 +480,83 @@ window.addEventListener('DOMContentLoaded', function () {
       });
     };
 
+    const updateOverlayContainmentLocks = () => {
+      if (!Array.isArray(window.__editOverlayLayers) || window.__editOverlayLayers.length === 0) return;
+      const layers = window.__editOverlayLayers.filter(layer => layer && typeof layer.getLatLngs === 'function');
+      if (!layers.length) return;
+
+      const coordsCache = new Map();
+      layers.forEach(layer => {
+        try {
+          const latlngs = layer.getLatLngs();
+          coordsCache.set(layer, Array.isArray(latlngs[0]) ? latlngs[0] : latlngs);
+        } catch (e) {
+          coordsCache.set(layer, null);
+        }
+        layer._adjoinLocked = false;
+      });
+
+      const pointInPolygon = (point, polygon) => {
+        let inside = false;
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+          const xi = polygon[i].lng, yi = polygon[i].lat;
+          const xj = polygon[j].lng, yj = polygon[j].lat;
+          const intersect = ((yi > point.lat) !== (yj > point.lat)) &&
+            (point.lng < (xj - xi) * (point.lat - yi) / (yj - yi) + xi);
+          if (intersect) inside = !inside;
+        }
+        return inside;
+      };
+
+      const containmentCounts = new Map();
+      layers.forEach(layer => containmentCounts.set(layer, 0));
+
+      layers.forEach(inner => {
+        const innerCoords = coordsCache.get(inner);
+        if (!innerCoords || innerCoords.length < 3) return;
+        const innerPoints = innerCoords.map(ll => ({ lat: ll.lat, lng: ll.lng }));
+        layers.forEach(outer => {
+          if (inner === outer) return;
+          const outerCoords = coordsCache.get(outer);
+          if (!outerCoords || outerCoords.length < 3) return;
+          const outerPoly = outerCoords.map(ll => ({ lat: ll.lat, lng: ll.lng }));
+          const fullyInside = innerPoints.every(pt => pointInPolygon(pt, outerPoly));
+          if (fullyInside) {
+            containmentCounts.set(inner, (containmentCounts.get(inner) || 0) + 1);
+          }
+        });
+      });
+
+      let changed = false;
+      layers.forEach(layer => {
+        const locked = (containmentCounts.get(layer) || 0) === 1;
+        if (layer._adjoinLocked !== locked) {
+          layer._adjoinLocked = locked;
+          changed = true;
+        }
+        if (locked && overlaySelectionState.adjoin.has(layer)) {
+          overlaySelectionState.adjoin.delete(layer);
+          pruneSelectionHistoryForLayer(layer);
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        updateAllOverlayStyles();
+        updateUndoButtonState();
+      }
+    };
+
     const toggleOverlaySelection = (layer) => {
       const activeMode = overlaySelectionState.mode;
       if (!layer || !activeMode) {
         return { changed: false, selected: false, mode: activeMode };
+      }
+    if (activeMode === 'subtract' && layer._subtractLocked) {
+      return { changed: false, selected: false, mode: activeMode, reason: 'subtract-locked' };
+    }
+      if (activeMode === 'adjoin' && layer._adjoinLocked) {
+        return { changed: false, selected: false, mode: activeMode, reason: 'adjoin-locked' };
       }
       const activeSet = activeMode === 'adjoin' ? overlaySelectionState.adjoin : overlaySelectionState.subtract;
       const otherSet = activeMode === 'adjoin' ? overlaySelectionState.subtract : overlaySelectionState.adjoin;
@@ -796,7 +905,7 @@ window.addEventListener('DOMContentLoaded', function () {
       };
 
       showDrawOverlayPrompt = () => {
-        setHelperStatus('draw to modify refuge');
+        setHelperStatus('draw overlays to modify refuge');
       };
 
       showSelectionStatus('draw overlays to modify refuge');
@@ -822,7 +931,11 @@ window.addEventListener('DOMContentLoaded', function () {
           return;
         }
         const result = toggleOverlaySelection(layer);
-        if (result.changed || result.reason === 'already-selected' || result.reason === 'locked-to-other') {
+        if (result.reason === 'subtract-locked') {
+          showSelectionStatus('Subtract not allowed for this overlay');
+        } else if (result.reason === 'adjoin-locked') {
+          showSelectionStatus('Adjoin not allowed for nested overlay');
+        } else if (result.changed || result.reason === 'already-selected' || result.reason === 'locked-to-other') {
           showSelectionStatus(getSelectionCountsText());
         }
         if (evt && evt.originalEvent && typeof evt.originalEvent.preventDefault === 'function') {
@@ -905,6 +1018,7 @@ window.addEventListener('DOMContentLoaded', function () {
               }
               const latlngs = result && Array.isArray(result.latlngs) ? result.latlngs : [];
               const overlayGeoJSON = buildOverlayGeoJSONFromLatLngs(latlngs);
+              const fullyCoversRefuge = latlngs.length >= 3 && overlayFullyContainsRefuge(latlngs, refuge.polygon);
               
               // Validate that the overlay overlaps with the refuge
               if (latlngs.length >= 3) {
@@ -956,7 +1070,11 @@ window.addEventListener('DOMContentLoaded', function () {
                 } catch (e) {}
               }
 
-              if (overlayGeoJSON) {
+              if (overlayLayer && fullyCoversRefuge) {
+                overlayLayer._subtractLocked = true;
+              }
+
+              if (overlayGeoJSON && !fullyCoversRefuge) {
                 const validationResult = await validateOverlayDoesNotFragment(overlayGeoJSON);
                 if (!validationResult.ok) {
                   if (overlayLayer) {
@@ -994,6 +1112,7 @@ window.addEventListener('DOMContentLoaded', function () {
                 overlayLayer._isEditOverlay = true;
                 window.__editOverlayLayers.push(overlayLayer);
               }
+              updateOverlayContainmentLocks();
               updateOperationButtonsState();
               overlayDrawingUndoState.enabled = false;
               overlayDrawingUndoState.handler = null;
@@ -1126,6 +1245,7 @@ window.addEventListener('DOMContentLoaded', function () {
         if (Array.isArray(window.__editOverlayCache) && window.__editOverlayCache.length > 0) {
           window.__editOverlayCache.pop();
         }
+        updateOverlayContainmentLocks();
         showOverlayRemovedStatus();
         return true;
       };
