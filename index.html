@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Gaav Baangi Conservation Map</title>
+  <link rel="stylesheet" href="styles.css?v=3">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <!-- Font Awesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Telegram WebApp JS (optional but helpful for detection) -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <!-- Main Content -->
+  <main class="main-content">
+    <!-- Map Section -->
+    <section id="map-section" class="content-section active">
+      <div class="map-container">
+        <div id="map"></div>
+        <div class="map-toolbar map-controls">
+          <button class="control-btn" id="btn-layer" title="Layer"><i class="fas fa-layer-group"></i></button>
+          <button class="control-btn" id="btn-drawing" title="Drawing"><i class="fas fa-pencil-ruler"></i></button>
+          <button class="control-btn" id="btn-center" title="Center"><i class="fas fa-crosshairs"></i></button>
+        </div>
+        <div class="map-center-dot" aria-hidden="true"></div>
+
+        <!-- Floating Menu Button and Right Side Panel -->
+        <button id="fab-menu" class="fab-menu" aria-label="Open menu" title="Menu">
+          <i class="fas fa-bars"></i>
+        </button>
+        <div id="menu-overlay" class="menu-overlay" aria-hidden="true"></div>
+        <aside id="side-panel" class="side-panel" aria-hidden="true" aria-label="Side menu">
+          <div class="side-panel-header">
+            <span>Menu</span>
+            <button id="side-close" class="side-panel-close" aria-label="Close menu">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          <nav class="side-panel-content" role="menu">
+            <button class="menu-item" data-action="about" role="menuitem">
+              <i class="fas fa-circle-info"></i>
+              <span>About</span>
+            </button>
+            <button class="menu-item" data-action="data" role="menuitem">
+              <i class="fas fa-database"></i>
+              <span>Data</span>
+            </button>
+            <button class="menu-item active" data-action="admin-map" role="menuitem" aria-current="page">
+              <i class="fas fa-map"></i>
+              <span>Administrative Map</span>
+            </button>
+            <button class="menu-item" data-action="user-map" role="menuitem">
+              <i class="fas fa-user"></i>
+              <span>User Map</span>
+            </button>
+          </nav>
+          <!-- Location search bar: below menu options -->
+          <div class="side-panel-search">
+            <div class="side-panel-search-row">
+              <input
+                id="location-search-input"
+                type="text"
+                placeholder="Place name or 18.52, 73.86"
+                aria-label="Search by place name or coordinates"
+              />
+              <button id="location-search-btn" type="button" title="Search">
+                <i class="fas fa-search"></i>
+              </button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
