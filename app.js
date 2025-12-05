@@ -387,14 +387,15 @@ window.addEventListener('DOMContentLoaded', function () {
         .filter(layer => !!layer)
         .map(layer => ({ layer, area: computeOverlayArea(layer) }))
         .sort((a, b) => a.area - b.area);
-      // Keep the original insertion order so undo/delete pops the most recently drawn overlay.
-      ordered.forEach(entry => {
+      // Bring larger polygons forward first so the smallest/inner overlays end up on top.
+      for (let i = ordered.length - 1; i >= 0; i -= 1) {
+        const entry = ordered[i];
         try {
           if (entry.layer && typeof entry.layer.bringToFront === 'function') {
             entry.layer.bringToFront();
           }
         } catch (e) {}
-      });
+      }
     };
 
     const applyOverlayStyle = (layer) => {
