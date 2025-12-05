@@ -387,7 +387,7 @@ window.addEventListener('DOMContentLoaded', function () {
         .filter(layer => !!layer)
         .map(layer => ({ layer, area: computeOverlayArea(layer) }))
         .sort((a, b) => a.area - b.area);
-      window.__editOverlayLayers = ordered.map(entry => entry.layer);
+      // Keep the original insertion order so undo/delete pops the most recently drawn overlay.
       ordered.forEach(entry => {
         try {
           if (entry.layer && typeof entry.layer.bringToFront === 'function') {
