@@ -361,6 +361,42 @@ window.addEventListener('DOMContentLoaded', function () {
       fillOpacity: 0.35
     };
 
+    // Keep smaller/inner overlays on top so they remain selectable when overlapping.
+    const computeOverlayArea = (layer) => {
+      if (!layer || typeof layer.getLatLngs !== 'function') return Infinity;
+      try {
+        const latlngs = layer.getLatLngs();
+        const coords = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
+        if (!Array.isArray(coords) || coords.length < 3) return Infinity;
+        let area = 0;
+        const n = coords.length;
+        for (let i = 0; i < n; i++) {
+          const j = (i + 1) % n;
+          area += coords[i].lng * coords[j].lat;
+          area -= coords[j].lng * coords[i].lat;
+        }
+        return Math.abs(area / 2);
+      } catch (e) {
+        return Infinity;
+      }
+    };
+
+    const reorderOverlayRenderOrder = () => {
+      if (!Array.isArray(window.__editOverlayLayers) || window.__editOverlayLayers.length === 0) return;
+      const ordered = window.__editOverlayLayers
+        .filter(layer => !!layer)
+        .map(layer => ({ layer, area: computeOverlayArea(layer) }))
+        .sort((a, b) => a.area - b.area);
+      window.__editOverlayLayers = ordered.map(entry => entry.layer);
+      ordered.forEach(entry => {
+        try {
+          if (entry.layer && typeof entry.layer.bringToFront === 'function') {
+            entry.layer.bringToFront();
+          }
+        } catch (e) {}
+      });
+    };
+
     const applyOverlayStyle = (layer) => {
       if (!layer || typeof layer.setStyle !== 'function') return;
       let style = baseOverlayStyle;
@@ -511,6 +547,8 @@ window.addEventListener('DOMContentLoaded', function () {
       const containmentCounts = new Map();
       layers.forEach(layer => containmentCounts.set(layer, 0));
 
+      const layersToRemove = new Set();
+
       layers.forEach(inner => {
         const innerCoords = coordsCache.get(inner);
         if (!innerCoords || innerCoords.length < 3) return;
@@ -529,7 +567,12 @@ window.addEventListener('DOMContentLoaded', function () {
 
       let changed = false;
       layers.forEach(layer => {
-        const locked = (containmentCounts.get(layer) || 0) === 1;
+        const containments = containmentCounts.get(layer) || 0;
+        if (containments > 1) {
+          layersToRemove.add(layer);
+          return;
+        }
+        const locked = containments === 1;
         if (layer._adjoinLocked !== locked) {
           layer._adjoinLocked = locked;
           changed = true;
@@ -541,9 +584,25 @@ window.addEventListener('DOMContentLoaded', function () {
         }
       });
 
+      if (layersToRemove.size) {
+        layersToRemove.forEach(layer => {
+          try { refugeLayerGroup.removeLayer(layer); } catch (e) {}
+          overlaySelectionState.adjoin.delete(layer);
+          overlaySelectionState.subtract.delete(layer);
+          pruneSelectionHistoryForLayer(layer);
+          const idx = window.__editOverlayLayers.indexOf(layer);
+          if (idx > -1) {
+            window.__editOverlayLayers.splice(idx, 1);
+          }
+        });
+        changed = true;
+      }
+
       if (changed) {
         updateAllOverlayStyles();
         updateUndoButtonState();
+        updateOperationButtonsState();
+        reorderOverlayRenderOrder();
       }
     };
 
@@ -1112,6 +1171,7 @@ window.addEventListener('DOMContentLoaded', function () {
                 overlayLayer._isEditOverlay = true;
                 window.__editOverlayLayers.push(overlayLayer);
               }
+              reorderOverlayRenderOrder();
               updateOverlayContainmentLocks();
               updateOperationButtonsState();
               overlayDrawingUndoState.enabled = false;
@@ -1247,6 +1307,7 @@ window.addEventListener('DOMContentLoaded', function () {
         }
         updateOverlayContainmentLocks();
         showOverlayRemovedStatus();
+        reorderOverlayRenderOrder();
         return true;
       };
 
