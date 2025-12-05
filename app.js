@@ -734,9 +734,18 @@ window.addEventListener('DOMContentLoaded', function () {
     if (!hud) return;
     const titleEl = hud.querySelector('.hud-title span');
     if (titleEl) titleEl.textContent = 'Edit bar';
-    // Keep the drawing helper/status area visible in edit mode
+    // Keep status area reserved for alerts only (red/green)
     const statusEl = hud.querySelector('.hud-status');
-    if (statusEl) { statusEl.innerHTML = 'Draw overlays to modify refuge'; statusEl.style.display = ''; }
+    if (statusEl) { statusEl.innerHTML = ''; statusEl.style.display = 'none'; }
+    const baseSetStatus = hudApi && hudApi.setStatus ? hudApi.setStatus : null;
+    if (hudApi) {
+      hudApi.setStatus = (text, kind = 'info') => {
+        if (kind === 'error' || kind === 'success') {
+          baseSetStatus && baseSetStatus(text, kind);
+          try { statusEl && (statusEl.style.display = ''); } catch (e) {}
+        }
+      };
+    }
     // Remove the drawing undo row in edit mode (edit mode has its own undo button)
     const drawingUndoRow = hud.querySelector('.hud-drawing-undo-row');
     if (drawingUndoRow) { try { drawingUndoRow.remove(); } catch (e) {} }
@@ -755,7 +764,7 @@ window.addEventListener('DOMContentLoaded', function () {
         const subCount = overlaySelectionState.subtract.size;
         if (addCount) parts.push(`add: ${addCount}`);
         if (subCount) parts.push(`sub: ${subCount}`);
-        return parts.length ? parts.join(', ') : '';
+        return parts.length ? parts.join(', ') : 'No overlays selected.';
       };
 
       const buildDrawStatusMessage = (
@@ -766,28 +775,22 @@ window.addEventListener('DOMContentLoaded', function () {
         const normalized = typeof summary === 'string'
           ? summary.trim()
           : (summary === undefined || summary === null ? '' : `${summary}`.trim());
-        // When no mode active: show baseText
         if (overlaySelectionState.mode === null) {
-          return baseText;
+          return normalized ? `${baseText}\n${normalized}` : baseText;
         }
-        // When mode active but no selections: show "select overlays"
-        // When mode active with selections: show just the selection counts
-        return normalized ? normalized : activeBaseText;
+        // When mode is active but no overlays selected yet, show "select overlays"
+        if (normalized === 'No overlays selected.') {
+          return activeBaseText;
+        }
+        return normalized;
       };
 
       const showDrawOverlayPrompt = () => {
-        if (hudApi && typeof hudApi.setStatus === 'function') {
-          hudApi.setStatus('draw overlays to modify refuge', 'info');
-        }
-        if (statusEl) statusEl.style.display = '';
+        // Helper prompts removed; status reserved for alerts.
       };
 
-      showSelectionStatus = (message) => {
-        if (!hudApi || typeof hudApi.setStatus !== 'function') return;
-        const summary = buildSelectionSummary();
-        const text = message || buildDrawStatusMessage(summary);
-        hudApi.setStatus(text, 'info');
-        if (statusEl) statusEl.style.display = '';
+      showSelectionStatus = () => {
+        // Helper prompts removed; status reserved for alerts.
       };
 
       const handleOverlayInteraction = (evt) => {
@@ -803,7 +806,7 @@ window.addEventListener('DOMContentLoaded', function () {
           layer._lastTouchSelection = now;
         }
         if (!overlaySelectionState.mode) {
-          showSelectionStatus();
+          showSelectionStatus('Tap Adjoin or Subtract to start selecting overlays.');
           if (evt && evt.originalEvent && typeof evt.originalEvent.preventDefault === 'function') {
             evt.originalEvent.preventDefault();
           }
@@ -1102,13 +1105,7 @@ window.addEventListener('DOMContentLoaded', function () {
       };
 
       const showOverlayRemovedStatus = () => {
-        if (hudApi && typeof hudApi.setStatus === 'function') {
-          hudApi.setStatus('Last overlay removed', 'info');
-        }
-        if (statusEl) statusEl.style.display = '';
-        setTimeout(() => {
-          showSelectionStatus();
-        }, 1500);
+        // Helper prompts removed; leave existing alert text unchanged.
       };
 
       const removeLastOverlay = () => {
@@ -1206,13 +1203,7 @@ window.addEventListener('DOMContentLoaded', function () {
         resetOverlayButton();
         updateUndoButtonState(); // Update undo button when mode changes
 
-        if (activeMode === 'adjoin') {
-          // Mode activated - drawing is now paused by setSelectionMode
-          if (hudApi && typeof hudApi.setStatus === 'function') {
-            hudApi.setStatus(buildDrawStatusMessage(buildSelectionSummary()), 'info');
-          }
-          if (statusEl) statusEl.style.display = '';
-        } else if (wasActive) {
+        if (!activeMode && wasActive) {
           // Mode toggled off - drawing has been resumed by setSelectionMode, keep selections
           showDrawOverlayPrompt();
           // Ensure overlay styles remain visible for selected overlays
@@ -1227,13 +1218,7 @@ window.addEventListener('DOMContentLoaded', function () {
         resetOverlayButton();
         updateUndoButtonState(); // Update undo button when mode changes
 
-        if (activeMode === 'subtract') {
-          // Mode activated - drawing is now paused by setSelectionMode
-          if (hudApi && typeof hudApi.setStatus === 'function') {
-            hudApi.setStatus(buildDrawStatusMessage(buildSelectionSummary()), 'info');
-          }
-          if (statusEl) statusEl.style.display = '';
-        } else if (wasActive) {
+        if (!activeMode && wasActive) {
           // Mode toggled off - drawing has been resumed by setSelectionMode, keep selections
           showDrawOverlayPrompt();
           // Ensure overlay styles remain visible for selected overlays
@@ -1248,7 +1233,7 @@ window.addEventListener('DOMContentLoaded', function () {
           const subtractGeoms = getOverlayGeometries(overlaySelectionState.subtract);
           if (adjoinGeoms.length === 0 && subtractGeoms.length === 0) {
             if (hudApi && typeof hudApi.setStatus === 'function') {
-              hudApi.setStatus('No overlays selected. Tap Adjoin or Subtract, pick overlays, then save.', 'info');
+            hudApi.setStatus('No overlays selected. Tap Adjoin or Subtract, pick overlays, then save.', 'error');
             }
             if (statusEl) statusEl.style.display = '';
             return;
