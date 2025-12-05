@@ -2214,6 +2214,13 @@ window.addEventListener('DOMContentLoaded', function () {
           if (opts.hideBar) {
             statusEl.style.display = 'none';
           }
+          if (opts.closeHud) {
+            try {
+              if (hud && hud.parentNode) {
+                hud.remove();
+              }
+            } catch (e) {}
+          }
         }, opts.autoHideMs);
       }
     };
@@ -2376,7 +2383,7 @@ window.addEventListener('DOMContentLoaded', function () {
       const isFullOverlap = /overlaps existing areas completely/i.test(serverMsg) || /nothing to save/i.test(serverMsg);
       if (isFullOverlap) {
         const overlapMsg = serverMsg || 'Refuge overlaps existing areas completely; nothing to save';
-        setStatus && setStatus(overlapMsg, 'error', { autoHideMs: 2500, hideBar: true });
+        setStatus && setStatus(overlapMsg, 'error', { autoHideMs: 1000, hideBar: true, closeHud: true });
         return { ok: false, reason: 'full_overlap', message: overlapMsg };
       }
       const msg = serverMsg || `Failed to save refuge (${res.status})`;
