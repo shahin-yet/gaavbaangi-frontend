@@ -80,8 +80,8 @@ window.addEventListener('DOMContentLoaded', function () {
     hasCompletedFirstZoom = true;
     try { setRefugePolygonsInteractive(true); } catch (e) {}
   };
-  // Guard: on phones block all UI (except menu + map pan/zoom) until the first zoom-in tap.
-  const shouldBlockInitialUi = () => isMobile && !hasCompletedFirstZoom;
+  // Guard: block all UI (except menu + map pan/zoom) until the first zoom-in tap.
+  const shouldBlockInitialUi = () => !hasCompletedFirstZoom;
   const isAllowedDuringInitialGuard = (target) => {
     if (!target) return false;
     // Keep map interactions and Leaflet controls usable
