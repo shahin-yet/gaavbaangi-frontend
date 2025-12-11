@@ -134,20 +134,40 @@ window.addEventListener('DOMContentLoaded', function () {
   }
   let userLocationMarker = null;
 
-  // Terrain layer (OpenTopoMap)
-  const terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-    maxZoom: 17,
-    attribution: 'Map data: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> contributors'
+  const configuredBaseLayers = (window.MAP_LAYER_CONFIG && Array.isArray(window.MAP_LAYER_CONFIG.baseLayers) && window.MAP_LAYER_CONFIG.baseLayers.length)
+    ? window.MAP_LAYER_CONFIG.baseLayers
+    : [
+        {
+          id: 'satellite',
+          name: 'Satellite',
+          icon: 'fas fa-satellite',
+          url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          options: {
+            maxZoom: 19,
+            attribution: 'Tiles (c) Esri - Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+          },
+          default: true
+        },
+        {
+          id: 'terrain',
+          name: 'Terrain',
+          icon: 'fas fa-mountain',
+          url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+          options: {
+            maxZoom: 17,
+            attribution: 'Map data: (c) OpenTopoMap contributors'
+          }
+        }
+      ];
+  const validBaseLayers = configuredBaseLayers.filter((layer) => layer && layer.id && layer.url);
+  const baseLayerInstances = {};
+  validBaseLayers.forEach((layer) => {
+    baseLayerInstances[layer.id] = L.tileLayer(layer.url, layer.options || {});
   });
-
-  // Satellite layer (Esri World Imagery)
-  const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 19,
-    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-  });
-
-  // Add satellite layer by default
-  satellite.addTo(map);
+  const defaultBaseLayerId = (validBaseLayers.find((layer) => layer.default) || validBaseLayers[0] || {}).id;
+  if (defaultBaseLayerId && baseLayerInstances[defaultBaseLayerId]) {
+    baseLayerInstances[defaultBaseLayerId].addTo(map);
+  }
 
   // -----------------------------
   // Refuge rendering layer group
@@ -1932,31 +1952,26 @@ window.addEventListener('DOMContentLoaded', function () {
   }
 
   // Initialize toolbar with option panels
-  let currentLayer = 'satellite';
-  
-  // Layer button options
-  createOptionPanel('btn-layer', [
-    {
-      icon: 'fas fa-satellite',
-      text: 'Satellite',
-      action: function() {
-        map.removeLayer(terrain);
-        satellite.addTo(map);
-        currentLayer = 'satellite';
-        document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
-      }
-    },
-    {
-      icon: 'fas fa-mountain',
-      text: 'Terrain',
-      action: function() {
-        map.removeLayer(satellite);
-        terrain.addTo(map);
-        currentLayer = 'terrain';
-        document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
+  let currentLayer = defaultBaseLayerId || null;
+
+  const layerOptions = validBaseLayers.map((layer) => ({
+    icon: layer.icon || 'fas fa-layer-group',
+    text: layer.name || layer.id,
+    action: function() {
+      document.querySelectorAll('.option-panel').forEach((p) => p.classList.remove('show'));
+      Object.values(baseLayerInstances).forEach((instance) => {
+        try { map.removeLayer(instance); } catch (err) {}
+      });
+      const targetLayer = baseLayerInstances[layer.id];
+      if (targetLayer) {
+        targetLayer.addTo(map);
+        currentLayer = layer.id;
       }
     }
-  ]);
+  }));
+  if (layerOptions.length) {
+    createOptionPanel('btn-layer', layerOptions);
+  }
 
   // Drawing button options
   createOptionPanel('btn-drawing', [
