@@ -13,7 +13,9 @@ window.BACKEND_BASE_URL = 'https://gaavbaangi-backend.onrender.com';
 //     maxZoom: 18,
 //     attribution: 'Tiles (c) Example Provider'
 //   },
-//   default: false // set true on exactly one layer if you want it to load first
+//   apiKey: 'YOUR_API_KEY', // optional: append automatically or replace {apikey} in url
+//   apiKeyParam: 'apikey', // optional: query param name when no {apikey} placeholder
+//   default: false // set true on exactly one layer if you want it to load first; include apiKey fields above if the layer needs auth
 // }
 window.MAP_LAYER_CONFIG = {
   baseLayers: [
