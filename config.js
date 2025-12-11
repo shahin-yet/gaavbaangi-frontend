@@ -2,9 +2,42 @@
 
 window.BACKEND_BASE_URL = 'https://gaavbaangi-backend.onrender.com';
 
-// Optional: Area-of-interest polygon for overlap validation
-// Set this to a valid GeoJSON Polygon or MultiPolygon.
-// Example shape must be provided by the deployment (left null by default).
-window.MAINE_POLYGON = null;
-
+// Map base layers for Leaflet controls
+// To add another base layer, append a new object to baseLayers following this pattern:
+// {
+//   id: 'custom-id',
+//   name: 'Friendly Name',
+//   icon: 'fas fa-layer-group', // any Font Awesome class
+//   url: 'https://{s}.example.com/tiles/{z}/{x}/{y}.png',
+//   options: {
+//     maxZoom: 18,
+//     attribution: 'Tiles (c) Example Provider'
+//   },
+//   default: false // set true on exactly one layer if you want it to load first
+// }
+window.MAP_LAYER_CONFIG = {
+  baseLayers: [
+    {
+      id: 'satellite',
+      name: 'Satellite',
+      icon: 'fas fa-satellite',
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      options: {
+        maxZoom: 19,
+        attribution: 'Tiles (c) Esri - Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+      },
+      default: true
+    },
+    {
+      id: 'terrain',
+      name: 'Terrain',
+      icon: 'fas fa-mountain',
+      url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+      options: {
+        maxZoom: 17,
+        attribution: 'Map data: (c) OpenTopoMap contributors'
+      }
+    }
+  ]
+};
 
