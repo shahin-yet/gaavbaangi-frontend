@@ -1908,8 +1908,8 @@ window.addEventListener('DOMContentLoaded', function () {
         <button class="path-config-cancel" type="button" aria-label="Cancel">✕</button>
       </div>
       <div class="path-config-name-row">
-        <a href="#" class="path-config-rename">Rename</a>
         <span class="path-config-name"></span>
+        <button class="path-config-rename-btn" type="button" title="Rename">Rename</button>
       </div>
       <div class="path-config-buttons-row">
         <button class="path-config-rec" type="button">Rec</button>
@@ -1929,14 +1929,67 @@ window.addEventListener('DOMContentLoaded', function () {
     const cancelBtn = pathConfigBarEl.querySelector('.path-config-cancel');
     if (cancelBtn) cancelBtn.addEventListener('click', closePathConfigBar);
 
-    const renameLink = pathConfigBarEl.querySelector('.path-config-rename');
-    if (renameLink) {
-      renameLink.addEventListener('click', (e) => {
+    const renameBtn = pathConfigBarEl.querySelector('.path-config-rename-btn');
+    const nameEl = pathConfigBarEl.querySelector('.path-config-name');
+    if (renameBtn && nameEl) {
+      let isEditing = false;
+      
+      renameBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        const newName = prompt('Rename path', pathConfigState.name || '');
-        const trimmed = (newName || '').trim();
-        if (!trimmed) return;
-        setPathConfigName(trimmed);
+        e.stopPropagation();
+        
+        if (!isEditing) {
+          // Switch to edit mode
+          isEditing = true;
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'path-config-name-input';
+          input.value = pathConfigState.name || '';
+          try { input.size = Math.max(1, (pathConfigState.name || '').length + 1); } catch (err) {}
+          nameEl.parentNode.replaceChild(input, nameEl);
+          input.focus();
+          input.select();
+          renameBtn.textContent = 'Save';
+          renameBtn.title = 'Save name';
+          input.addEventListener('input', () => {
+            try { input.size = Math.max(1, (input.value || '').length + 1); } catch (err) {}
+          });
+          
+          // Allow Enter key to save, Escape to cancel
+          input.onkeydown = (ev) => {
+            if (ev.key === 'Enter') {
+              ev.preventDefault();
+              renameBtn.click();
+            } else if (ev.key === 'Escape') {
+              ev.preventDefault();
+              // Restore original name and cancel
+              input.parentNode.replaceChild(nameEl, input);
+              isEditing = false;
+              renameBtn.textContent = 'Rename';
+              renameBtn.title = 'Rename';
+            }
+          };
+        } else {
+          // Save mode
+          const input = pathConfigBarEl.querySelector('.path-config-name-input');
+          if (!input) return;
+          
+          const newName = input.value.trim();
+          if (!newName) {
+            alert('Name cannot be empty');
+            return;
+          }
+          
+          // Update the stored name and UI
+          pathConfigState.name = newName;
+          nameEl.textContent = newName;
+          
+          // Restore view mode
+          input.parentNode.replaceChild(nameEl, input);
+          isEditing = false;
+          renameBtn.textContent = 'Rename';
+          renameBtn.title = 'Rename';
+        }
       });
     }
   }
