@@ -693,6 +693,136 @@ body.desktop-fullscreen-map {
 }
 .drawing-hud .hud-operation-btn:hover { filter: brightness(0.97); }
 
+/* Path configuration bar (mobile path setup) */
+.path-config-bar {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  padding: 12px 14px;
+  z-index: 1300;
+  width: min(88vw, 320px);
+}
+.path-config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.path-config-title {
+  font-weight: 600;
+  color: var(--gray-900);
+  text-transform: capitalize;
+}
+.path-config-cancel {
+  border: none;
+  background: transparent;
+  color: var(--gray-700);
+  cursor: pointer;
+  font-size: 16px;
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+.path-config-cancel:hover { background: var(--gray-100); }
+.path-config-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.path-config-input-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.path-config-input-wrap {
+  display: flex;
+  gap: 8px;
+}
+.path-config-label {
+  font-size: var(--font-size-sm);
+  color: var(--gray-700);
+}
+.path-config-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--gray-300);
+  border-radius: 8px;
+  font-size: var(--font-size-base);
+}
+.path-config-name-row {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.path-config-rename {
+  color: #0b63c9;
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+}
+.path-config-rename:hover { text-decoration: underline; }
+.path-config-name {
+  font-weight: 600;
+  color: var(--gray-900);
+  overflow-wrap: anywhere;
+}
+.path-config-buttons-row {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.path-config-rec,
+.path-config-undo,
+.path-config-add-popup,
+.path-config-delete,
+.path-config-save,
+.path-config-ok {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--gray-300);
+  background: var(--primary, #1b7f39);
+  color: #fff;
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  box-shadow: var(--shadow-sm);
+}
+.path-config-rec,
+.path-config-undo {
+  background: #fafafa;
+  color: var(--gray-800);
+}
+.path-config-rec:hover,
+.path-config-undo:hover,
+.path-config-ok:hover,
+.path-config-add-popup:hover,
+.path-config-delete:hover,
+.path-config-save:hover { filter: brightness(0.95); }
+.path-config-add-popup {
+  margin-top: 12px;
+  background: var(--primary, #1b7f39);
+  color: #fff;
+}
+.path-config-footer {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.path-config-delete {
+  background: #e53935;
+  border-color: #e57373;
+}
+.path-config-save {
+  background: var(--primary, #1b7f39);
+}
+
 /* Popup content: name with rename button on the right */
 .refuge-popup { display: inline-flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; width: max-content; }
 .refuge-popup .refuge-name-row { display: inline-flex; align-items: center; gap: 8px; padding-right: 24px; }
