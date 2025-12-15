@@ -1858,7 +1858,8 @@ window.addEventListener('DOMContentLoaded', function () {
 
   // Layer control removed - using custom toolbar instead
 
-  // Path configuration bar (mobile only)
+  // Path configuration UI (mobile only): first prompt for name, then open full bar
+  let pathNamePromptEl = null;
   let pathConfigBarEl = null;
   let pathConfigState = { id: null, name: '' };
   function closePathConfigBar() {
@@ -1866,6 +1867,12 @@ window.addEventListener('DOMContentLoaded', function () {
       try { pathConfigBarEl.remove(); } catch (e) {}
       pathConfigBarEl = null;
       pathConfigState = { id: null, name: '' };
+    }
+  }
+  function closePathNamePrompt() {
+    if (pathNamePromptEl) {
+      try { pathNamePromptEl.remove(); } catch (e) {}
+      pathNamePromptEl = null;
     }
   }
   async function createPathPlaceholder(name) {
@@ -1886,19 +1893,13 @@ window.addEventListener('DOMContentLoaded', function () {
     const nameEl = pathConfigBarEl && pathConfigBarEl.querySelector('.path-config-name');
     if (nameEl) nameEl.textContent = name || '—';
   }
-  function showPathConfigNameRow() {
-    if (!pathConfigBarEl) return;
-    const nameRow = pathConfigBarEl.querySelector('.path-config-name-row');
-    const inputRow = pathConfigBarEl.querySelector('.path-config-input-row');
-    if (inputRow) inputRow.style.display = 'none';
-    if (nameRow) nameRow.style.display = 'flex';
-  }
-  function openPathConfigBar() {
+  function openFullPathConfigBar(pathInfo) {
     if (!isMobile) {
       alert('Path configuration is available on phone only.');
       return;
     }
     closePathConfigBar();
+    pathConfigState = { id: pathInfo?.id || null, name: pathInfo?.name || '' };
     pathConfigBarEl = document.createElement('div');
     pathConfigBarEl.className = 'path-config-bar';
     pathConfigBarEl.innerHTML = `
@@ -1906,16 +1907,9 @@ window.addEventListener('DOMContentLoaded', function () {
         <span class="path-config-title">Configuration path</span>
         <button class="path-config-cancel" type="button" aria-label="Cancel">✕</button>
       </div>
-      <div class="path-config-input-row">
-        <label class="path-config-label" for="path-name-input">Name</label>
-        <div class="path-config-input-wrap">
-          <input id="path-name-input" class="path-config-input" type="text" placeholder="Enter path name" aria-label="Path name" />
-          <button class="path-config-ok" type="button">OK</button>
-        </div>
-      </div>
-      <div class="path-config-name-row" style="display:none;">
+      <div class="path-config-name-row">
         <a href="#" class="path-config-rename">Rename</a>
-        <span class="path-config-name">—</span>
+        <span class="path-config-name"></span>
       </div>
       <div class="path-config-buttons-row">
         <button class="path-config-rec" type="button">Rec</button>
@@ -1929,11 +1923,52 @@ window.addEventListener('DOMContentLoaded', function () {
     `;
     document.body.appendChild(pathConfigBarEl);
 
+    // Set initial name
+    setPathConfigName(pathConfigState.name);
+
     const cancelBtn = pathConfigBarEl.querySelector('.path-config-cancel');
     if (cancelBtn) cancelBtn.addEventListener('click', closePathConfigBar);
 
-    const nameInput = pathConfigBarEl.querySelector('.path-config-input');
-    const okBtn = pathConfigBarEl.querySelector('.path-config-ok');
+    const renameLink = pathConfigBarEl.querySelector('.path-config-rename');
+    if (renameLink) {
+      renameLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        const newName = prompt('Rename path', pathConfigState.name || '');
+        const trimmed = (newName || '').trim();
+        if (!trimmed) return;
+        setPathConfigName(trimmed);
+      });
+    }
+  }
+  function openPathNamePrompt() {
+    if (!isMobile) {
+      alert('Path configuration is available on phone only.');
+      return;
+    }
+    closePathConfigBar();
+    closePathNamePrompt();
+    pathNamePromptEl = document.createElement('div');
+    pathNamePromptEl.className = 'path-config-bar path-name-prompt';
+    pathNamePromptEl.innerHTML = `
+      <div class="path-config-header">
+        <span class="path-config-title">Configuration path</span>
+        <button class="path-config-cancel" type="button" aria-label="Cancel">✕</button>
+      </div>
+      <div class="path-config-input-row">
+        <label class="path-config-label" for="path-name-input">Name</label>
+        <div class="path-config-input-wrap">
+          <input id="path-name-input" class="path-config-input" type="text" placeholder="Enter path name" aria-label="Path name" />
+          <button class="path-config-ok" type="button">OK</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(pathNamePromptEl);
+
+    const cancelBtn = pathNamePromptEl.querySelector('.path-config-cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', closePathNamePrompt);
+
+    const nameInput = pathNamePromptEl.querySelector('.path-config-input');
+    const okBtn = pathNamePromptEl.querySelector('.path-config-ok');
     if (nameInput && typeof nameInput.focus === 'function') {
       nameInput.focus();
     }
@@ -1946,9 +1981,8 @@ window.addEventListener('DOMContentLoaded', function () {
       if (okBtn) okBtn.disabled = true;
       try {
         const created = await createPathPlaceholder(rawName);
-        pathConfigState = { id: created.id, name: created.name };
-        setPathConfigName(created.name);
-        showPathConfigNameRow();
+        closePathNamePrompt();
+        openFullPathConfigBar(created);
       } catch (err) {
         alert(err && err.message ? err.message : 'Failed to save path');
       } finally {
@@ -1962,17 +1996,6 @@ window.addEventListener('DOMContentLoaded', function () {
           e.preventDefault();
           triggerOk();
         }
-      });
-    }
-
-    const renameLink = pathConfigBarEl.querySelector('.path-config-rename');
-    if (renameLink) {
-      renameLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        const newName = prompt('Rename path', pathConfigState.name || '');
-        const trimmed = (newName || '').trim();
-        if (!trimmed) return;
-        setPathConfigName(trimmed);
       });
     }
   }
@@ -2111,7 +2134,7 @@ window.addEventListener('DOMContentLoaded', function () {
       text: 'Path',
       action: function() {
         document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
-        openPathConfigBar();
+        openPathNamePrompt();
       }
     },
     {
