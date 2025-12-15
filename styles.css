@@ -706,6 +706,9 @@ body.desktop-fullscreen-map {
   z-index: 1300;
   width: min(88vw, 320px);
 }
+.path-name-prompt {
+  width: min(88vw, 320px);
+}
 .path-config-header {
   display: flex;
   align-items: center;
