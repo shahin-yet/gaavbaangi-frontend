@@ -720,9 +720,12 @@ body.desktop-fullscreen-map {
   border: 1px solid var(--gray-200);
   border-radius: 10px;
   box-shadow: var(--shadow-lg);
-  padding: 12px 14px;
+  /* Match the sizing of the edit/drawing bar (drawing HUD) */
+  padding: 8px 10px;
   z-index: 1300;
-  width: min(88vw, 320px);
+  width: auto;
+  min-width: 220px;
+  max-width: min(90vw, 320px);
 }
 .path-name-prompt {
   /* Match the sizing of the edit/drawing bar (drawing HUD) */
@@ -776,11 +779,13 @@ body.desktop-fullscreen-map {
   flex-direction: column;
   gap: 6px;
 }
-.path-name-prompt .path-config-label-below {
+.path-name-prompt .path-config-label-top {
   font-size: 12px;
   color: #0b63c9;
   line-height: 1.1;
-  margin-top: -2px;
+}
+.path-name-prompt .path-config-input-row {
+  gap: 6px;
 }
 .path-config-input {
   width: 100%;
@@ -795,12 +800,24 @@ body.desktop-fullscreen-map {
   align-items: center;
   gap: 10px;
 }
-.path-config-rename {
+.path-config-rename-btn {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  padding: 0;
   color: #0b63c9;
-  text-decoration: none;
-  font-size: var(--font-size-sm);
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
-.path-config-rename:hover { text-decoration: underline; }
+.path-config-rename-btn:hover { filter: brightness(0.95); }
+.path-config-rename-btn:disabled {
+  color: var(--gray-500);
+  cursor: default;
+  text-decoration: none;
+}
 .path-config-name {
   font-weight: 600;
   color: var(--gray-900);
@@ -833,17 +850,34 @@ body.desktop-fullscreen-map {
   background: #fafafa;
   color: var(--gray-800);
 }
+.path-config-rec {
+  background: var(--primary, #1b7f39);
+  color: #fff;
+  border-color: var(--gray-300);
+}
+.path-config-rec.recording {
+  background: #ffb74d;
+  color: #4a2c00;
+  border-color: #f4a261;
+}
+.path-config-add-popup {
+  margin-top: 12px;
+  /* Match Rec */
+  background: var(--primary, #1b7f39);
+  color: #fff;
+}
+.path-config-undo {
+  /* Match the blue undo style used in the edit/drawing HUD */
+  border-color: #64b5f6;
+  background: #2196f3;
+  color: #fff;
+}
 .path-config-rec:hover,
 .path-config-undo:hover,
 .path-config-ok:hover,
 .path-config-add-popup:hover,
 .path-config-delete:hover,
 .path-config-save:hover { filter: brightness(0.95); }
-.path-config-add-popup {
-  margin-top: 12px;
-  background: var(--primary, #1b7f39);
-  color: #fff;
-}
 .path-config-footer {
   margin-top: 12px;
   display: grid;
