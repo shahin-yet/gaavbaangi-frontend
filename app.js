@@ -134,6 +134,17 @@ window.addEventListener('DOMContentLoaded', function () {
   }
   let userLocationMarker = null;
 
+  const resolveLayerUrl = (layer) => {
+    if (!layer || !layer.url) return '';
+    if (!layer.apiKey) return layer.url;
+    const apiKeyParam = layer.apiKeyParam || 'apikey';
+    if (layer.url.includes('{apikey}')) {
+      return layer.url.replace('{apikey}', encodeURIComponent(layer.apiKey));
+    }
+    const separator = layer.url.includes('?') ? '&' : '?';
+    return `${layer.url}${separator}${encodeURIComponent(apiKeyParam)}=${encodeURIComponent(layer.apiKey)}`;
+  };
+
   const configuredBaseLayers = (window.MAP_LAYER_CONFIG && Array.isArray(window.MAP_LAYER_CONFIG.baseLayers) && window.MAP_LAYER_CONFIG.baseLayers.length)
     ? window.MAP_LAYER_CONFIG.baseLayers
     : [
@@ -162,7 +173,8 @@ window.addEventListener('DOMContentLoaded', function () {
   const validBaseLayers = configuredBaseLayers.filter((layer) => layer && layer.id && layer.url);
   const baseLayerInstances = {};
   validBaseLayers.forEach((layer) => {
-    baseLayerInstances[layer.id] = L.tileLayer(layer.url, layer.options || {});
+    const resolvedUrl = resolveLayerUrl(layer);
+    baseLayerInstances[layer.id] = L.tileLayer(resolvedUrl, layer.options || {});
   });
   const defaultBaseLayerId = (validBaseLayers.find((layer) => layer.default) || validBaseLayers[0] || {}).id;
   if (defaultBaseLayerId && baseLayerInstances[defaultBaseLayerId]) {
@@ -1846,6 +1858,125 @@ window.addEventListener('DOMContentLoaded', function () {
 
   // Layer control removed - using custom toolbar instead
 
+  // Path configuration bar (mobile only)
+  let pathConfigBarEl = null;
+  let pathConfigState = { id: null, name: '' };
+  function closePathConfigBar() {
+    if (pathConfigBarEl) {
+      try { pathConfigBarEl.remove(); } catch (e) {}
+      pathConfigBarEl = null;
+      pathConfigState = { id: null, name: '' };
+    }
+  }
+  async function createPathPlaceholder(name) {
+    const res = await fetch(`${window.BACKEND_BASE_URL}/api/paths`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data || data.status !== 'success') {
+      const msg = (data && data.message) || `Failed to create path (${res.status})`;
+      throw new Error(msg);
+    }
+    return data.path;
+  }
+  function setPathConfigName(name) {
+    pathConfigState.name = name;
+    const nameEl = pathConfigBarEl && pathConfigBarEl.querySelector('.path-config-name');
+    if (nameEl) nameEl.textContent = name || '—';
+  }
+  function showPathConfigNameRow() {
+    if (!pathConfigBarEl) return;
+    const nameRow = pathConfigBarEl.querySelector('.path-config-name-row');
+    const inputRow = pathConfigBarEl.querySelector('.path-config-input-row');
+    if (inputRow) inputRow.style.display = 'none';
+    if (nameRow) nameRow.style.display = 'flex';
+  }
+  function openPathConfigBar() {
+    if (!isMobile) {
+      alert('Path configuration is available on phone only.');
+      return;
+    }
+    closePathConfigBar();
+    pathConfigBarEl = document.createElement('div');
+    pathConfigBarEl.className = 'path-config-bar';
+    pathConfigBarEl.innerHTML = `
+      <div class="path-config-header">
+        <span class="path-config-title">Configuration path</span>
+        <button class="path-config-cancel" type="button" aria-label="Cancel">✕</button>
+      </div>
+      <div class="path-config-input-row">
+        <label class="path-config-label" for="path-name-input">Name</label>
+        <div class="path-config-input-wrap">
+          <input id="path-name-input" class="path-config-input" type="text" placeholder="Enter path name" aria-label="Path name" />
+          <button class="path-config-ok" type="button">OK</button>
+        </div>
+      </div>
+      <div class="path-config-name-row" style="display:none;">
+        <a href="#" class="path-config-rename">Rename</a>
+        <span class="path-config-name">—</span>
+      </div>
+      <div class="path-config-buttons-row">
+        <button class="path-config-rec" type="button">Rec</button>
+        <button class="path-config-undo" type="button">Undo</button>
+      </div>
+      <button class="path-config-add-popup" type="button">Add popup</button>
+      <div class="path-config-footer">
+        <button class="path-config-delete" type="button">Delete</button>
+        <button class="path-config-save" type="button">Save</button>
+      </div>
+    `;
+    document.body.appendChild(pathConfigBarEl);
+
+    const cancelBtn = pathConfigBarEl.querySelector('.path-config-cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', closePathConfigBar);
+
+    const nameInput = pathConfigBarEl.querySelector('.path-config-input');
+    const okBtn = pathConfigBarEl.querySelector('.path-config-ok');
+    if (nameInput && typeof nameInput.focus === 'function') {
+      nameInput.focus();
+    }
+    const triggerOk = async () => {
+      const rawName = (nameInput && nameInput.value) ? nameInput.value.trim() : '';
+      if (!rawName) {
+        alert('Please enter a path name.');
+        return;
+      }
+      if (okBtn) okBtn.disabled = true;
+      try {
+        const created = await createPathPlaceholder(rawName);
+        pathConfigState = { id: created.id, name: created.name };
+        setPathConfigName(created.name);
+        showPathConfigNameRow();
+      } catch (err) {
+        alert(err && err.message ? err.message : 'Failed to save path');
+      } finally {
+        if (okBtn) okBtn.disabled = false;
+      }
+    };
+    if (okBtn) okBtn.addEventListener('click', triggerOk);
+    if (nameInput) {
+      nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          triggerOk();
+        }
+      });
+    }
+
+    const renameLink = pathConfigBarEl.querySelector('.path-config-rename');
+    if (renameLink) {
+      renameLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        const newName = prompt('Rename path', pathConfigState.name || '');
+        const trimmed = (newName || '').trim();
+        if (!trimmed) return;
+        setPathConfigName(trimmed);
+      });
+    }
+  }
+
   // Create option panels for toolbar buttons
   function createOptionPanel(buttonId, options) {
     const button = document.getElementById(buttonId);
@@ -1980,7 +2111,7 @@ window.addEventListener('DOMContentLoaded', function () {
       text: 'Path',
       action: function() {
         document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
-        alert('Path drawing: coming soon.');
+        openPathConfigBar();
       }
     },
     {
