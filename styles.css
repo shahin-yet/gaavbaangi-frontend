@@ -725,7 +725,11 @@ body.desktop-fullscreen-map {
   width: min(88vw, 320px);
 }
 .path-name-prompt {
-  width: min(88vw, 320px);
+  /* Match the sizing of the edit/drawing bar (drawing HUD) */
+  width: auto;
+  min-width: 220px;
+  max-width: min(90vw, 320px);
+  padding: 8px 10px;
 }
 .path-config-header {
   display: flex;
@@ -767,6 +771,16 @@ body.desktop-fullscreen-map {
 .path-config-label {
   font-size: var(--font-size-sm);
   color: var(--gray-700);
+}
+.path-name-prompt .path-config-input-wrap {
+  flex-direction: column;
+  gap: 6px;
+}
+.path-name-prompt .path-config-label-below {
+  font-size: 12px;
+  color: #0b63c9;
+  line-height: 1.1;
+  margin-top: -2px;
 }
 .path-config-input {
   width: 100%;
