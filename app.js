@@ -2008,9 +2008,9 @@ window.addEventListener('DOMContentLoaded', function () {
         <button class="path-config-cancel" type="button" aria-label="Cancel">✕</button>
       </div>
       <div class="path-config-input-row">
-        <label class="path-config-label" for="path-name-input">Name</label>
         <div class="path-config-input-wrap">
           <input id="path-name-input" class="path-config-input" type="text" placeholder="Enter path name" aria-label="Path name" />
+          <div class="path-config-label path-config-label-below" aria-hidden="true">name</div>
           <button class="path-config-ok" type="button">OK</button>
         </div>
       </div>
