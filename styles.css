@@ -626,8 +626,26 @@ body.desktop-fullscreen-map {
 .drawing-hud .hud-actions-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .drawing-hud .hud-actions-left { display: flex; gap: 8px; }
 .drawing-hud .hud-actions-right { display: flex; gap: 8px; }
-.drawing-hud .hud-name { width: 100%; max-width: 100%; box-sizing: border-box; padding: 8px 12px; border: 1px solid var(--gray-300); border-radius: 8px; font-size: var(--font-size-base); }
-.drawing-hud .hud-ok { border: 1px solid var(--gray-300); background: var(--primary, #1b7f39); color: #fff; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: var(--font-size-sm); }
+.drawing-hud .hud-name { 
+  width: 100%; 
+  max-width: 100%; 
+  box-sizing: border-box; 
+  padding: 10px 12px; 
+  border: 1px solid var(--gray-300); 
+  border-radius: 8px; 
+  font-size: var(--font-size-base); 
+}
+.drawing-hud .hud-ok { 
+  width: 100%;
+  border: 1px solid var(--gray-300); 
+  background: var(--primary, #1b7f39); 
+  color: #fff; 
+  padding: 10px 14px; 
+  border-radius: 10px; 
+  cursor: pointer; 
+  font-size: var(--font-size-base);
+  box-shadow: var(--shadow-sm);
+}
 .drawing-hud .hud-ok:hover { filter: brightness(0.95); }
 
 /* Edit HUD extra actions */
@@ -752,55 +770,28 @@ body.desktop-fullscreen-map {
 }
 .path-config-input {
   width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-  padding: 8px 12px;
+  padding: 10px 12px;
   border: 1px solid var(--gray-300);
   border-radius: 8px;
   font-size: var(--font-size-base);
 }
 .path-config-name-row {
   margin-top: 10px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
+.path-config-rename {
+  color: #0b63c9;
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+}
+.path-config-rename:hover { text-decoration: underline; }
 .path-config-name {
   font-weight: 600;
   color: var(--gray-900);
-  white-space: nowrap;
-  outline: none;
-  cursor: pointer;
+  overflow-wrap: anywhere;
 }
-.path-config-name:focus {
-  outline: 2px solid var(--gray-300);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-.path-config-name-input {
-  width: auto;
-  font-weight: 600;
-  padding: 4px 6px;
-  border: 1px solid var(--gray-300);
-  border-radius: 6px;
-}
-.path-config-rename-btn {
-  background: transparent;
-  background-color: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  margin: 0 0 0 4px;
-  color: #0b63c9;
-  font-size: 70%;
-  line-height: 1.2;
-  cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-}
-.path-config-rename-btn:hover { text-decoration: underline; }
-.path-config-rename-btn:disabled { color: var(--gray-500); cursor: default; text-decoration: none; }
 .path-config-buttons-row {
   margin-top: 12px;
   display: grid;
