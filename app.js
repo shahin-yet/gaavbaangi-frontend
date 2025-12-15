@@ -1591,7 +1591,7 @@ window.addEventListener('DOMContentLoaded', function () {
                   }
 
                   // Block popups from opening while in edit mode or drawing mode
-                  if (window.__editing || drawing) {
+                  if (isPathConfigOpen() || window.__editing || drawing) {
                     try { polygon.closePopup(); } catch (err) {}
                     // In edit mode, prevent the click from propagating
                     if (window.__editing) {
@@ -1621,7 +1621,7 @@ window.addEventListener('DOMContentLoaded', function () {
                   refugeClickTimer = setTimeout(() => {
                     refugeClickTimer = null;
                     if (!hasCompletedFirstZoom) return;
-                    if (window.__editing || drawing) return;
+                    if (isPathConfigOpen() || window.__editing || drawing) return;
                     try { polygon.openPopup(e.latlng); } catch (err) {}
                   }, REFUGE_DOUBLE_CLICK_MS + 20);
                 };
@@ -1636,8 +1636,8 @@ window.addEventListener('DOMContentLoaded', function () {
                     polygon.closePopup();
                     return;
                   }
-                  // Close popup immediately if editing mode or drawing mode is active
-                  if (window.__editing || drawing) {
+                  // Close popup immediately if path config, editing mode, or drawing mode is active
+                  if (isPathConfigOpen() || window.__editing || drawing) {
                     polygon.closePopup();
                     return;
                   }
@@ -1859,14 +1859,19 @@ window.addEventListener('DOMContentLoaded', function () {
   // Layer control removed - using custom toolbar instead
 
   // Path configuration UI (mobile only): first prompt for name, then open full bar
+  let pathRecording = { active: false, intervalId: null, polyline: null, points: [] };
   let pathNamePromptEl = null;
   let pathConfigBarEl = null;
-  let pathConfigState = { id: null, name: '' };
+  let pathConfigState = { id: null, name: '', points: [] };
+  function isPathConfigOpen() {
+    return !!(pathNamePromptEl || pathConfigBarEl);
+  }
   function closePathConfigBar() {
+    stopPathRecording(true);
     if (pathConfigBarEl) {
       try { pathConfigBarEl.remove(); } catch (e) {}
       pathConfigBarEl = null;
-      pathConfigState = { id: null, name: '' };
+      pathConfigState = { id: null, name: '', points: [] };
     }
   }
   function closePathNamePrompt() {
@@ -1893,13 +1898,96 @@ window.addEventListener('DOMContentLoaded', function () {
     const nameEl = pathConfigBarEl && pathConfigBarEl.querySelector('.path-config-name');
     if (nameEl) nameEl.textContent = name || '—';
   }
+  function updateRecButtonUI() {
+    const recBtn = pathConfigBarEl && pathConfigBarEl.querySelector('.path-config-rec');
+    if (!recBtn) return;
+    if (pathRecording.active) {
+      recBtn.textContent = 'Pause';
+      recBtn.classList.add('recording');
+    } else {
+      recBtn.textContent = 'Rec';
+      recBtn.classList.remove('recording');
+    }
+  }
+  function updatePathPolyline() {
+    if (!map) return;
+    const latLngs = (pathRecording.points || []).map(p => [p.lat, p.lng]);
+    if (!pathRecording.polyline) {
+      pathRecording.polyline = L.polyline(latLngs, {
+        color: '#ffffff',
+        weight: 4,
+        opacity: 0.95,
+        interactive: false
+      }).addTo(map);
+    } else {
+      try { pathRecording.polyline.setLatLngs(latLngs); } catch (e) {}
+    }
+  }
+  function stopPathRecording(removeLine = false) {
+    if (pathRecording.intervalId) {
+      try { clearInterval(pathRecording.intervalId); } catch (e) {}
+      pathRecording.intervalId = null;
+    }
+    pathRecording.active = false;
+    updateRecButtonUI();
+    if (removeLine && pathRecording.polyline) {
+      try { map && map.removeLayer && map.removeLayer(pathRecording.polyline); } catch (e) {}
+      pathRecording.polyline = null;
+    }
+  }
+  function startPathRecording() {
+    if (pathRecording.active) return;
+    if (!pathConfigState.id) {
+      alert('Please name the path first.');
+      return;
+    }
+    if (!navigator.geolocation) {
+      alert('Geolocation not available.');
+      return;
+    }
+    // Use existing points if present; otherwise reset
+    pathRecording.points = (pathConfigState.points && Array.isArray(pathConfigState.points) && pathConfigState.points.length)
+      ? [...pathConfigState.points]
+      : [];
+    const sampleOnce = () => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (!pos || !pos.coords) return;
+          const lat = typeof pos.coords.latitude === 'number' ? pos.coords.latitude : null;
+          const lng = typeof pos.coords.longitude === 'number' ? pos.coords.longitude : null;
+          if (lat == null || lng == null) return;
+          const pt = { lat, lng, t: Date.now() };
+          pathRecording.points.push(pt);
+          pathConfigState.points = [...pathRecording.points];
+          updatePathPolyline();
+        },
+        (err) => { console.warn('Geolocation error during path recording', err); },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 5000,
+          timeout: 8000
+        }
+      );
+    };
+    // Record immediately, then at walking cadence (every ~3s)
+    sampleOnce();
+    pathRecording.intervalId = setInterval(sampleOnce, 3000);
+    pathRecording.active = true;
+    updateRecButtonUI();
+  }
+  function pausePathRecording() {
+    if (!pathRecording.active) return;
+    stopPathRecording(false);
+  }
   function openFullPathConfigBar(pathInfo) {
     if (!isMobile) {
       alert('Path configuration is available on phone only.');
       return;
     }
     closePathConfigBar();
-    pathConfigState = { id: pathInfo?.id || null, name: pathInfo?.name || '' };
+    pathConfigState = { id: pathInfo?.id || null, name: pathInfo?.name || '', points: pathInfo?.points || [] };
+    pathRecording.points = [...(pathConfigState.points || [])];
+    stopPathRecording(true);
     pathConfigBarEl = document.createElement('div');
     pathConfigBarEl.className = 'path-config-bar';
     pathConfigBarEl.innerHTML = `
@@ -1925,6 +2013,10 @@ window.addEventListener('DOMContentLoaded', function () {
 
     // Set initial name
     setPathConfigName(pathConfigState.name);
+    if (pathRecording.points && pathRecording.points.length) {
+      updatePathPolyline();
+    }
+    updateRecButtonUI();
 
     const cancelBtn = pathConfigBarEl.querySelector('.path-config-cancel');
     if (cancelBtn) cancelBtn.addEventListener('click', closePathConfigBar);
@@ -1992,6 +2084,19 @@ window.addEventListener('DOMContentLoaded', function () {
         }
       });
     }
+
+    const recBtn = pathConfigBarEl.querySelector('.path-config-rec');
+    if (recBtn) {
+      recBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (pathRecording.active) {
+          pausePathRecording();
+        } else {
+          startPathRecording();
+        }
+      });
+    }
   }
   function openPathNamePrompt() {
     if (!isMobile) {
@@ -2008,9 +2113,9 @@ window.addEventListener('DOMContentLoaded', function () {
         <button class="path-config-cancel" type="button" aria-label="Cancel">✕</button>
       </div>
       <div class="path-config-input-row">
+        <label class="path-config-label path-config-label-top" for="path-name-input">name</label>
         <div class="path-config-input-wrap">
           <input id="path-name-input" class="path-config-input" type="text" placeholder="Enter path name" aria-label="Path name" />
-          <div class="path-config-label path-config-label-below" aria-hidden="true">name</div>
           <button class="path-config-ok" type="button">OK</button>
         </div>
       </div>
@@ -2070,6 +2175,7 @@ window.addEventListener('DOMContentLoaded', function () {
         e.stopPropagation();
         // Block option logic while drawing is active, except for layer panel actions
         // Also allow layer button during edit mode
+        if (isPathConfigOpen()) return;
         if ((typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') || (window.__editing && buttonId !== 'btn-layer')) {
           return;
         }
@@ -2092,6 +2198,7 @@ window.addEventListener('DOMContentLoaded', function () {
       e.stopPropagation();
       // Block opening option panels while drawing, except allow the layer panel
       // Also allow layer button during edit mode
+      if (isPathConfigOpen()) return;
       if ((typeof drawing !== 'undefined' && drawing && buttonId !== 'btn-layer') || (window.__editing && buttonId !== 'btn-layer')) {
         return;
       }
@@ -2126,6 +2233,7 @@ window.addEventListener('DOMContentLoaded', function () {
       centerBtn.addEventListener('click', function (e) {
         e.stopPropagation();
       // Do not interfere while drawing or editing
+      if (isPathConfigOpen()) return;
       if ((typeof drawing !== 'undefined' && drawing) || window.__editing) return;
       if (!navigator.geolocation) {
         console.warn('Geolocation not available');
@@ -2227,16 +2335,19 @@ window.addEventListener('DOMContentLoaded', function () {
   if (fabMenu && sidePanel && sideClose && menuOverlay) {
     fabMenu.addEventListener('click', function (e) {
       e.stopPropagation();
+      if (isPathConfigOpen()) return;
       if ((typeof drawing !== 'undefined' && drawing) || (window.__editing)) return;
       try { map && map.closePopup && map.closePopup(); } catch (err) {}
       openSidePanel();
     });
     sideClose.addEventListener('click', function (e) {
       e.stopPropagation();
+      if (isPathConfigOpen()) return;
       if ((typeof drawing !== 'undefined' && drawing) || (window.__editing)) return;
       closeSidePanel();
     });
     menuOverlay.addEventListener('click', function () {
+      if (isPathConfigOpen()) return;
       if ((typeof drawing !== 'undefined' && drawing) || (window.__editing)) return;
       closeSidePanel();
     });
@@ -2267,6 +2378,7 @@ window.addEventListener('DOMContentLoaded', function () {
 
   document.querySelectorAll('.menu-item').forEach(btn => {
     btn.addEventListener('click', function () {
+      if (isPathConfigOpen()) return;
       if ((typeof drawing !== 'undefined' && drawing) || (window.__editing)) return;
       try { map && map.closePopup && map.closePopup(); } catch (err) {}
       const action = this.getAttribute('data-action');
@@ -2298,6 +2410,7 @@ window.addEventListener('DOMContentLoaded', function () {
       const query = (input.value || '').trim();
       if (!query) return;
       // Block while drawing or editing
+      if (isPathConfigOpen()) return;
       if ((typeof drawing !== 'undefined' && drawing) || window.__editing) return;
 
       // 1) Try coordinates first
