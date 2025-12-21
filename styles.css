@@ -852,20 +852,18 @@ body.desktop-fullscreen-map {
 }
 .path-config-rec {
   background: #fafafa;
-  color: var(--gray-800);
-  border-color: var(--gray-300);
+  color: var(--gray-700, #333);
+  border-color: #e0e0e0;
   font-weight: 600;
   box-shadow: var(--shadow-sm);
 }
 .path-config-rec:hover {
-  background: #f0f0f0;
-  box-shadow: var(--shadow-md);
+  filter: brightness(0.97);
 }
 .path-config-rec.recording {
   background: #fafafa;
-  color: var(--gray-800);
-  border-color: var(--gray-300);
-  animation: pulse-recording 1.5s ease-in-out infinite;
+  color: var(--gray-700, #333);
+  border-color: #e0e0e0;
 }
 @keyframes pulse-recording {
   0%, 100% { box-shadow: 0 0 0 0 rgba(255, 183, 77, 0.7); }
@@ -875,14 +873,13 @@ body.desktop-fullscreen-map {
   margin-top: 12px;
   /* Match adjoin style - white/light gray */
   background: #fafafa;
-  color: var(--gray-800);
-  border-color: var(--gray-300);
+  color: var(--gray-700, #333);
+  border-color: #e0e0e0;
   font-weight: 600;
   box-shadow: var(--shadow-sm);
 }
 .path-config-add-popup:hover {
-  background: #f0f0f0;
-  box-shadow: var(--shadow-md);
+  filter: brightness(0.97);
 }
 .path-config-undo {
   /* Match the blue undo style used in the edit/drawing HUD */
@@ -890,10 +887,8 @@ body.desktop-fullscreen-map {
   background: #2196f3;
   color: #fff;
 }
-.path-config-rec:hover,
 .path-config-undo:hover,
 .path-config-ok:hover,
-.path-config-add-popup:hover,
 .path-config-delete:hover,
 .path-config-save:hover { filter: brightness(0.95); }
 .path-config-footer {
