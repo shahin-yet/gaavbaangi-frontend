@@ -122,6 +122,8 @@ window.addEventListener('DOMContentLoaded', function () {
     // Release initial interaction guard after the first zoom attempt
     markFirstZoomComplete();
   });
+  // Load saved paths initially
+  loadSavedPaths();
   if (isMobile) {
     try { map.doubleClickZoom.disable(); } catch (e) {}
     // Block double-click zoom on mobile; touch handler below dispatches events without zooming
@@ -1862,16 +1864,31 @@ window.addEventListener('DOMContentLoaded', function () {
   let pathRecording = { active: false, intervalId: null, polyline: null, points: [] };
   let pathNamePromptEl = null;
   let pathConfigBarEl = null;
-  let pathConfigState = { id: null, name: '', points: [] };
+  let pathConfigState = { id: null, name: '', points: [], markers: [], markerData: [], pathname_pups: {} };
+  let savedPaths = [];
+  const pathLayerGroup = L.layerGroup().addTo(map);
+  const pathUserPopupLayer = L.layerGroup().addTo(map);
+  let isUserMapMode = false;
+  let userPopupWatchId = null;
+  let seenUserPopups = new Set();
+  const POPUP_NEARBY_METERS = 50;
   function isPathConfigOpen() {
     return !!(pathNamePromptEl || pathConfigBarEl);
   }
   function closePathConfigBar() {
     stopPathRecording(true);
+    // Clean up markers
+    if (pathConfigState.markers && Array.isArray(pathConfigState.markers)) {
+      pathConfigState.markers.forEach(marker => {
+        try {
+          if (map && marker) map.removeLayer(marker);
+        } catch (e) {}
+      });
+    }
     if (pathConfigBarEl) {
       try { pathConfigBarEl.remove(); } catch (e) {}
       pathConfigBarEl = null;
-      pathConfigState = { id: null, name: '', points: [] };
+      pathConfigState = { id: null, name: '', points: [], markers: [], markerData: [], pathname_pups: {} };
     }
   }
   function closePathNamePrompt() {
@@ -1949,6 +1966,8 @@ window.addEventListener('DOMContentLoaded', function () {
     pathRecording.points = (pathConfigState.points && Array.isArray(pathConfigState.points) && pathConfigState.points.length)
       ? [...pathConfigState.points]
       : [];
+    // Ensure polyline exists/visible while recording
+    updatePathPolyline();
     const sampleOnce = () => {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -1978,6 +1997,173 @@ window.addEventListener('DOMContentLoaded', function () {
   function pausePathRecording() {
     if (!pathRecording.active) return;
     stopPathRecording(false);
+    // Ensure UI reflects paused state immediately
+    const recBtn = pathConfigBarEl && pathConfigBarEl.querySelector('.path-config-rec');
+    if (recBtn) {
+      recBtn.textContent = 'Rec';
+      recBtn.classList.remove('recording');
+    }
+  }
+  function removeLastPathPoint() {
+    if (!Array.isArray(pathRecording.points) || !pathRecording.points.length) return;
+    pathRecording.points.pop();
+    pathConfigState.points = [...pathRecording.points];
+    updatePathPolyline();
+  }
+  function renderSavedPaths(paths) {
+    try { pathLayerGroup.clearLayers(); } catch (e) {}
+    try { pathUserPopupLayer.clearLayers(); } catch (e) {}
+    if (!Array.isArray(paths)) return;
+    paths.forEach((p) => {
+      const pts = Array.isArray(p.points) ? p.points : [];
+      const latLngs = pts.map(pt => [pt.lat, pt.lng]).filter(ll => Array.isArray(ll) && ll.length === 2);
+      if (latLngs.length) {
+        const poly = L.polyline(latLngs, {
+          color: '#ffffff',
+          weight: 4,
+          opacity: 0.95
+        }).addTo(pathLayerGroup);
+        if (p.name) {
+          poly.bindPopup(String(p.name));
+        }
+      }
+      // Only render popups/markers on user map
+      if (isUserMapMode) {
+        const markers = Array.isArray(p.markers) ? p.markers : [];
+        markers.forEach(m => {
+          if (m && typeof m.lat === 'number' && typeof m.lng === 'number') {
+            const marker = L.marker([m.lat, m.lng], {
+              icon: L.divIcon({
+                className: 'path-popup-marker',
+                html: '<i class="fas fa-map-pin" style="color: #4caf50; font-size: 20px;"></i>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 20]
+              })
+            }).addTo(pathUserPopupLayer);
+            if (m.text) marker.bindPopup(String(m.text));
+          }
+        });
+        const pupsObj = (p.pathname_pups && typeof p.pathname_pups === 'object') ? p.pathname_pups : {};
+        Object.entries(pupsObj).forEach(([key, m]) => {
+          if (m && typeof m.lat === 'number' && typeof m.lng === 'number') {
+            const marker = L.marker([m.lat, m.lng], {
+              icon: L.divIcon({
+                className: 'path-popup-marker',
+                html: '<i class="fas fa-map-pin" style="color: #ff9800; font-size: 20px;"></i>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 20]
+              })
+            }).addTo(pathUserPopupLayer);
+            if (m.caption || m.image_url) {
+              let html = '';
+              if (m.image_url) {
+                html += `<div style="margin-bottom:6px;"><img src="${m.image_url}" alt="" style="max-width:160px;max-height:120px;object-fit:cover;border-radius:6px;" /></div>`;
+              }
+              if (m.caption) {
+                html += `<div style="font-weight:600;">${escapeHtml(m.caption)}</div>`;
+              }
+              if (!html) html = 'Popup';
+              marker.bindPopup(html);
+            }
+            marker._popupKey = `${p.id || 'p'}:${key}`;
+          }
+        });
+      }
+    });
+  }
+  async function loadSavedPaths() {
+    try {
+      const res = await fetch(`${window.BACKEND_BASE_URL}/api/paths`);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data && data.status === 'success' && Array.isArray(data.paths)) {
+        savedPaths = data.paths;
+        renderSavedPaths(savedPaths);
+      }
+    } catch (e) {
+      console.warn('Failed to load paths', e);
+    }
+  }
+  function stopUserPopupWatch() {
+    if (userPopupWatchId !== null) {
+      try { navigator.geolocation.clearWatch(userPopupWatchId); } catch (e) {}
+      userPopupWatchId = null;
+    }
+    seenUserPopups = new Set();
+    try { pathUserPopupLayer.clearLayers(); } catch (e) {}
+  }
+  function deg2rad(d) { return d * Math.PI / 180; }
+  function distanceMeters(a, b) {
+    if (!a || !b) return Infinity;
+    const R = 6371000;
+    const dLat = deg2rad(b.lat - a.lat);
+    const dLng = deg2rad(b.lng - a.lng);
+    const lat1 = deg2rad(a.lat);
+    const lat2 = deg2rad(b.lat);
+    const sinDlat = Math.sin(dLat / 2);
+    const sinDlng = Math.sin(dLng / 2);
+    const h = sinDlat * sinDlat + Math.cos(lat1) * Math.cos(lat2) * sinDlng * sinDlng;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+  function startUserPopupWatch() {
+    stopUserPopupWatch();
+    if (!navigator.geolocation) return;
+    userPopupWatchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (!pos || !pos.coords) return;
+        const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        // Lazy render paths if not yet shown
+        renderSavedPaths(savedPaths);
+        // Check proximity to popup markers in the user layer
+        const layers = [];
+        try { pathUserPopupLayer.eachLayer(l => layers.push(l)); } catch (e) {}
+        layers.forEach(l => {
+          const ll = l.getLatLng && l.getLatLng();
+          if (!ll) return;
+          const dist = distanceMeters(here, { lat: ll.lat, lng: ll.lng });
+          const key = l._popupKey || `${ll.lat},${ll.lng}`;
+          if (dist <= POPUP_NEARBY_METERS) {
+            if (!seenUserPopups.has(key)) {
+              seenUserPopups.add(key);
+              try { l.openPopup && l.openPopup(); } catch (e) {}
+            }
+          } else {
+            try { l.closePopup && l.closePopup(); } catch (e) {}
+          }
+        });
+      },
+      (err) => { console.warn('User popup geolocation watch error', err); },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 8000 }
+    );
+  }
+  async function saveCurrentPath() {
+    if (!pathConfigState.id) {
+      alert('Please name the path first.');
+      return;
+    }
+    pausePathRecording();
+    const payload = {
+      name: pathConfigState.name || '',
+      points: pathConfigState.points || [],
+      markers: pathConfigState.markerData || [],
+      pathname_pups: pathConfigState.pathname_pups || {}
+    };
+    try {
+      const res = await fetch(`${window.BACKEND_BASE_URL}/api/paths/${pathConfigState.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data || data.status !== 'success') {
+        alert((data && data.message) || `Failed to save path (${res.status})`);
+        return;
+      }
+      // Refresh saved paths and close bar
+      await loadSavedPaths();
+      closePathConfigBar();
+    } catch (err) {
+      alert(err && err.message ? err.message : 'Failed to save path');
+    }
   }
   function openFullPathConfigBar(pathInfo) {
     if (!isMobile) {
@@ -1985,7 +2171,14 @@ window.addEventListener('DOMContentLoaded', function () {
       return;
     }
     closePathConfigBar();
-    pathConfigState = { id: pathInfo?.id || null, name: pathInfo?.name || '', points: pathInfo?.points || [] };
+    pathConfigState = {
+      id: pathInfo?.id || null,
+      name: pathInfo?.name || '',
+      points: pathInfo?.points || [],
+      markers: [],
+      markerData: pathInfo?.markers || [],
+      pathname_pups: (pathInfo && typeof pathInfo.pathname_pups === 'object') ? pathInfo.pathname_pups : {}
+    };
     pathRecording.points = [...(pathConfigState.points || [])];
     stopPathRecording(true);
     pathConfigBarEl = document.createElement('div');
@@ -2095,6 +2288,119 @@ window.addEventListener('DOMContentLoaded', function () {
         } else {
           startPathRecording();
         }
+      });
+    }
+    const undoBtn = pathConfigBarEl.querySelector('.path-config-undo');
+    if (undoBtn) {
+      undoBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        removeLastPathPoint();
+      });
+    }
+
+    const addPopupBtn = pathConfigBarEl.querySelector('.path-config-add-popup');
+    if (addPopupBtn) {
+      addPopupBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Require points to relate to
+        if (!Array.isArray(pathConfigState.points) || !pathConfigState.points.length) {
+          alert('Add some points to the path before adding a popup.');
+          return;
+        }
+        // Get current center of map
+        if (!map) {
+          alert('Map not available');
+          return;
+        }
+        
+        const center = map.getCenter();
+        const caption = prompt('Enter popup caption (small text):') || '';
+        const img = prompt('Enter image URL (optional):') || '';
+        const captionClean = caption.trim();
+        const imgClean = img.trim();
+        if (!captionClean && !imgClean) {
+          alert('Caption or image is required.');
+          return;
+        }
+
+        // Find nearest point index to current center
+        const nearestIdx = (() => {
+          let bestIdx = 0;
+          let bestDist = Infinity;
+          pathConfigState.points.forEach((pt, idx) => {
+            if (pt && typeof pt.lat === 'number' && typeof pt.lng === 'number') {
+              const dLat = pt.lat - center.lat;
+              const dLng = pt.lng - center.lng;
+              const dist2 = dLat * dLat + dLng * dLng;
+              if (dist2 < bestDist) {
+                bestDist = dist2;
+                bestIdx = idx;
+              }
+            }
+          });
+          return bestIdx;
+        })();
+
+        // Add a marker with popup at current map center
+        const marker = L.marker([center.lat, center.lng], {
+          icon: L.divIcon({
+            className: 'path-popup-marker',
+            html: '<i class="fas fa-map-pin" style="color: #ff9800; font-size: 24px;"></i>',
+            iconSize: [24, 24],
+            iconAnchor: [12, 24]
+          })
+        }).addTo(map);
+        
+        let popupHtml = '';
+        if (imgClean) {
+          popupHtml += `<div style="margin-bottom:6px;"><img src="${imgClean}" alt="" style="max-width:160px;max-height:120px;object-fit:cover;border-radius:6px;" /></div>`;
+        }
+        if (captionClean) {
+          popupHtml += `<div style="font-weight:600;">${escapeHtml(captionClean)}</div>`;
+        }
+        marker.bindPopup(popupHtml || 'Popup').openPopup();
+        
+        // Store marker reference for later cleanup if needed
+        if (!pathConfigState.markers) {
+          pathConfigState.markers = [];
+        }
+        pathConfigState.markers.push(marker);
+        if (!pathConfigState.markerData) pathConfigState.markerData = [];
+        pathConfigState.markerData.push({ lat: center.lat, lng: center.lng, text: captionClean });
+        if (!pathConfigState.pathname_pups || typeof pathConfigState.pathname_pups !== 'object') pathConfigState.pathname_pups = {};
+        const pupEntry = { lat: center.lat, lng: center.lng, caption: captionClean, image_url: imgClean, point_index: nearestIdx };
+        pathConfigState.pathname_pups[String(nearestIdx)] = pupEntry;
+
+        // Send to backend immediately
+        if (pathConfigState.id) {
+          try {
+            await fetch(`${window.BACKEND_BASE_URL}/api/paths/${pathConfigState.id}/popups`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                caption: captionClean,
+                image_url: imgClean,
+                point_index: nearestIdx,
+                lat: center.lat,
+                lng: center.lng
+              })
+            });
+          } catch (err) {
+            console.warn('Failed to save popup to backend', err);
+          }
+        }
+      });
+    }
+
+    const saveBtn = pathConfigBarEl.querySelector('.path-config-save');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        await saveCurrentPath();
       });
     }
   }
@@ -2364,14 +2670,22 @@ window.addEventListener('DOMContentLoaded', function () {
       closeSidePanel();
     },
     'admin-map': () => {
-      // Already on this page; keep active state
+      isUserMapMode = false;
+      stopUserPopupWatch();
       document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
       const item = document.querySelector('.menu-item[data-action="admin-map"]');
       if (item) item.classList.add('active');
+      renderSavedPaths(savedPaths);
       closeSidePanel();
     },
     'user-map': () => {
-      alert('User Map: Coming soon.');
+      isUserMapMode = true;
+      seenUserPopups = new Set();
+      document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
+      const item = document.querySelector('.menu-item[data-action="user-map"]');
+      if (item) item.classList.add('active');
+      renderSavedPaths(savedPaths);
+      startUserPopupWatch();
       closeSidePanel();
     }
   };
