@@ -135,6 +135,13 @@ window.addEventListener('DOMContentLoaded', function () {
     });
   }
   let userLocationMarker = null;
+  const refugeListEl = document.getElementById('refuge-list');
+  const refugeListEmptyEl = document.getElementById('refuge-list-empty');
+  const refugeListCountEl = document.getElementById('refuge-list-count');
+  const refugeSearchInput = document.getElementById('location-search-input');
+  let refugesCache = [];
+  let defaultRefugeId = null;
+  let selectedRefuge = null;
 
   const resolveLayerUrl = (layer) => {
     if (!layer || !layer.url) return '';
@@ -201,6 +208,145 @@ window.addEventListener('DOMContentLoaded', function () {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
     } catch (e) { return ''; }
+  }
+
+  const normalizeRefugeName = (name) => (name || '').toString().trim().toLowerCase();
+
+  function getRefugeBounds(refuge) {
+    if (!refuge || !refuge.polygon) return null;
+    if (refuge._bounds && refuge._bounds.isValid && refuge._bounds.isValid()) return refuge._bounds;
+    try {
+      const gj = L.geoJSON(refuge.polygon);
+      const bounds = gj.getBounds();
+      refuge._bounds = bounds;
+      return bounds;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function focusRefuge(refuge) {
+    if (!refuge) return;
+    setSelectedRefuge(refuge);
+    if (isPathConfigOpen()) return;
+    if ((typeof drawing !== 'undefined' && drawing) || window.__editing) return;
+    const bounds = getRefugeBounds(refuge);
+    if (bounds && bounds.isValid && bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [24, 24], maxZoom: Math.max(map.getZoom() || COUNTRY_ZOOM, 13) });
+    } else if (bounds && typeof bounds.getCenter === 'function') {
+      map.flyTo(bounds.getCenter(), Math.max(map.getZoom() || COUNTRY_ZOOM, 13));
+    }
+    try { closeSidePanel && closeSidePanel(); } catch (e) {}
+  }
+
+  function renderRefugeList(refuges = [], query = '') {
+    if (!refugeListEl) return;
+    const searchTerm = normalizeRefugeName(query);
+    refugeListEl.innerHTML = '';
+    if (refugeListCountEl) refugeListCountEl.textContent = Array.isArray(refuges) ? refuges.length.toString() : '0';
+
+    if (!Array.isArray(refuges) || !refuges.length) {
+      if (refugeListEmptyEl) refugeListEmptyEl.style.display = 'block';
+      return;
+    }
+
+    if (refugeListEmptyEl) refugeListEmptyEl.style.display = 'none';
+
+    const safeRegex = searchTerm
+      ? new RegExp(`(${searchTerm.replace(/[-/\\^$*+?.()|[\\]{}]/g, '\\$&')})`, 'ig')
+      : null;
+
+    const sorted = [...refuges].sort((a, b) => normalizeRefugeName(a.name).localeCompare(normalizeRefugeName(b.name)));
+    sorted.forEach((refuge) => {
+      const item = document.createElement('div');
+      item.className = 'refuge-list-item';
+      item.dataset.refugeId = refuge && refuge.id != null ? String(refuge.id) : '';
+
+      const name = refuge && refuge.name ? refuge.name : 'Unnamed refuge';
+      const safeName = escapeHtml(name);
+      const nameHtml = safeRegex ? safeName.replace(safeRegex, '<span class="refuge-list-highlight">$1</span>') : safeName;
+      const isDefault = defaultRefugeId && refuge && refuge.id && defaultRefugeId === refuge.id;
+      if (isDefault) {
+        item.classList.add('is-default');
+      }
+
+      item.innerHTML = `
+        <span class="refuge-list-name">${nameHtml}</span>
+        <div class="refuge-list-meta">
+          <button type="button" class="refuge-membership-btn">membership</button>
+          <label class="refuge-default">
+            <input type="radio" name="refuge-default" ${isDefault ? 'checked' : ''} aria-label="Set as default refuge" />
+            <span class="refuge-default-indicator" aria-hidden="true"></span>
+            <span class="sr-only">Set as default refuge</span>
+          </label>
+        </div>
+      `;
+
+      item.addEventListener('click', () => {
+        setSelectedRefuge(refuge);
+        focusRefuge(refuge);
+      });
+
+      const membershipBtn = item.querySelector('.refuge-membership-btn');
+      if (membershipBtn) {
+        membershipBtn.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          // placeholder: membership button has no action
+        });
+      }
+
+      const radio = item.querySelector('input[type="radio"]');
+      if (radio) {
+        radio.addEventListener('click', (ev) => {
+          // keep click from bubbling to item container
+          ev.stopPropagation();
+        });
+        radio.addEventListener('change', (ev) => {
+          ev.stopPropagation();
+          if (refuge && refuge.id) {
+            defaultRefugeId = refuge.id;
+            setSelectedRefuge(refuge);
+          }
+          focusRefuge(refuge);
+          // Re-render to ensure default styling stays in sync
+          renderRefugeList(refuges, query);
+        });
+      }
+
+      refugeListEl.appendChild(item);
+    });
+    syncSelectedRefugeUi();
+  }
+
+  function applyRefugeSearchFilter() {
+    const query = (refugeSearchInput && refugeSearchInput.value) ? refugeSearchInput.value.trim() : '';
+    const filtered = query
+      ? refugesCache.filter((r) => normalizeRefugeName(r.name).includes(normalizeRefugeName(query)))
+      : refugesCache;
+    renderRefugeList(filtered, query);
+    return filtered;
+  }
+
+  function setSelectedRefuge(refuge) {
+    if (refuge && typeof refuge === 'object' && refuge.id != null) {
+      selectedRefuge = refuge;
+    } else {
+      selectedRefuge = null;
+    }
+    syncSelectedRefugeUi();
+  }
+
+  function syncSelectedRefugeUi() {
+    const selectedId = selectedRefuge && selectedRefuge.id != null ? String(selectedRefuge.id) : null;
+    document.querySelectorAll('.refuge-list-item').forEach((el) => {
+      const rid = el.getAttribute('data-refuge-id');
+      if (selectedId && rid === selectedId) {
+        el.classList.add('selected');
+      } else {
+        el.classList.remove('selected');
+      }
+    });
   }
 
   async function updateRefugeName(refugeId, newName) {
@@ -1550,6 +1696,16 @@ window.addEventListener('DOMContentLoaded', function () {
       const res = await fetch(`${window.BACKEND_BASE_URL}/api/refuges`);
       const data = await res.json();
       if (data && data.status === 'success' && Array.isArray(data.refuges)) {
+        refugesCache = data.refuges;
+        if (selectedRefuge && selectedRefuge.id != null) {
+          const refreshed = data.refuges.find(r => r && r.id === selectedRefuge.id);
+          if (refreshed) {
+            selectedRefuge = refreshed;
+          } else {
+            selectedRefuge = null;
+          }
+        }
+        applyRefugeSearchFilter();
         refugeLayerGroup.clearLayers();
         data.refuges.forEach(r => {
           try {
@@ -1608,6 +1764,8 @@ window.addEventListener('DOMContentLoaded', function () {
                   const now = Date.now();
                   const sinceLast = now - refugeLastClickAt;
                   refugeLastClickAt = now;
+
+                  setSelectedRefuge(polygon._refuge);
 
                   if (refugeClickTimer) {
                     clearTimeout(refugeClickTimer);
@@ -1742,6 +1900,7 @@ window.addEventListener('DOMContentLoaded', function () {
                           renameBtn.disabled = false;
                           
                           // Don't close popup - keep it open
+                          applyRefugeSearchFilter();
                         } catch (e) {
                           alert('Failed to save name: ' + (e.message || 'Unknown error'));
                           renameBtn.textContent = 'Save';
@@ -1763,6 +1922,9 @@ window.addEventListener('DOMContentLoaded', function () {
             console.warn('Failed to render refuge', e);
           }
         });
+      } else {
+        refugesCache = [];
+        applyRefugeSearchFilter();
       }
       if (!hasCompletedFirstZoom) {
         try { setRefugePolygonsInteractive(false); } catch (e) {}
@@ -1866,6 +2028,7 @@ window.addEventListener('DOMContentLoaded', function () {
   let pathConfigBarEl = null;
   let pathConfigState = { id: null, name: '', points: [], markers: [], markerData: [], pathname_pups: {} };
   let savedPaths = [];
+  let pathsByRefuge = [];
   const pathLayerGroup = L.layerGroup().addTo(map);
   const pathUserPopupLayer = L.layerGroup().addTo(map);
   let isUserMapMode = false;
@@ -2045,28 +2208,32 @@ window.addEventListener('DOMContentLoaded', function () {
         });
         const pupsObj = (p.pathname_pups && typeof p.pathname_pups === 'object') ? p.pathname_pups : {};
         Object.entries(pupsObj).forEach(([key, m]) => {
-          if (m && typeof m.lat === 'number' && typeof m.lng === 'number') {
-            const marker = L.marker([m.lat, m.lng], {
-              icon: L.divIcon({
-                className: 'path-popup-marker',
-                html: '<i class="fas fa-map-pin" style="color: #ff9800; font-size: 20px;"></i>',
-                iconSize: [20, 20],
-                iconAnchor: [10, 20]
-              })
-            }).addTo(pathUserPopupLayer);
-            if (m.caption || m.image_url) {
-              let html = '';
-              if (m.image_url) {
-                html += `<div style="margin-bottom:6px;"><img src="${m.image_url}" alt="" style="max-width:160px;max-height:120px;object-fit:cover;border-radius:6px;" /></div>`;
-              }
-              if (m.caption) {
-                html += `<div style="font-weight:600;">${escapeHtml(m.caption)}</div>`;
-              }
-              if (!html) html = 'Popup';
-              marker.bindPopup(html);
+          if (!m) return;
+          const idx = Number(key);
+          const pathLatLng = (Number.isFinite(idx) && latLngs[idx]) ? latLngs[idx] : null;
+          const popupLat = pathLatLng ? pathLatLng[0] : (typeof m.lat === 'number' ? m.lat : null);
+          const popupLng = pathLatLng ? pathLatLng[1] : (typeof m.lng === 'number' ? m.lng : null);
+          if (popupLat == null || popupLng == null) return;
+          const marker = L.marker([popupLat, popupLng], {
+            icon: L.divIcon({
+              className: 'path-popup-marker',
+              html: '<i class="fas fa-map-pin" style="color: #ff9800; font-size: 20px;"></i>',
+              iconSize: [20, 20],
+              iconAnchor: [10, 20]
+            })
+          }).addTo(pathUserPopupLayer);
+          if (m.caption || m.image_url) {
+            let html = '';
+            if (m.image_url) {
+              html += `<div style="margin-bottom:6px;"><img src="${m.image_url}" alt="" style="max-width:160px;max-height:120px;object-fit:cover;border-radius:6px;" /></div>`;
             }
-            marker._popupKey = `${p.id || 'p'}:${key}`;
+            if (m.caption) {
+              html += `<div style="font-weight:600;">${escapeHtml(m.caption)}</div>`;
+            }
+            if (!html) html = 'Popup';
+            marker.bindPopup(html);
           }
+          marker._popupKey = `${p.id || 'p'}:${Number.isFinite(idx) ? idx : key}`;
         });
       }
     });
@@ -2077,10 +2244,14 @@ window.addEventListener('DOMContentLoaded', function () {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data && data.status === 'success' && Array.isArray(data.paths)) {
         savedPaths = data.paths;
+        pathsByRefuge = Array.isArray(data.paths_by_refuge) ? data.paths_by_refuge : [];
         renderSavedPaths(savedPaths);
+      } else {
+        pathsByRefuge = [];
       }
     } catch (e) {
       console.warn('Failed to load paths', e);
+      pathsByRefuge = [];
     }
   }
   function stopUserPopupWatch() {
@@ -2090,6 +2261,15 @@ window.addEventListener('DOMContentLoaded', function () {
     }
     seenUserPopups = new Set();
     try { pathUserPopupLayer.clearLayers(); } catch (e) {}
+  }
+
+  function getPathNamesForRefuge(refugeId) {
+    if (refugeId == null) return [];
+    const entry = Array.isArray(pathsByRefuge)
+      ? pathsByRefuge.find((p) => String(p.refuge_id) === String(refugeId))
+      : null;
+    const names = entry && Array.isArray(entry.path_names) ? entry.path_names : [];
+    return names;
   }
   function deg2rad(d) { return d * Math.PI / 180; }
   function distanceMeters(a, b) {
@@ -2344,8 +2524,12 @@ window.addEventListener('DOMContentLoaded', function () {
           return bestIdx;
         })();
 
-        // Add a marker with popup at current map center
-        const marker = L.marker([center.lat, center.lng], {
+        const attachPoint = (Array.isArray(pathConfigState.points) && pathConfigState.points[nearestIdx]) || {};
+        const attachLat = (attachPoint && typeof attachPoint.lat === 'number') ? attachPoint.lat : center.lat;
+        const attachLng = (attachPoint && typeof attachPoint.lng === 'number') ? attachPoint.lng : center.lng;
+
+        // Add a marker with popup snapped to the nearest path point (fallback: center)
+        const marker = L.marker([attachLat, attachLng], {
           icon: L.divIcon({
             className: 'path-popup-marker',
             html: '<i class="fas fa-map-pin" style="color: #ff9800; font-size: 24px;"></i>',
@@ -2369,9 +2553,9 @@ window.addEventListener('DOMContentLoaded', function () {
         }
         pathConfigState.markers.push(marker);
         if (!pathConfigState.markerData) pathConfigState.markerData = [];
-        pathConfigState.markerData.push({ lat: center.lat, lng: center.lng, text: captionClean });
+        pathConfigState.markerData.push({ lat: attachLat, lng: attachLng, text: captionClean });
         if (!pathConfigState.pathname_pups || typeof pathConfigState.pathname_pups !== 'object') pathConfigState.pathname_pups = {};
-        const pupEntry = { lat: center.lat, lng: center.lng, caption: captionClean, image_url: imgClean, point_index: nearestIdx };
+        const pupEntry = { lat: attachLat, lng: attachLng, caption: captionClean, image_url: imgClean, point_index: nearestIdx };
         pathConfigState.pathname_pups[String(nearestIdx)] = pupEntry;
 
         // Send to backend immediately
@@ -2384,8 +2568,8 @@ window.addEventListener('DOMContentLoaded', function () {
                 caption: captionClean,
                 image_url: imgClean,
                 point_index: nearestIdx,
-                lat: center.lat,
-                lng: center.lng
+                lat: attachLat,
+                lng: attachLng
               })
             });
           } catch (err) {
@@ -2404,11 +2588,21 @@ window.addEventListener('DOMContentLoaded', function () {
       });
     }
   }
-  function openPathNamePrompt() {
+  async function openPathNamePrompt(refugeContext) {
     if (!isMobile) {
       alert('Path configuration is available on phone only.');
       return;
     }
+    const activeRefuge = (refugeContext && refugeContext.id != null) ? refugeContext : selectedRefuge;
+    if (!activeRefuge || activeRefuge.id == null) {
+      alert('Select a refuge first by tapping a refuge on the map or list.');
+      return;
+    }
+    if (!pathsByRefuge || !pathsByRefuge.length) {
+      try { await loadSavedPaths(); } catch (e) {}
+    }
+    const refugePathNames = getPathNamesForRefuge(activeRefuge.id);
+    const safeRefugeName = escapeHtml(activeRefuge.name || 'Refuge');
     closePathConfigBar();
     closePathNamePrompt();
     pathNamePromptEl = document.createElement('div');
@@ -2418,7 +2612,18 @@ window.addEventListener('DOMContentLoaded', function () {
         <span class="path-config-title">Configuration path</span>
         <button class="path-config-cancel" type="button" aria-label="Cancel">✕</button>
       </div>
-      <div class="path-config-input-row">
+      <div class="path-refuge-summary">
+        <div class="path-refuge-label">Selected refuge</div>
+        <div class="path-refuge-name">${safeRefugeName}</div>
+      </div>
+      <div class="path-refuge-paths">
+        <div class="path-refuge-paths-header">
+          <span class="path-refuge-paths-title">Paths in refuge</span>
+          <button class="path-refuge-paths-new" type="button">+ New</button>
+        </div>
+        <div class="path-refuge-paths-row"></div>
+      </div>
+      <div class="path-config-input-row" data-role="name-row">
         <label class="path-config-label path-config-label-top" for="path-name-input">name</label>
         <div class="path-config-input-wrap">
           <input id="path-name-input" class="path-config-input" type="text" placeholder="Enter path name" aria-label="Path name" />
@@ -2431,11 +2636,61 @@ window.addEventListener('DOMContentLoaded', function () {
     const cancelBtn = pathNamePromptEl.querySelector('.path-config-cancel');
     if (cancelBtn) cancelBtn.addEventListener('click', closePathNamePrompt);
 
+    const nameRow = pathNamePromptEl.querySelector('[data-role="name-row"]');
     const nameInput = pathNamePromptEl.querySelector('.path-config-input');
     const okBtn = pathNamePromptEl.querySelector('.path-config-ok');
-    if (nameInput && typeof nameInput.focus === 'function') {
-      nameInput.focus();
+    if (nameRow) {
+      nameRow.style.display = 'none';
     }
+    if (okBtn) okBtn.disabled = true;
+
+    const pathRow = pathNamePromptEl.querySelector('.path-refuge-paths-row');
+    if (pathRow) {
+      pathRow.innerHTML = '';
+      if (refugePathNames.length) {
+        refugePathNames.forEach((nm) => {
+          const pill = document.createElement('button');
+          pill.type = 'button';
+          pill.className = 'path-refuge-path-pill';
+          pill.textContent = nm;
+          pill.addEventListener('click', () => {
+            try {
+              pathRow.querySelectorAll('.path-refuge-path-pill.selected').forEach((el) => el.classList.remove('selected'));
+            } catch (e) {}
+            pill.classList.add('selected');
+          });
+          pathRow.appendChild(pill);
+        });
+      } else {
+        const empty = document.createElement('div');
+        empty.className = 'path-refuge-paths-empty';
+        empty.textContent = 'No paths yet for this refuge.';
+        pathRow.appendChild(empty);
+      }
+    }
+
+    const showNameInput = () => {
+      if (nameRow) nameRow.style.display = '';
+      if (okBtn) okBtn.disabled = false;
+      if (nameInput && typeof nameInput.focus === 'function') {
+        nameInput.focus();
+      }
+    };
+    const newBtn = pathNamePromptEl.querySelector('.path-refuge-paths-new');
+    if (newBtn) {
+      const triggerShow = (ev) => {
+        ev && ev.preventDefault && ev.preventDefault();
+        ev && ev.stopPropagation && ev.stopPropagation();
+        showNameInput();
+      };
+      newBtn.addEventListener('click', triggerShow);
+      newBtn.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          triggerShow(e);
+        }
+      });
+    }
+
     const triggerOk = async () => {
       const rawName = (nameInput && nameInput.value) ? nameInput.value.trim() : '';
       if (!rawName) {
@@ -2462,6 +2717,14 @@ window.addEventListener('DOMContentLoaded', function () {
         }
       });
     }
+  }
+
+  async function startPathFlow() {
+    if (!selectedRefuge || selectedRefuge.id == null) {
+      alert('Select a refuge first by tapping a refuge on the map or list.');
+      return;
+    }
+    await openPathNamePrompt(selectedRefuge);
   }
 
   // Create option panels for toolbar buttons
@@ -2599,9 +2862,9 @@ window.addEventListener('DOMContentLoaded', function () {
     {
       icon: 'fas fa-route',
       text: 'Path',
-      action: function() {
+      action: async function() {
         document.querySelectorAll('.option-panel').forEach(p => p.classList.remove('show'));
-        openPathNamePrompt();
+        await startPathFlow();
       }
     },
     {
@@ -2735,7 +2998,14 @@ window.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      // 2) Fallback to name search via Nominatim
+      // 2) Try matching a refuge name
+      const nameMatches = applyRefugeSearchFilter();
+      if (Array.isArray(nameMatches) && nameMatches.length) {
+        focusRefuge(nameMatches[0]);
+        return;
+      }
+
+      // 3) Fallback to name search via Nominatim
       try {
         const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q='
           + encodeURIComponent(query);
@@ -2774,6 +3044,10 @@ window.addEventListener('DOMContentLoaded', function () {
         performSearch();
       }
     });
+
+      input.addEventListener('input', () => {
+        applyRefugeSearchFilter();
+      });
   })();
 
   // -----------------------------
