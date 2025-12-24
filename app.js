@@ -284,6 +284,7 @@ window.addEventListener('DOMContentLoaded', function () {
       `;
 
       item.addEventListener('click', () => {
+        if (disableOthers) return;
         setSelectedRefuge(refuge);
         focusRefuge(refuge);
       });
@@ -293,6 +294,7 @@ window.addEventListener('DOMContentLoaded', function () {
         membershipBtn.addEventListener('click', (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
+          if (disableOthers) return;
           // placeholder: membership button has no action
         });
       }
