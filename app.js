@@ -266,6 +266,7 @@ window.addEventListener('DOMContentLoaded', function () {
       const safeName = escapeHtml(name);
       const nameHtml = safeRegex ? safeName.replace(safeRegex, '<span class="refuge-list-highlight">$1</span>') : safeName;
       const isDefault = defaultRefugeId && refuge && refuge.id && defaultRefugeId === refuge.id;
+      const disableOthers = !!defaultRefugeId && !(isDefault);
       if (isDefault) {
         item.classList.add('is-default');
       }
@@ -275,7 +276,7 @@ window.addEventListener('DOMContentLoaded', function () {
         <div class="refuge-list-meta">
           <button type="button" class="refuge-membership-btn">membership</button>
           <label class="refuge-default">
-            <input type="radio" name="refuge-default" ${isDefault ? 'checked' : ''} aria-label="Set as default refuge" />
+            <input type="radio" name="refuge-default" ${isDefault ? 'checked' : ''} ${disableOthers ? 'disabled' : ''} aria-label="Set as default refuge" />
             <span class="refuge-default-indicator" aria-hidden="true"></span>
             <span class="sr-only">Set as default refuge</span>
           </label>
@@ -298,12 +299,20 @@ window.addEventListener('DOMContentLoaded', function () {
 
       const radio = item.querySelector('input[type="radio"]');
       if (radio) {
+        if (disableOthers) {
+          item.classList.add('default-disabled');
+        }
         radio.addEventListener('click', (ev) => {
           // keep click from bubbling to item container
           ev.stopPropagation();
+          if (disableOthers) {
+            ev.preventDefault();
+            return;
+          }
         });
         radio.addEventListener('change', (ev) => {
           ev.stopPropagation();
+          if (disableOthers) return;
           if (refuge && refuge.id) {
             defaultRefugeId = refuge.id;
             setSelectedRefuge(refuge);
