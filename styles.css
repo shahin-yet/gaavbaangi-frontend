@@ -674,6 +674,16 @@ body.desktop-fullscreen-map {
   box-shadow: var(--shadow-sm);
 }
 
+.refuge-list-item.default-disabled {
+  opacity: 0.6;
+}
+
+.refuge-list-item.default-disabled .refuge-default-indicator {
+  border-color: var(--gray-300);
+  background: var(--gray-100);
+  box-shadow: none;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
