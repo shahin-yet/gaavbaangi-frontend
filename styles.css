@@ -676,6 +676,7 @@ body.desktop-fullscreen-map {
 
 .refuge-list-item.default-disabled {
   opacity: 0.6;
+  pointer-events: none;
 }
 
 .refuge-list-item.default-disabled .refuge-default-indicator {
