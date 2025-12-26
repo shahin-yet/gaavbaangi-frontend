@@ -876,6 +876,25 @@ body.desktop-fullscreen-map {
   background: var(--white);
 }
 
+.refuge-default-static {
+  cursor: default;
+  pointer-events: none;
+}
+
+.refuge-default-indicator.static-yes {
+  border-color: var(--primary-dark);
+  background: var(--primary-dark);
+  color: var(--white);
+  font-weight: 700;
+  box-shadow: 0 0 0 4px rgba(46, 125, 50, 0.16);
+}
+
+.refuge-default-indicator.static-yes::before {
+  content: '\\2713';
+  font-size: 12px;
+  line-height: 1;
+}
+
 .refuge-default input:checked + .refuge-default-indicator {
   border-color: var(--primary-dark);
   background: var(--primary-dark);
