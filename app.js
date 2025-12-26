@@ -362,10 +362,10 @@ window.addEventListener('DOMContentLoaded', function () {
     if (isPathConfigOpen()) return;
     if ((typeof drawing !== 'undefined' && drawing) || window.__editing) return;
     const bounds = getRefugeBounds(refuge);
-    // Zoom to 500 meter scale (approximately zoom level 16)
-    const ZOOM_500M = 16;
+    // Standard refuge zoom level
+    const STANDARD_REFUGE_ZOOM = 16;
     // In user map mode, always cap zoom to the standard level to avoid inheriting prior admin zoom
-    const targetMaxZoom = isUserMapMode ? ZOOM_500M : Math.max(map.getZoom() || COUNTRY_ZOOM, ZOOM_500M);
+    const targetMaxZoom = isUserMapMode ? STANDARD_REFUGE_ZOOM : Math.max(map.getZoom() || COUNTRY_ZOOM, STANDARD_REFUGE_ZOOM);
     if (bounds && bounds.isValid && bounds.isValid()) {
       map.fitBounds(bounds, { padding: [24, 24], maxZoom: targetMaxZoom });
     } else if (bounds && typeof bounds.getCenter === 'function') {
@@ -637,12 +637,12 @@ window.addEventListener('DOMContentLoaded', function () {
       
       // In user map mode, zoom to the selected refuge with standard zoom level
       if (isUserMapMode && refuge) {
-        // Use standard zoom behavior (zoom level 16) to match admin map
+        // Use standard refuge zoom level to match admin map behavior
         setTimeout(() => {
           try {
             const bounds = getRefugeBounds(refuge);
-            const ZOOM_500M = 16;
-            const targetMaxZoom = ZOOM_500M;
+            const STANDARD_REFUGE_ZOOM = 16;
+            const targetMaxZoom = STANDARD_REFUGE_ZOOM;
             if (bounds && bounds.isValid && bounds.isValid()) {
               map.fitBounds(bounds, { padding: [24, 24], maxZoom: targetMaxZoom });
             } else if (bounds && typeof bounds.getCenter === 'function') {
@@ -704,8 +704,16 @@ window.addEventListener('DOMContentLoaded', function () {
         try {
           // Calculate the zoom level that would fit these bounds
           const boundsFitZoom = map.getBoundsZoom(bounds, false, [24, 24]);
+          // Cap the minimum zoom to the standard refuge zoom so user map never zooms past it
+          const STANDARD_REFUGE_ZOOM = 16;
+          const cappedMinZoom = Math.min(boundsFitZoom, STANDARD_REFUGE_ZOOM);
           // Set this as the minimum zoom - users can't zoom out further than this
-          map.setMinZoom(boundsFitZoom);
+          map.setMinZoom(cappedMinZoom);
+          // If the current zoom is above the standard limit, pull it back to the cap
+          const currentZoom = map.getZoom();
+          if (Number.isFinite(currentZoom) && currentZoom > STANDARD_REFUGE_ZOOM) {
+            map.setZoom(STANDARD_REFUGE_ZOOM);
+          }
           // Restrict panning/zooming outside the selected refuge envelope (slight pad for UX)
           map.setMaxBounds(bounds.pad(0.05));
         } catch (e) {
