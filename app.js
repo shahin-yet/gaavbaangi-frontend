@@ -1798,6 +1798,9 @@ window.addEventListener('DOMContentLoaded', function () {
                 let refugeLastClickAt = 0;
 
                 const handleRefugeClick = (e) => {
+                  // Close any hover popup immediately on click
+                  closeHoverNamePopup();
+
                   // Ignore refuge interactions until the first zoom-in is done
                   if (!hasCompletedFirstZoom) {
                     return;
@@ -1859,6 +1862,15 @@ window.addEventListener('DOMContentLoaded', function () {
                 // Replace Leaflet's default click-to-open handler so we can apply timing
                 polygon.off('click');
                 polygon.on('click', handleRefugeClick);
+
+                // Show hover popup on mouseover only for unselected refuges
+                polygon.on('mouseover', () => {
+                  if (selectedRefuge && selectedRefuge.id === polygon._refuge.id) return;
+                  openHoverNamePopup();
+                });
+                polygon.on('mouseout', () => {
+                  closeHoverNamePopup();
+                });
 
                 polygon.on('popupopen', () => {
                   // Block refuge popups until the initial zoom completes
