@@ -173,6 +173,8 @@ window.addEventListener('DOMContentLoaded', function () {
   let defaultRefugeId = null;
   let selectedRefuge = null;
   let mobileRefugeNamePopup = null;
+  // Track temporarily hidden refuge polygons on mobile when a single refuge is selected
+  let mobileHiddenRefugeLayers = [];
 
   function closeMobileRefugeNamePopup() {
     if (mobileRefugeNamePopup) {
@@ -342,6 +344,18 @@ window.addEventListener('DOMContentLoaded', function () {
       `;
 
       item.addEventListener('click', () => {
+        // Toggle selection: if already selected, deselect and zoom back to country level
+        if (selectedRefuge && selectedRefuge.id != null && refuge && refuge.id === selectedRefuge.id) {
+          setSelectedRefuge(null);
+          // Zoom back to country level (5x) while keeping menu open
+          try {
+            map.flyTo(map.getCenter(), COUNTRY_ZOOM, { duration: 0.5, easeLinearity: 0.4 });
+          } catch (err) {
+            map.setView(map.getCenter(), COUNTRY_ZOOM);
+          }
+          syncSelectedRefugeUi();
+          return;
+        }
         setSelectedRefuge(refuge);
         focusRefuge(refuge);
       });
@@ -357,19 +371,45 @@ window.addEventListener('DOMContentLoaded', function () {
 
       const radio = item.querySelector('input[type="radio"]');
       if (radio) {
-        radio.addEventListener('click', (ev) => {
-          // keep click from bubbling to item container
+        // Handle click/keydown to toggle default refuge off when already checked
+        const handleRadioActivation = (ev) => {
           ev.stopPropagation();
-        });
-        radio.addEventListener('change', (ev) => {
-          ev.stopPropagation();
-          if (refuge && refuge.id) {
-            defaultRefugeId = refuge.id;
-            setSelectedRefuge(refuge);
+          const wasChecked = isDefault; // Was this refuge already the default?
+          
+          if (wasChecked) {
+            // Already checked: toggle off - remove from selection and zoom back to 5x
+            ev.preventDefault();
+            defaultRefugeId = null;
+            setSelectedRefuge(null);
+            // Zoom back to country level (5x) while keeping menu open
+            try {
+              map.flyTo(map.getCenter(), COUNTRY_ZOOM, { duration: 0.5, easeLinearity: 0.4 });
+            } catch (err) {
+              map.setView(map.getCenter(), COUNTRY_ZOOM);
+            }
+            // Re-render to update UI
+            renderRefugeList(refuges, query);
+          } else {
+            // Not checked: set as default and focus
+            if (refuge && refuge.id) {
+              defaultRefugeId = refuge.id;
+              setSelectedRefuge(refuge);
+            }
+            focusRefuge(refuge);
+            // Re-render to ensure default styling stays in sync
+            renderRefugeList(refuges, query);
           }
-          focusRefuge(refuge);
-          // Re-render to ensure default styling stays in sync
-          renderRefugeList(refuges, query);
+        };
+        
+        radio.addEventListener('click', (ev) => {
+          handleRadioActivation(ev);
+        });
+        
+        radio.addEventListener('keydown', (ev) => {
+          // Handle Enter and Space for keyboard activation (tabbing into it)
+          if (ev.key === 'Enter' || ev.key === ' ') {
+            handleRadioActivation(ev);
+          }
         });
       }
 
@@ -397,6 +437,7 @@ window.addEventListener('DOMContentLoaded', function () {
       closeMobileRefugeNamePopup();
     }
     syncSelectedRefugeUi();
+    updateMobileRefugeVisibility();
   }
 
   function syncSelectedRefugeUi() {
@@ -408,6 +449,34 @@ window.addEventListener('DOMContentLoaded', function () {
       } else {
         el.classList.remove('selected');
       }
+    });
+  }
+
+  // Mobile-only: hide all other refuge polygons when one is selected, restore when cleared
+  function updateMobileRefugeVisibility() {
+    if (!isMobile) return;
+    const selectedId = selectedRefuge && selectedRefuge.id != null ? selectedRefuge.id : null;
+
+    // Always restore anything we hid previously before applying a new filter
+    if (mobileHiddenRefugeLayers.length) {
+      mobileHiddenRefugeLayers.forEach((layer) => {
+        try { refugeLayerGroup.addLayer(layer); } catch (e) {}
+      });
+      mobileHiddenRefugeLayers = [];
+    }
+
+    if (!selectedId) return;
+
+    const toHide = [];
+    refugeLayerGroup.eachLayer((layer) => {
+      if (layer && layer._isRefugePolygon && layer._refuge && layer._refuge.id !== selectedId) {
+        toHide.push(layer);
+      }
+    });
+
+    toHide.forEach((layer) => {
+      mobileHiddenRefugeLayers.push(layer);
+      try { refugeLayerGroup.removeLayer(layer); } catch (e) {}
     });
   }
 
@@ -1769,6 +1838,8 @@ window.addEventListener('DOMContentLoaded', function () {
         }
         applyRefugeSearchFilter();
         refugeLayerGroup.clearLayers();
+        // Reset any previously hidden polygons before rebuilding the layer list
+        mobileHiddenRefugeLayers = [];
         data.refuges.forEach(r => {
           try {
             if (r && r.polygon && (r.polygon.type === 'Polygon' || r.polygon.type === 'MultiPolygon')) {
@@ -2074,6 +2145,8 @@ window.addEventListener('DOMContentLoaded', function () {
             console.warn('Failed to render refuge', e);
           }
         });
+        // After rebuilding layers, apply mobile-only visibility filtering
+        updateMobileRefugeVisibility();
       } else {
         refugesCache = [];
         applyRefugeSearchFilter();
