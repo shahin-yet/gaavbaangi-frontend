@@ -534,6 +534,12 @@ body.desktop-fullscreen-map {
   gap: 8px;
 }
 
+.refuge-list-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .refuge-list-title {
   font-weight: 600;
   color: var(--gray-900);
@@ -546,6 +552,19 @@ body.desktop-fullscreen-map {
   background: var(--gray-100);
   border-radius: 999px;
   border: 1px solid var(--gray-200);
+}
+
+.refuge-scroll-indicator {
+  display: none;
+  color: var(--gray-500);
+  font-size: 12px;
+  line-height: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.refuge-scroll-indicator i {
+  display: block;
 }
 
 .refuge-list {
@@ -565,6 +584,27 @@ body.desktop-fullscreen-map {
 .refuge-list::-webkit-scrollbar-thumb {
   background: var(--gray-300);
   border-radius: 999px;
+}
+
+@media (max-width: 768px) {
+  /* Hide scrollbar and surface a small scroll hint beside the count on phones */
+  .refuge-list {
+    padding-right: 0;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .refuge-list::-webkit-scrollbar {
+    display: none;
+  }
+  .refuge-scroll-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 6px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    background: var(--gray-50);
+  }
 }
 
 .refuge-list-item {
