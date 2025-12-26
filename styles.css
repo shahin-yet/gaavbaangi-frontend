@@ -787,8 +787,8 @@ body.desktop-fullscreen-map {
    On touch devices, :hover can "stick" after tap and look like a selection. */
 @media (hover: hover) and (pointer: fine) {
   .refuge-list-item:hover {
-    background: #e6f4ea;
-    border-color: var(--primary-light);
+    background: var(--gray-100);
+    border-color: var(--gray-300);
     transform: translateY(-1px);
     box-shadow: var(--shadow-sm);
   }
@@ -797,8 +797,8 @@ body.desktop-fullscreen-map {
 /* Touch feedback (transient) */
 @media (hover: none) and (pointer: coarse) {
   .refuge-list-item:active {
-    background: #e6f4ea;
-    border-color: var(--primary-light);
+    background: var(--gray-100);
+    border-color: var(--gray-300);
     box-shadow: var(--shadow-sm);
   }
 }
@@ -931,6 +931,24 @@ body.desktop-fullscreen-map {
   box-shadow: none;
   border-color: var(--gray-200);
   background: var(--gray-50);
+}
+
+/* Keep default rows neutral even on hover/tap unless they are truly selected */
+@media (hover: hover) and (pointer: fine) {
+  .refuge-list-item.is-default:not(.selected):hover {
+    background: var(--gray-50);
+    border-color: var(--gray-200);
+    transform: none;
+    box-shadow: none;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .refuge-list-item.is-default:not(.selected):active {
+    background: var(--gray-50);
+    border-color: var(--gray-200);
+    box-shadow: none;
+  }
 }
 
 .sr-only {
