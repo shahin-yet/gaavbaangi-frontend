@@ -3387,6 +3387,7 @@ window.addEventListener('DOMContentLoaded', function () {
       if (item) item.classList.add('active');
       renderSavedPaths(savedPaths);
       updateMapZoomLimits();
+      applyRefugeSearchFilter(); // Re-render list with admin static default tick
       closeSidePanel();
     },
     'user-map': () => {
@@ -3398,6 +3399,7 @@ window.addEventListener('DOMContentLoaded', function () {
       renderSavedPaths(savedPaths);
       startUserPopupWatch();
       updateMapZoomLimits();
+      applyRefugeSearchFilter(); // Re-render list with user-map radio controls
       closeSidePanel();
     }
   };
