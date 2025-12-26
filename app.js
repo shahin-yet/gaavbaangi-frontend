@@ -372,8 +372,10 @@ window.addEventListener('DOMContentLoaded', function () {
           isDefaultChecked
             ? `
           <span class="refuge-default refuge-default-static" aria-hidden="true">
-            <span class="refuge-default-indicator static-yes"></span>
-            <span class="refuge-default-label">Yes</span>
+            <svg width="20" height="20" viewBox="0 0 20 20" style="display: inline-block; vertical-align: middle;">
+              <circle cx="10" cy="10" r="9" fill="#4CAF50" stroke="#4CAF50" stroke-width="1"/>
+              <path d="M6 10 L9 13 L14 7" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
           </span>
           <span class="sr-only">Default refuge</span>
         `
