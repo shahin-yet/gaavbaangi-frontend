@@ -364,11 +364,15 @@ window.addEventListener('DOMContentLoaded', function () {
       item.setAttribute('role', 'button');
       
       // Handle row activation (click or keyboard)
-      const handleRowActivation = () => {
+      const handleRowActivation = (fromClick = false) => {
         selectRefugeLikeList(refuge);
+        // On mobile touch, blur the row immediately to prevent stuck focus styling
+        if (fromClick && isMobile) {
+          try { item.blur(); } catch (e) {}
+        }
       };
       
-      item.addEventListener('click', handleRowActivation);
+      item.addEventListener('click', () => handleRowActivation(true));
       
       item.addEventListener('keydown', (ev) => {
         // Handle Enter and Space for keyboard activation (tabbing into row)
@@ -475,6 +479,10 @@ window.addEventListener('DOMContentLoaded', function () {
         el.classList.add('selected');
       } else {
         el.classList.remove('selected');
+        // On mobile, also blur any focused row to clear stuck visual states
+        if (isMobile && document.activeElement === el) {
+          try { el.blur(); } catch (e) {}
+        }
       }
     });
   }
