@@ -719,6 +719,12 @@ window.addEventListener('DOMContentLoaded', function () {
 
     // If a refuge is selected, calculate the zoom level that fits its bounds
     if (selectedRefuge && selectedRefuge.id != null) {
+      // Clear previous constraints before applying new ones to avoid compound zooming
+      try {
+        map.setMinZoom(0);
+        map.setMaxBounds(null);
+      } catch (e) {}
+
       const bounds = getRefugeBounds(selectedRefuge);
       if (bounds && bounds.isValid && bounds.isValid()) {
         try {
