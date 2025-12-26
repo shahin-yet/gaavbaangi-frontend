@@ -80,16 +80,32 @@ window.addEventListener('DOMContentLoaded', function () {
   let hasCompletedFirstZoom = false;
   let firstTapZoomDisabled = false;
   let firstTapZoomHandler = null;
+  let touchZoomInitiallyDisabled = false;
   const detachFirstTapZoom = () => {
     if (firstTapZoomHandler) {
       try { map.off('click', firstTapZoomHandler); } catch (e) {}
       firstTapZoomHandler = null;
     }
   };
+  const disablePreFirstZoomPinch = () => {
+    if (!isMobile) return;
+    try {
+      if (map.touchZoom && map.touchZoom.enabled && map.touchZoom.enabled()) {
+        map.touchZoom.disable();
+        touchZoomInitiallyDisabled = true;
+      }
+    } catch (e) {}
+  };
+  disablePreFirstZoomPinch();
   const markFirstZoomComplete = () => {
     if (hasCompletedFirstZoom) return;
     hasCompletedFirstZoom = true;
     detachFirstTapZoom();
+    // Re-enable pinch zoom after the first tap zoom completes
+    if (isMobile && touchZoomInitiallyDisabled) {
+      try { map.touchZoom.enable(); } catch (e) {}
+      touchZoomInitiallyDisabled = false;
+    }
     // Remove the initial state class to hide cursor after first zoom
     document.body.classList.remove('before-first-zoom');
     try { setRefugePolygonsInteractive(true); } catch (e) {}
@@ -133,16 +149,6 @@ window.addEventListener('DOMContentLoaded', function () {
       setTimeout(() => map.invalidateSize(), 0);
     } catch (e) {}
   });
-  // On mobile: if user manually zooms beyond COUNTRY_ZOOM (5), skip first tap zoom and hide cursor
-  if (isMobile) {
-    map.on('zoomend', () => {
-      if (!hasCompletedFirstZoom && map.getZoom() > COUNTRY_ZOOM) {
-        firstTapZoomDisabled = true;
-        markFirstZoomComplete();
-      }
-    });
-  }
-
   // First tap zoom-in: zoom to country level, then release the initial guard
   firstTapZoomHandler = (ev) => {
     if (hasCompletedFirstZoom) {
