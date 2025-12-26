@@ -1608,9 +1608,9 @@ body.user-map-mode .menu-item[data-action="admin-map"].active i {
   }
 }
 
-/* Keep the selected state visible even in user map mode */
+/* In user map mode, don't show green selection styling for refuge items */
 body.user-map-mode .refuge-list-item.selected {
-  border-color: var(--primary, #1b7f39);
-  background: #e6f4ea;
-  box-shadow: var(--shadow-sm);
+  border-color: var(--gray-200);
+  background: var(--gray-50);
+  box-shadow: none;
 }
