@@ -343,7 +343,12 @@ window.addEventListener('DOMContentLoaded', function () {
         </div>
       `;
 
-      item.addEventListener('click', () => {
+      // Make item focusable for keyboard navigation
+      item.setAttribute('tabindex', '0');
+      item.setAttribute('role', 'button');
+      
+      // Handle row activation (click or keyboard)
+      const handleRowActivation = () => {
         // Toggle selection: if already selected, deselect and zoom back to country level
         if (selectedRefuge && selectedRefuge.id != null && refuge && refuge.id === selectedRefuge.id) {
           setSelectedRefuge(null);
@@ -358,6 +363,16 @@ window.addEventListener('DOMContentLoaded', function () {
         }
         setSelectedRefuge(refuge);
         focusRefuge(refuge);
+      };
+      
+      item.addEventListener('click', handleRowActivation);
+      
+      item.addEventListener('keydown', (ev) => {
+        // Handle Enter and Space for keyboard activation (tabbing into row)
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          handleRowActivation();
+        }
       });
 
       const membershipBtn = item.querySelector('.refuge-membership-btn');
@@ -370,6 +385,15 @@ window.addEventListener('DOMContentLoaded', function () {
       }
 
       const radio = item.querySelector('input[type="radio"]');
+      const radioLabel = item.querySelector('label.refuge-default');
+      
+      // Stop propagation on label clicks so they don't trigger row click handler
+      if (radioLabel) {
+        radioLabel.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+        });
+      }
+      
       if (radio) {
         // Handle click/keydown to toggle default refuge off when already checked
         const handleRadioActivation = (ev) => {
@@ -2004,6 +2028,28 @@ window.addEventListener('DOMContentLoaded', function () {
                 polygon.off('click');
                 polygon.on('click', handleRefugeClick);
 
+                // Mobile-only: ensure double-tap immediately selects/focuses the refuge
+                polygon.on('dblclick', (e) => {
+                  if (!isMobile) return;
+                  // Cancel any pending single-tap timer to avoid duplicate actions
+                  if (refugeClickTimer) {
+                    clearTimeout(refugeClickTimer);
+                    refugeClickTimer = null;
+                  }
+                  refugeClickedFlag = true;
+                  if (!hasCompletedFirstZoom) return;
+                  if (isPathConfigOpen() || window.__editing || drawing) return;
+                  setSelectedRefuge(polygon._refuge);
+                  focusRefuge(polygon._refuge);
+                  closeMobileRefugeNamePopup();
+                  try { map.closePopup(); } catch (err) {}
+                  // Stop map-level double-click behavior just in case
+                  if (e && e.originalEvent) {
+                    e.originalEvent.preventDefault && e.originalEvent.preventDefault();
+                    e.originalEvent.stopPropagation && e.originalEvent.stopPropagation();
+                  }
+                });
+
                 // Show hover popup on mouseover only for unselected refuges
                 polygon.on('mouseover', () => {
                   if (selectedRefuge && selectedRefuge.id === polygon._refuge.id) return;
@@ -2878,12 +2924,25 @@ window.addEventListener('DOMContentLoaded', function () {
           pill.type = 'button';
           pill.className = 'path-refuge-path-pill';
           pill.textContent = nm;
-          pill.addEventListener('click', () => {
+          
+          // Handle pill activation (click or keyboard)
+          const handlePillActivation = () => {
             try {
               pathRow.querySelectorAll('.path-refuge-path-pill.selected').forEach((el) => el.classList.remove('selected'));
             } catch (e) {}
             pill.classList.add('selected');
+          };
+          
+          pill.addEventListener('click', handlePillActivation);
+          
+          pill.addEventListener('keydown', (e) => {
+            // Handle Enter and Space for keyboard activation
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              handlePillActivation();
+            }
           });
+          
           pathRow.appendChild(pill);
         });
       } else {
@@ -2964,8 +3023,13 @@ window.addEventListener('DOMContentLoaded', function () {
       const item = document.createElement('div');
       item.className = 'option-item';
       item.innerHTML = `<i class="${option.icon}"></i>${option.text}`;
-      // Always close any open option panels after a selection, then run the action
-      item.addEventListener('click', function(e) {
+      
+      // Make item focusable for keyboard navigation
+      item.setAttribute('tabindex', '0');
+      item.setAttribute('role', 'menuitem');
+      
+      // Handle option activation (click or keyboard)
+      const handleOptionActivation = (e) => {
         e.stopPropagation();
         // Block option logic while drawing is active, except for layer panel actions
         // Also allow layer button during edit mode
@@ -2981,7 +3045,18 @@ window.addEventListener('DOMContentLoaded', function () {
         try {
           if (typeof option.action === 'function') option.action();
         } catch (err) { console.warn(err); }
+      };
+      
+      item.addEventListener('click', handleOptionActivation);
+      
+      item.addEventListener('keydown', (e) => {
+        // Handle Enter and Space for keyboard activation
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleOptionActivation(e);
+        }
       });
+      
       panel.appendChild(item);
     });
     
@@ -3179,13 +3254,28 @@ window.addEventListener('DOMContentLoaded', function () {
   };
 
   document.querySelectorAll('.menu-item').forEach(btn => {
-    btn.addEventListener('click', function () {
+    // Make menu items focusable for keyboard navigation
+    btn.setAttribute('tabindex', '0');
+    btn.setAttribute('role', 'menuitem');
+    
+    // Handle menu item activation (click or keyboard)
+    const handleMenuActivation = function() {
       if (isPathConfigOpen()) return;
       if ((typeof drawing !== 'undefined' && drawing) || (window.__editing)) return;
       try { map && map.closePopup && map.closePopup(); } catch (err) {}
-      const action = this.getAttribute('data-action');
+      const action = btn.getAttribute('data-action');
       const handler = menuActions[action];
       if (typeof handler === 'function') handler();
+    };
+    
+    btn.addEventListener('click', handleMenuActivation);
+    
+    btn.addEventListener('keydown', (e) => {
+      // Handle Enter and Space for keyboard activation
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleMenuActivation();
+      }
     });
   });
 
