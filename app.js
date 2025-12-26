@@ -126,16 +126,24 @@ window.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  map.once('click', (ev) => {
-    const firstTapTarget = isMobile ? map.getCenter() : ev.latlng;
-    try {
-      map.flyTo(firstTapTarget, COUNTRY_ZOOM, { duration: 0.7, easeLinearity: 0.4 });
-    } catch (err) {
-      map.setView(firstTapTarget, COUNTRY_ZOOM);
-    }
-    // Release initial interaction guard after the first zoom attempt
-    markFirstZoomComplete();
-  });
+  // Disabled first tap zoom function
+  // map.once('click', (ev) => {
+  //   // If user has already zoomed beyond COUNTRY_ZOOM via drag/pinch, skip the first zoom animation
+  //   if (hasCompletedFirstZoom) {
+  //     return;
+  //   }
+  //   const firstTapTarget = isMobile ? map.getCenter() : ev.latlng;
+  //   try {
+  //     map.flyTo(firstTapTarget, COUNTRY_ZOOM, { duration: 0.7, easeLinearity: 0.4 });
+  //   } catch (err) {
+  //     map.setView(firstTapTarget, COUNTRY_ZOOM);
+  //   }
+  //   // Release initial interaction guard after the first zoom attempt
+  //   markFirstZoomComplete();
+  // });
+  
+  // Mark first zoom as complete immediately since we disabled the first tap zoom
+  markFirstZoomComplete();
 
   // Track if a refuge polygon was clicked to distinguish from map background clicks
   let refugeClickedFlag = false;
@@ -334,10 +342,12 @@ window.addEventListener('DOMContentLoaded', function () {
     if (isPathConfigOpen()) return;
     if ((typeof drawing !== 'undefined' && drawing) || window.__editing) return;
     const bounds = getRefugeBounds(refuge);
+    // Zoom to 500 meter scale (approximately zoom level 16)
+    const ZOOM_500M = 16;
     if (bounds && bounds.isValid && bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [24, 24], maxZoom: Math.max(map.getZoom() || COUNTRY_ZOOM, 13) });
+      map.fitBounds(bounds, { padding: [24, 24], maxZoom: Math.max(map.getZoom() || COUNTRY_ZOOM, ZOOM_500M) });
     } else if (bounds && typeof bounds.getCenter === 'function') {
-      map.flyTo(bounds.getCenter(), Math.max(map.getZoom() || COUNTRY_ZOOM, 13));
+      map.flyTo(bounds.getCenter(), Math.max(map.getZoom() || COUNTRY_ZOOM, ZOOM_500M));
     }
     try { closeSidePanel && closeSidePanel(); } catch (e) {}
   }
@@ -602,6 +612,25 @@ window.addEventListener('DOMContentLoaded', function () {
     if (targetId) {
       const refuge = refugesCache.find((r) => r && r.id === targetId);
       setSelectedRefuge(refuge || null);
+      
+      // In user map mode, zoom to the selected refuge with standard zoom level
+      if (isUserMapMode && refuge) {
+        // Use standard zoom behavior (zoom level 16) to match admin map
+        setTimeout(() => {
+          try {
+            const bounds = getRefugeBounds(refuge);
+            const ZOOM_500M = 16;
+            if (bounds && bounds.isValid && bounds.isValid()) {
+              map.fitBounds(bounds, { padding: [24, 24], maxZoom: Math.max(map.getZoom() || COUNTRY_ZOOM, ZOOM_500M) });
+            } else if (bounds && typeof bounds.getCenter === 'function') {
+              map.flyTo(bounds.getCenter(), Math.max(map.getZoom() || COUNTRY_ZOOM, ZOOM_500M));
+            }
+          } catch (e) {
+            // Ignore errors
+          }
+        }, 100);
+        return; // Skip restoring old map view in user map mode when refuge is selected
+      }
     } else {
       setSelectedRefuge(null);
     }
@@ -612,10 +641,20 @@ window.addEventListener('DOMContentLoaded', function () {
     }
     
     // Restore map view (with a slight delay to ensure rendering is complete)
+    // Only restore saved view in admin map mode or when no refuge is selected in user map
     if (currentState.mapCenter && currentState.mapZoom != null) {
       setTimeout(() => {
         try {
           map.setView(currentState.mapCenter, currentState.mapZoom, { animate: false });
+        } catch (e) {
+          // Ignore errors
+        }
+      }, 100);
+    } else if (!targetId) {
+      // If no refuge is selected and no saved map view, default to country zoom (5x)
+      setTimeout(() => {
+        try {
+          map.setView(map.getCenter(), COUNTRY_ZOOM, { animate: false });
         } catch (e) {
           // Ignore errors
         }
@@ -3361,10 +3400,7 @@ window.addEventListener('DOMContentLoaded', function () {
     } else {
       centerBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-      // If center button is tapped before first zoom, disable first zoom tap and hide cursor
-      if (!hasCompletedFirstZoom) {
-        markFirstZoomComplete();
-      }
+      // Center button is now always available (no longer blocked before first zoom)
       // Do not interfere while drawing or editing
       if (isPathConfigOpen()) return;
       if ((typeof drawing !== 'undefined' && drawing) || window.__editing) return;
