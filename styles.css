@@ -670,8 +670,13 @@ body.desktop-fullscreen-map {
 }
 
 .refuge-list-item.is-default {
-  border-color: var(--primary-light);
+  /* Default tick filled but not selected - no green border, just subtle shadow */
   box-shadow: var(--shadow-sm);
+}
+
+.refuge-list-item.is-default.selected {
+  /* Default tick filled AND selected - show green border */
+  border-color: var(--primary-light);
 }
 
 .sr-only {
