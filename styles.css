@@ -886,13 +886,22 @@ body.desktop-fullscreen-map {
   background: var(--primary-dark);
   color: var(--white);
   font-weight: 700;
-  box-shadow: 0 0 0 4px rgba(46, 125, 50, 0.16);
+  box-shadow: none;
 }
 
 .refuge-default-indicator.static-yes::before {
   content: '\\2713';
   font-size: 12px;
   line-height: 1;
+}
+
+.refuge-default-label {
+  margin-left: 6px;
+  font-size: var(--font-size-xs);
+  color: var(--primary-dark);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
 }
 
 .refuge-default input:checked + .refuge-default-indicator {
@@ -902,13 +911,14 @@ body.desktop-fullscreen-map {
 }
 
 .refuge-list-item.is-default {
-  /* Default tick filled but not selected - no green border, just subtle shadow */
-  box-shadow: var(--shadow-sm);
+  /* Keep default rows visually neutral; selection color only from explicit selection */
+  box-shadow: none;
+  border-color: var(--gray-200);
+  background: var(--gray-50);
 }
 
 .refuge-list-item.is-default.selected {
-  /* Default tick filled AND selected - show green border */
-  border-color: var(--primary-light);
+  border-color: var(--primary, #1b7f39);
 }
 
 .sr-only {
