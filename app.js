@@ -342,6 +342,8 @@ window.addEventListener('DOMContentLoaded', function () {
   }
 
   const normalizeRefugeName = (name) => (name || '').toString().trim().toLowerCase();
+  const REFUGE_STANDARD_ZOOM = 16;
+  const REFUGE_FIT_PADDING = isMobile ? [32, 32] : [24, 24];
 
   function getRefugeBounds(refuge) {
     if (!refuge || !refuge.polygon) return null;
@@ -356,21 +358,51 @@ window.addEventListener('DOMContentLoaded', function () {
     }
   }
 
+  function zoomToRefuge(refuge, options = {}) {
+    if (!refuge) return;
+    const bounds = getRefugeBounds(refuge);
+    const padding = options.padding || REFUGE_FIT_PADDING;
+    const maxZoomCap = options.maxZoom ?? REFUGE_STANDARD_ZOOM;
+    const animate = options.animate !== false;
+
+    if (!bounds || !bounds.isValid || !bounds.isValid()) {
+      // Fall back to centering if bounds are missing but center is available
+      if (bounds && typeof bounds.getCenter === 'function') {
+        const center = bounds.getCenter();
+        try {
+          map.flyTo(center, maxZoomCap, { animate, duration: 0.5, easeLinearity: 0.4 });
+        } catch (e) {
+          map.setView(center, maxZoomCap);
+        }
+      }
+      return;
+    }
+
+    let targetZoom = maxZoomCap;
+    try {
+      const fitZoom = map.getBoundsZoom(bounds, false, padding);
+      if (Number.isFinite(fitZoom)) {
+        targetZoom = Math.min(fitZoom, maxZoomCap);
+      }
+    } catch (e) {}
+
+    try {
+      map.fitBounds(bounds, { padding, maxZoom: targetZoom, animate });
+    } catch (err) {
+      try {
+        map.flyTo(bounds.getCenter(), targetZoom, { animate, duration: 0.5, easeLinearity: 0.4 });
+      } catch (e) {
+        map.setView(bounds.getCenter(), targetZoom);
+      }
+    }
+  }
+
   function focusRefuge(refuge) {
     if (!refuge) return;
     setSelectedRefuge(refuge);
     if (isPathConfigOpen()) return;
     if ((typeof drawing !== 'undefined' && drawing) || window.__editing) return;
-    const bounds = getRefugeBounds(refuge);
-    // Standard refuge zoom level
-    const STANDARD_REFUGE_ZOOM = 16;
-    // In user map mode, always cap zoom to the standard level to avoid inheriting prior admin zoom
-    const targetMaxZoom = isUserMapMode ? STANDARD_REFUGE_ZOOM : Math.max(map.getZoom() || COUNTRY_ZOOM, STANDARD_REFUGE_ZOOM);
-    if (bounds && bounds.isValid && bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [24, 24], maxZoom: targetMaxZoom });
-    } else if (bounds && typeof bounds.getCenter === 'function') {
-      map.flyTo(bounds.getCenter(), targetMaxZoom);
-    }
+    zoomToRefuge(refuge);
     try { closeSidePanel && closeSidePanel(); } catch (e) {}
   }
 
@@ -637,20 +669,8 @@ window.addEventListener('DOMContentLoaded', function () {
       
       // In user map mode, zoom to the selected refuge with standard zoom level
       if (isUserMapMode && refuge) {
-        // Use standard refuge zoom level to match admin map behavior
         setTimeout(() => {
-          try {
-            const bounds = getRefugeBounds(refuge);
-            const STANDARD_REFUGE_ZOOM = 16;
-            const targetMaxZoom = STANDARD_REFUGE_ZOOM;
-            if (bounds && bounds.isValid && bounds.isValid()) {
-              map.fitBounds(bounds, { padding: [24, 24], maxZoom: targetMaxZoom });
-            } else if (bounds && typeof bounds.getCenter === 'function') {
-              map.flyTo(bounds.getCenter(), targetMaxZoom);
-            }
-          } catch (e) {
-            // Ignore errors
-          }
+          zoomToRefuge(refuge, { animate: false });
         }, 100);
         return; // Skip restoring old map view in user map mode when refuge is selected
       }
@@ -703,16 +723,15 @@ window.addEventListener('DOMContentLoaded', function () {
       if (bounds && bounds.isValid && bounds.isValid()) {
         try {
           // Calculate the zoom level that would fit these bounds
-          const boundsFitZoom = map.getBoundsZoom(bounds, false, [24, 24]);
+          const boundsFitZoom = map.getBoundsZoom(bounds, false, REFUGE_FIT_PADDING);
           // Cap the minimum zoom to the standard refuge zoom so user map never zooms past it
-          const STANDARD_REFUGE_ZOOM = 16;
-          const cappedMinZoom = Math.min(boundsFitZoom, STANDARD_REFUGE_ZOOM);
+          const cappedMinZoom = Math.min(boundsFitZoom, REFUGE_STANDARD_ZOOM);
           // Set this as the minimum zoom - users can't zoom out further than this
           map.setMinZoom(cappedMinZoom);
           // If the current zoom is above the standard limit, pull it back to the cap
           const currentZoom = map.getZoom();
-          if (Number.isFinite(currentZoom) && currentZoom > STANDARD_REFUGE_ZOOM) {
-            map.setZoom(STANDARD_REFUGE_ZOOM);
+          if (Number.isFinite(currentZoom) && currentZoom > REFUGE_STANDARD_ZOOM) {
+            map.setZoom(REFUGE_STANDARD_ZOOM);
           }
           // Restrict panning/zooming outside the selected refuge envelope (slight pad for UX)
           map.setMaxBounds(bounds.pad(0.05));
@@ -2411,14 +2430,10 @@ window.addEventListener('DOMContentLoaded', function () {
                     nameEl.onclick = (ev) => {
                       ev && ev.stopPropagation && ev.stopPropagation();
                       if (!hasCompletedFirstZoom) return;
-                      try {
-                        const bounds = (typeof polygon.getBounds === 'function') ? polygon.getBounds() : null;
-                        if (bounds && bounds.isValid && bounds.isValid()) {
-                          map.fitBounds(bounds, { padding: [24, 24], maxZoom: Math.max(map.getZoom() || COUNTRY_ZOOM, 13) });
-                        } else if (bounds && typeof bounds.getCenter === 'function') {
-                          map.flyTo(bounds.getCenter(), Math.max(map.getZoom() || COUNTRY_ZOOM, 13));
-                        }
-                      } catch (err) {}
+                      zoomToRefuge(polygon._refuge, {
+                        maxZoom: Math.max(map.getZoom() || COUNTRY_ZOOM, REFUGE_STANDARD_ZOOM),
+                        animate: true
+                      });
                     };
                   }
                   
