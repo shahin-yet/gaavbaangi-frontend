@@ -371,10 +371,11 @@ window.addEventListener('DOMContentLoaded', function () {
         : (
           isDefaultChecked
             ? `
-          <span class="refuge-default refuge-default-static">
-            <span class="refuge-default-indicator static-yes" aria-hidden="true"></span>
-            <span class="sr-only">Default refuge</span>
+          <span class="refuge-default refuge-default-static" aria-hidden="true">
+            <span class="refuge-default-indicator static-yes"></span>
+            <span class="refuge-default-label">Yes</span>
           </span>
+          <span class="sr-only">Default refuge</span>
         `
             : ''
         );
