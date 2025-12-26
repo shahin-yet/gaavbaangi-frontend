@@ -918,7 +918,10 @@ body.desktop-fullscreen-map {
 }
 
 .refuge-list-item.is-default.selected {
-  border-color: var(--primary, #1b7f39);
+  /* Default set via tick should not get green selection border */
+  border-color: var(--gray-200);
+  background: var(--gray-50);
+  box-shadow: none;
 }
 
 .sr-only {
