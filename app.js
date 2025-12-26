@@ -300,6 +300,22 @@ window.addEventListener('DOMContentLoaded', function () {
     try { closeSidePanel && closeSidePanel(); } catch (e) {}
   }
 
+  // Shared selection logic so map taps mirror list-row selection on mobile
+  function selectRefugeLikeList(refuge) {
+    if (!refuge || refuge.id == null) return;
+    const isAlreadySelected = selectedRefuge && selectedRefuge.id != null && selectedRefuge.id === refuge.id;
+    if (isAlreadySelected) {
+      setSelectedRefuge(null);
+      try {
+        map.flyTo(map.getCenter(), COUNTRY_ZOOM, { duration: 0.5, easeLinearity: 0.4 });
+      } catch (err) {
+        map.setView(map.getCenter(), COUNTRY_ZOOM);
+      }
+      return;
+    }
+    focusRefuge(refuge);
+  }
+
   function renderRefugeList(refuges = [], query = '') {
     if (!refugeListEl) return;
     const searchTerm = normalizeRefugeName(query);
@@ -349,20 +365,7 @@ window.addEventListener('DOMContentLoaded', function () {
       
       // Handle row activation (click or keyboard)
       const handleRowActivation = () => {
-        // Toggle selection: if already selected, deselect and zoom back to country level
-        if (selectedRefuge && selectedRefuge.id != null && refuge && refuge.id === selectedRefuge.id) {
-          setSelectedRefuge(null);
-          // Zoom back to country level (5x) while keeping menu open
-          try {
-            map.flyTo(map.getCenter(), COUNTRY_ZOOM, { duration: 0.5, easeLinearity: 0.4 });
-          } catch (err) {
-            map.setView(map.getCenter(), COUNTRY_ZOOM);
-          }
-          syncSelectedRefugeUi();
-          return;
-        }
-        setSelectedRefuge(refuge);
-        focusRefuge(refuge);
+        selectRefugeLikeList(refuge);
       };
       
       item.addEventListener('click', handleRowActivation);
@@ -1965,9 +1968,8 @@ window.addEventListener('DOMContentLoaded', function () {
 
                   if (isMobile) {
                     if (sinceLast < REFUGE_DOUBLE_CLICK_MS) {
-                      // Double tap selects and focuses like list interaction
-                      setSelectedRefuge(polygon._refuge);
-                      focusRefuge(polygon._refuge);
+                      // Double tap selects/deselects exactly like list interaction
+                      selectRefugeLikeList(polygon._refuge);
                       closeMobileRefugeNamePopup();
                       try { map.closePopup(); } catch (err) {}
                       return;
@@ -2027,28 +2029,6 @@ window.addEventListener('DOMContentLoaded', function () {
                 // Replace Leaflet's default click-to-open handler so we can apply timing
                 polygon.off('click');
                 polygon.on('click', handleRefugeClick);
-
-                // Mobile-only: ensure double-tap immediately selects/focuses the refuge
-                polygon.on('dblclick', (e) => {
-                  if (!isMobile) return;
-                  // Cancel any pending single-tap timer to avoid duplicate actions
-                  if (refugeClickTimer) {
-                    clearTimeout(refugeClickTimer);
-                    refugeClickTimer = null;
-                  }
-                  refugeClickedFlag = true;
-                  if (!hasCompletedFirstZoom) return;
-                  if (isPathConfigOpen() || window.__editing || drawing) return;
-                  setSelectedRefuge(polygon._refuge);
-                  focusRefuge(polygon._refuge);
-                  closeMobileRefugeNamePopup();
-                  try { map.closePopup(); } catch (err) {}
-                  // Stop map-level double-click behavior just in case
-                  if (e && e.originalEvent) {
-                    e.originalEvent.preventDefault && e.originalEvent.preventDefault();
-                    e.originalEvent.stopPropagation && e.originalEvent.stopPropagation();
-                  }
-                });
 
                 // Show hover popup on mouseover only for unselected refuges
                 polygon.on('mouseover', () => {
