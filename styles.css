@@ -1578,3 +1578,39 @@ body.desktop-fullscreen-map {
     padding: 8px 12px 12px;
   }
 }
+
+/* User Map Mode Specific Styles */
+/* Hide the active selection state on admin-map menu item when in user map mode */
+body.user-map-mode .menu-item[data-action="admin-map"].active {
+  background: transparent;
+  color: var(--gray-800);
+}
+
+body.user-map-mode .menu-item[data-action="admin-map"].active i {
+  color: var(--gray-700);
+}
+
+/* Disable hover and touch reactions on refuge list items in user map mode */
+@media (hover: hover) and (pointer: fine) {
+  body.user-map-mode .refuge-list-item:hover {
+    background: var(--gray-50);
+    border-color: var(--gray-200);
+    transform: none;
+    box-shadow: none;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  body.user-map-mode .refuge-list-item:active {
+    background: var(--gray-50);
+    border-color: var(--gray-200);
+    box-shadow: none;
+  }
+}
+
+/* Keep the selected state visible even in user map mode */
+body.user-map-mode .refuge-list-item.selected {
+  border-color: var(--primary, #1b7f39);
+  background: #e6f4ea;
+  box-shadow: var(--shadow-sm);
+}
