@@ -174,6 +174,8 @@ window.addEventListener('DOMContentLoaded', function () {
   let refugesCache = [];
   let defaultRefugeId = null;
   let selectedRefuge = null;
+  let adminSelectedRefugeId = null;
+  let userSelectedRefugeId = null;
   let mobileRefugeNamePopup = null;
   // Track temporarily hidden refuge polygons on mobile when a single refuge is selected
   let mobileHiddenRefugeLayers = [];
@@ -491,14 +493,23 @@ window.addEventListener('DOMContentLoaded', function () {
 
   function setSelectedRefuge(refuge) {
     const prevDefaultId = defaultRefugeId;
-    if (refuge && typeof refuge === 'object' && refuge.id != null) {
+    const isValidRefuge = refuge && typeof refuge === 'object' && refuge.id != null;
+    if (isValidRefuge) {
       selectedRefuge = refuge;
       // In user map mode, any selection should also set the default tick
       if (isUserMapMode) {
         defaultRefugeId = refuge.id;
+        userSelectedRefugeId = refuge.id;
+      } else {
+        adminSelectedRefugeId = refuge.id;
       }
     } else {
       selectedRefuge = null;
+      if (isUserMapMode) {
+        userSelectedRefugeId = null;
+      } else {
+        adminSelectedRefugeId = null;
+      }
     }
     if (isMobile) {
       closeMobileRefugeNamePopup();
@@ -511,6 +522,17 @@ window.addEventListener('DOMContentLoaded', function () {
     }
     updateMobileRefugeVisibility();
     updateMapZoomLimits();
+  }
+
+  // Restore the selection that belongs to the current map mode (admin/user)
+  function restoreSelectionForCurrentMode() {
+    const targetId = isUserMapMode ? userSelectedRefugeId : adminSelectedRefugeId;
+    if (!targetId) {
+      setSelectedRefuge(null);
+      return;
+    }
+    const refuge = refugesCache.find((r) => r && r.id === targetId);
+    setSelectedRefuge(refuge || null);
   }
 
   // Set minimum zoom limit based on selected refuge bounds in user map mode
@@ -3376,24 +3398,35 @@ window.addEventListener('DOMContentLoaded', function () {
   const menuActions = {
     'about': () => {
       alert('About: Coming soon.');
-      closeSidePanel();
+      // Keep menu open when switching views
     },
     'data': () => {
       alert('Data: Coming soon.');
-      closeSidePanel();
+      // Keep menu open when switching views
     },
     'admin-map': () => {
+      // Preserve any active user-map selection before switching away
+      if (isUserMapMode && selectedRefuge && selectedRefuge.id != null) {
+        userSelectedRefugeId = selectedRefuge.id;
+      }
       isUserMapMode = false;
       stopUserPopupWatch();
       document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
       const item = document.querySelector('.menu-item[data-action="admin-map"]');
       if (item) item.classList.add('active');
       renderSavedPaths(savedPaths);
-      updateMapZoomLimits();
       applyRefugeSearchFilter(); // Re-render list with admin static default tick
-      closeSidePanel();
+      restoreSelectionForCurrentMode();
+      updateMapZoomLimits();
+      // Remove user-map-mode class from body
+      document.body.classList.remove('user-map-mode');
+      // Keep menu open when switching views
     },
     'user-map': () => {
+      // Preserve any active admin-map selection before switching away
+      if (!isUserMapMode && selectedRefuge && selectedRefuge.id != null) {
+        adminSelectedRefugeId = selectedRefuge.id;
+      }
       isUserMapMode = true;
       seenUserPopups = new Set();
       document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
@@ -3401,9 +3434,12 @@ window.addEventListener('DOMContentLoaded', function () {
       if (item) item.classList.add('active');
       renderSavedPaths(savedPaths);
       startUserPopupWatch();
-      updateMapZoomLimits();
       applyRefugeSearchFilter(); // Re-render list with user-map radio controls
-      closeSidePanel();
+      restoreSelectionForCurrentMode();
+      updateMapZoomLimits();
+      // Add user-map-mode class to body for CSS targeting
+      document.body.classList.add('user-map-mode');
+      // Keep menu open when switching views
     }
   };
 
