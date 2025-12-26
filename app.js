@@ -360,16 +360,30 @@ window.addEventListener('DOMContentLoaded', function () {
       if (showDefaultHighlight) {
         item.classList.add('is-default');
       }
-
-      item.innerHTML = `
-        <span class="refuge-list-name">${nameHtml}</span>
-        <div class="refuge-list-meta">
-          <button type="button" class="refuge-membership-btn">membership</button>
+      const defaultControlHtml = isUserMapMode
+        ? `
           <label class="refuge-default">
             <input type="radio" name="refuge-default" ${defaultAttrs.join(' ')} aria-label="Set as default refuge" />
             <span class="refuge-default-indicator" aria-hidden="true"></span>
             <span class="sr-only">Set as default refuge</span>
           </label>
+        `
+        : (
+          isDefaultChecked
+            ? `
+          <span class="refuge-default refuge-default-static">
+            <span class="refuge-default-indicator static-yes" aria-hidden="true"></span>
+            <span class="sr-only">Default refuge</span>
+          </span>
+        `
+            : ''
+        );
+
+      item.innerHTML = `
+        <span class="refuge-list-name">${nameHtml}</span>
+        <div class="refuge-list-meta">
+          <button type="button" class="refuge-membership-btn">membership</button>
+          ${defaultControlHtml}
         </div>
       `;
 
