@@ -129,8 +129,29 @@ window.addEventListener('DOMContentLoaded', function () {
 
   // Map click handler for deselecting refuge when clicking outside any refuge
   map.on('click', (ev) => {
-    // Background clicks should no longer clear selection in user map mode
-    return;
+    // Deselect on background taps only in admin map mode
+    if (isUserMapMode) return;
+    // Wait for first zoom to complete before enabling deselect behavior
+    if (!hasCompletedFirstZoom) return;
+    // Skip if a refuge was just clicked (flag set by polygon click handler)
+    if (refugeClickedFlag) {
+      refugeClickedFlag = false;
+      return;
+    }
+    // Skip during drawing, editing, or path config modes
+    if ((typeof drawing !== 'undefined' && drawing) || window.__editing || isPathConfigOpen()) return;
+    // Always clear any transient name popups on background taps
+    closeMobileRefugeNamePopup();
+    // Check if there's a selected refuge to clear
+    if (selectedRefuge) {
+      setSelectedRefuge(null);
+      // Zoom back to country level (5x)
+      try {
+        map.flyTo(map.getCenter(), COUNTRY_ZOOM, { duration: 0.5, easeLinearity: 0.4 });
+      } catch (err) {
+        map.setView(map.getCenter(), COUNTRY_ZOOM);
+      }
+    }
   });
 
   // Load saved paths initially
@@ -474,11 +495,10 @@ window.addEventListener('DOMContentLoaded', function () {
       closeMobileRefugeNamePopup();
     }
     const defaultChanged = defaultRefugeId !== prevDefaultId;
+    syncSelectedRefugeUi();
     if (isUserMapMode && defaultChanged) {
       // Re-render to ensure radio state matches map selection
       applyRefugeSearchFilter();
-    } else {
-      syncSelectedRefugeUi();
     }
     updateMobileRefugeVisibility();
     updateMapZoomLimits();
@@ -3356,23 +3376,41 @@ window.addEventListener('DOMContentLoaded', function () {
     'admin-map': () => {
       isUserMapMode = false;
       stopUserPopupWatch();
+      // Clear map selection in admin mode so user-map-only default selection is not shown
+      setSelectedRefuge(null);
+      // Disable and clear default ticks visually without re-rendering
+      document.querySelectorAll('input[name="refuge-default"]').forEach(input => {
+        input.disabled = true;
+        input.checked = false;
+      });
       document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
       const item = document.querySelector('.menu-item[data-action="admin-map"]');
       if (item) item.classList.add('active');
       renderSavedPaths(savedPaths);
-      applyRefugeSearchFilter();
       updateMapZoomLimits();
       closeSidePanel();
     },
     'user-map': () => {
       isUserMapMode = true;
       seenUserPopups = new Set();
+      // Restore default ticks and selection tied to the default refuge only
+      document.querySelectorAll('input[name="refuge-default"]').forEach(input => {
+        input.disabled = false;
+        const rid = input.closest('.refuge-list-item')?.getAttribute('data-refuge-id');
+        input.checked = rid && defaultRefugeId && String(defaultRefugeId) === String(rid);
+      });
+      if (defaultRefugeId && Array.isArray(refugesCache)) {
+        const def = refugesCache.find(r => r && r.id === defaultRefugeId);
+        if (def) setSelectedRefuge(def);
+        else setSelectedRefuge(null);
+      } else {
+        setSelectedRefuge(null);
+      }
       document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
       const item = document.querySelector('.menu-item[data-action="user-map"]');
       if (item) item.classList.add('active');
       renderSavedPaths(savedPaths);
       startUserPopupWatch();
-      applyRefugeSearchFilter();
       updateMapZoomLimits();
       closeSidePanel();
     }
