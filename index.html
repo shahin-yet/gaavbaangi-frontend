@@ -66,11 +66,14 @@
                 type="text"
                 placeholder="Place name or 18.52, 73.86"
                 aria-label="Search by place name or coordinates"
+                autocomplete="off"
               />
               <button id="location-search-btn" type="button" title="Search">
                 <i class="fas fa-search"></i>
               </button>
             </div>
+            <!-- Live search dropdown -->
+            <div id="live-search-dropdown" class="live-search-dropdown" aria-live="polite"></div>
           </div>
 
           <!-- Live refuge list -->
@@ -78,11 +81,11 @@
             <div class="refuge-list-header">
               <span class="refuge-list-title">Current refuges</span>
               <div class="refuge-list-right">
+                <span id="refuge-list-count" class="refuge-list-count">0</span>
                 <span class="refuge-scroll-indicator" aria-hidden="true">
                   <i class="fas fa-chevron-up"></i>
                   <i class="fas fa-chevron-down"></i>
                 </span>
-                <span id="refuge-list-count" class="refuge-list-count">0</span>
               </div>
             </div>
             <div id="refuge-list" class="refuge-list" role="list"></div>
