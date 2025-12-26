@@ -138,6 +138,8 @@ window.addEventListener('DOMContentLoaded', function () {
     }
     // Skip during drawing, editing, or path config modes
     if ((typeof drawing !== 'undefined' && drawing) || window.__editing || isPathConfigOpen()) return;
+    // Always clear any transient name popups on background taps
+    closeMobileRefugeNamePopup();
     // Check if there's a selected refuge to clear
     if (selectedRefuge) {
       setSelectedRefuge(null);
@@ -170,6 +172,35 @@ window.addEventListener('DOMContentLoaded', function () {
   let refugesCache = [];
   let defaultRefugeId = null;
   let selectedRefuge = null;
+  let mobileRefugeNamePopup = null;
+
+  function closeMobileRefugeNamePopup() {
+    if (mobileRefugeNamePopup) {
+      try { map.closePopup(mobileRefugeNamePopup); } catch (e) {}
+      try { map.removeLayer(mobileRefugeNamePopup); } catch (e) {}
+      mobileRefugeNamePopup = null;
+    }
+  }
+
+  function openMobileRefugeNamePopup(refuge, anchorLatLng) {
+    if (!isMobile) return;
+    if (!anchorLatLng) return;
+    if (!hasCompletedFirstZoom) return;
+    if (isPathConfigOpen() || window.__editing || drawing) return;
+    try {
+      closeMobileRefugeNamePopup();
+      mobileRefugeNamePopup = L.popup({
+        closeButton: false,
+        autoPan: false,
+        closeOnClick: false,
+        className: 'refuge-hover-popup',
+        offset: [0, -6]
+      })
+        .setLatLng(anchorLatLng)
+        .setContent(`<div class="refuge-hover-name">${escapeHtml((refuge && refuge.name) || 'Refuge')}</div>`);
+      map.addLayer(mobileRefugeNamePopup);
+    } catch (e) {}
+  }
 
   const resolveLayerUrl = (layer) => {
     if (!layer || !layer.url) return '';
@@ -361,6 +392,9 @@ window.addEventListener('DOMContentLoaded', function () {
       selectedRefuge = refuge;
     } else {
       selectedRefuge = null;
+    }
+    if (isMobile) {
+      closeMobileRefugeNamePopup();
     }
     syncSelectedRefugeUi();
   }
@@ -1826,13 +1860,50 @@ window.addEventListener('DOMContentLoaded', function () {
                   const sinceLast = now - refugeLastClickAt;
                   refugeLastClickAt = now;
 
-                  const wasAlreadySelected = selectedRefuge && selectedRefuge.id === polygon._refuge.id;
-                  setSelectedRefuge(polygon._refuge);
-
                   if (refugeClickTimer) {
                     clearTimeout(refugeClickTimer);
                     refugeClickTimer = null;
                   }
+
+                  const clickLatLng = e && e.latlng ? e.latlng : undefined;
+                  const alreadySelected = selectedRefuge && selectedRefuge.id === polygon._refuge.id;
+
+                  if (isMobile) {
+                    if (sinceLast < REFUGE_DOUBLE_CLICK_MS) {
+                      // Double tap selects and focuses like list interaction
+                      setSelectedRefuge(polygon._refuge);
+                      focusRefuge(polygon._refuge);
+                      closeMobileRefugeNamePopup();
+                      try { map.closePopup(); } catch (err) {}
+                      return;
+                    }
+
+                    refugeClickTimer = setTimeout(() => {
+                      refugeClickTimer = null;
+                      if (!hasCompletedFirstZoom) return;
+                      if (isPathConfigOpen() || window.__editing || drawing) return;
+
+                      // If another refuge is selected, ignore single taps on others
+                      if (selectedRefuge && selectedRefuge.id != null && selectedRefuge.id !== polygon._refuge.id) {
+                        closeMobileRefugeNamePopup();
+                        return;
+                      }
+
+                      if (selectedRefuge && selectedRefuge.id === polygon._refuge.id) {
+                        // Selected refuge: open full popup (with edit) on single tap
+                        closeMobileRefugeNamePopup();
+                        try { polygon.openPopup(clickLatLng); } catch (err) {}
+                        return;
+                      }
+
+                      // Unselected refuge: show name-only popup anchored at the first vertex
+                      openMobileRefugeNamePopup(polygon._refuge, hoverAnchorLatLng);
+                    }, REFUGE_DOUBLE_CLICK_MS + 20);
+                    return;
+                  }
+
+                  const wasAlreadySelected = alreadySelected;
+                  setSelectedRefuge(polygon._refuge);
 
                   if (sinceLast < REFUGE_DOUBLE_CLICK_MS) {
                     // Treat as double-click: suppress popup so map zoom can proceed
@@ -1840,7 +1911,6 @@ window.addEventListener('DOMContentLoaded', function () {
                     return;
                   }
 
-                  const clickLatLng = e && e.latlng ? e.latlng : undefined;
                   refugeClickTimer = setTimeout(() => {
                     refugeClickTimer = null;
                     if (!hasCompletedFirstZoom) return;
