@@ -80,32 +80,16 @@ window.addEventListener('DOMContentLoaded', function () {
   let hasCompletedFirstZoom = false;
   let firstTapZoomDisabled = false;
   let firstTapZoomHandler = null;
-  let touchZoomInitiallyDisabled = false;
   const detachFirstTapZoom = () => {
     if (firstTapZoomHandler) {
       try { map.off('click', firstTapZoomHandler); } catch (e) {}
       firstTapZoomHandler = null;
     }
   };
-  const disablePreFirstZoomPinch = () => {
-    if (!isMobile) return;
-    try {
-      if (map.touchZoom && map.touchZoom.enabled && map.touchZoom.enabled()) {
-        map.touchZoom.disable();
-        touchZoomInitiallyDisabled = true;
-      }
-    } catch (e) {}
-  };
-  disablePreFirstZoomPinch();
   const markFirstZoomComplete = () => {
     if (hasCompletedFirstZoom) return;
     hasCompletedFirstZoom = true;
     detachFirstTapZoom();
-    // Re-enable pinch zoom after the first tap zoom completes
-    if (isMobile && touchZoomInitiallyDisabled) {
-      try { map.touchZoom.enable(); } catch (e) {}
-      touchZoomInitiallyDisabled = false;
-    }
     // Remove the initial state class to hide cursor after first zoom
     document.body.classList.remove('before-first-zoom');
     try { setRefugePolygonsInteractive(true); } catch (e) {}
@@ -170,6 +154,16 @@ window.addEventListener('DOMContentLoaded', function () {
     detachFirstTapZoom();
   };
   map.on('click', firstTapZoomHandler);
+  // If a user pinches or uses controls to zoom in before the first tap zoom,
+  // unlock the UI once they go past the initial world zoom level.
+  map.on('zoomend', () => {
+    if (hasCompletedFirstZoom) return;
+    const currentZoom = (typeof map.getZoom === 'function') ? map.getZoom() : null;
+    if (currentZoom == null) return;
+    if (currentZoom > WORLD_ZOOM + 0.01) {
+      markFirstZoomComplete();
+    }
+  });
 
   // Track if a refuge polygon was clicked to distinguish from map background clicks
   let refugeClickedFlag = false;
@@ -370,10 +364,12 @@ window.addEventListener('DOMContentLoaded', function () {
     const bounds = getRefugeBounds(refuge);
     // Zoom to 500 meter scale (approximately zoom level 16)
     const ZOOM_500M = 16;
+    // In user map mode, always cap zoom to the standard level to avoid inheriting prior admin zoom
+    const targetMaxZoom = isUserMapMode ? ZOOM_500M : Math.max(map.getZoom() || COUNTRY_ZOOM, ZOOM_500M);
     if (bounds && bounds.isValid && bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [24, 24], maxZoom: Math.max(map.getZoom() || COUNTRY_ZOOM, ZOOM_500M) });
+      map.fitBounds(bounds, { padding: [24, 24], maxZoom: targetMaxZoom });
     } else if (bounds && typeof bounds.getCenter === 'function') {
-      map.flyTo(bounds.getCenter(), Math.max(map.getZoom() || COUNTRY_ZOOM, ZOOM_500M));
+      map.flyTo(bounds.getCenter(), targetMaxZoom);
     }
     try { closeSidePanel && closeSidePanel(); } catch (e) {}
   }
@@ -646,10 +642,11 @@ window.addEventListener('DOMContentLoaded', function () {
           try {
             const bounds = getRefugeBounds(refuge);
             const ZOOM_500M = 16;
+            const targetMaxZoom = ZOOM_500M;
             if (bounds && bounds.isValid && bounds.isValid()) {
-              map.fitBounds(bounds, { padding: [24, 24], maxZoom: Math.max(map.getZoom() || COUNTRY_ZOOM, ZOOM_500M) });
+              map.fitBounds(bounds, { padding: [24, 24], maxZoom: targetMaxZoom });
             } else if (bounds && typeof bounds.getCenter === 'function') {
-              map.flyTo(bounds.getCenter(), Math.max(map.getZoom() || COUNTRY_ZOOM, ZOOM_500M));
+              map.flyTo(bounds.getCenter(), targetMaxZoom);
             }
           } catch (e) {
             // Ignore errors
