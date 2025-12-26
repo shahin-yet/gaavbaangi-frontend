@@ -129,6 +129,8 @@ window.addEventListener('DOMContentLoaded', function () {
 
   // Map click handler for deselecting refuge when clicking outside any refuge
   map.on('click', (ev) => {
+    // Default background tap behavior applies only to user map mode
+    if (!isUserMapMode) return;
     // Wait for first zoom to complete before enabling deselect behavior
     if (!hasCompletedFirstZoom) return;
     // Skip if a refuge was just clicked (flag set by polygon click handler)
@@ -469,6 +471,39 @@ window.addEventListener('DOMContentLoaded', function () {
     }
     syncSelectedRefugeUi();
     updateMobileRefugeVisibility();
+    updateMapZoomLimits();
+  }
+
+  // Set minimum zoom limit based on selected refuge bounds in user map mode
+  function updateMapZoomLimits() {
+    // Only apply zoom limits in user map mode
+    if (!isUserMapMode) {
+      // Reset to no minimum zoom if not in user map mode
+      try {
+        map.setMinZoom(0);
+      } catch (e) {}
+      return;
+    }
+
+    // If a refuge is selected, calculate the zoom level that fits its bounds
+    if (selectedRefuge && selectedRefuge.id != null) {
+      const bounds = getRefugeBounds(selectedRefuge);
+      if (bounds && bounds.isValid && bounds.isValid()) {
+        try {
+          // Calculate the zoom level that would fit these bounds
+          const boundsFitZoom = map.getBoundsZoom(bounds, false, [24, 24]);
+          // Set this as the minimum zoom - users can't zoom out further than this
+          map.setMinZoom(boundsFitZoom);
+        } catch (e) {
+          console.error('Error setting map zoom limits:', e);
+        }
+      }
+    } else {
+      // No refuge selected - reset to no minimum zoom
+      try {
+        map.setMinZoom(0);
+      } catch (e) {}
+    }
   }
 
   function syncSelectedRefugeUi() {
@@ -1980,7 +2015,9 @@ window.addEventListener('DOMContentLoaded', function () {
                     if (sinceLast > 0 && sinceLast < REFUGE_DOUBLE_CLICK_MS) {
                       console.log('Mobile double-tap detected on refuge:', polygon._refuge.name, 'sinceLast:', sinceLast);
                       refugeLastClickAt = 0; // Reset to prevent triple-tap issues
-                      selectRefugeLikeList(polygon._refuge);
+                      if (!isUserMapMode) {
+                        selectRefugeLikeList(polygon._refuge);
+                      }
                       closeMobileRefugeNamePopup();
                       try { map.closePopup(); } catch (err) {}
                       // Prevent any further event handling
@@ -2078,7 +2115,9 @@ window.addEventListener('DOMContentLoaded', function () {
                         }
                         // Reset the click-based timer too
                         refugeLastClickAt = 0;
-                        selectRefugeLikeList(polygon._refuge);
+                        if (!isUserMapMode) {
+                          selectRefugeLikeList(polygon._refuge);
+                        }
                         closeMobileRefugeNamePopup();
                         try { map.closePopup(); } catch (err) {}
                       } else {
@@ -2095,7 +2134,9 @@ window.addEventListener('DOMContentLoaded', function () {
                   if (isPathConfigOpen() || window.__editing || drawing) return;
                   console.log('Leaflet dblclick event on refuge:', polygon._refuge.name);
                   refugeClickedFlag = true;
-                  selectRefugeLikeList(polygon._refuge);
+                  if (!isUserMapMode) {
+                    selectRefugeLikeList(polygon._refuge);
+                  }
                   closeMobileRefugeNamePopup();
                   try { map.closePopup(); } catch (err) {}
                   if (e && e.originalEvent) {
@@ -3293,6 +3334,7 @@ window.addEventListener('DOMContentLoaded', function () {
       const item = document.querySelector('.menu-item[data-action="admin-map"]');
       if (item) item.classList.add('active');
       renderSavedPaths(savedPaths);
+      updateMapZoomLimits();
       closeSidePanel();
     },
     'user-map': () => {
@@ -3303,6 +3345,7 @@ window.addEventListener('DOMContentLoaded', function () {
       if (item) item.classList.add('active');
       renderSavedPaths(savedPaths);
       startUserPopupWatch();
+      updateMapZoomLimits();
       closeSidePanel();
     }
   };
@@ -3337,7 +3380,13 @@ window.addEventListener('DOMContentLoaded', function () {
   (function setupLocationSearch() {
     const input = document.getElementById('location-search-input');
     const button = document.getElementById('location-search-btn');
+    const dropdown = document.getElementById('live-search-dropdown');
     if (!input || !button) return;
+
+    let nominatimDebounce = null;
+    let nominatimCache = {};
+    let highlightedIndex = -1;
+    let currentResults = [];
 
     const parseLatLng = (text) => {
       if (!text) return null;
@@ -3352,9 +3401,229 @@ window.addEventListener('DOMContentLoaded', function () {
       return { lat, lng };
     };
 
+    const highlightMatch = (text, query) => {
+      if (!query) return escapeHtml(text);
+      const escaped = escapeHtml(text);
+      const safeQuery = query.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+      const regex = new RegExp(`(${safeQuery})`, 'gi');
+      return escaped.replace(regex, '<span class="highlight">$1</span>');
+    };
+
+    const hideDropdown = () => {
+      if (dropdown) {
+        dropdown.classList.remove('active');
+        dropdown.innerHTML = '';
+      }
+      highlightedIndex = -1;
+      currentResults = [];
+    };
+
+    const showDropdown = () => {
+      if (dropdown) dropdown.classList.add('active');
+    };
+
+    const selectResult = (result) => {
+      hideDropdown();
+      if (result.type === 'refuge') {
+        focusRefuge(result.refuge);
+      } else if (result.type === 'location') {
+        const lat = parseFloat(result.lat);
+        const lng = parseFloat(result.lng);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          map.setView([lat, lng], Math.max(map.getZoom() || COUNTRY_ZOOM, 12));
+          try { closeSidePanel && closeSidePanel(); } catch (e) {}
+        }
+      } else if (result.type === 'coords') {
+        map.setView([result.lat, result.lng], Math.max(map.getZoom() || COUNTRY_ZOOM, 12));
+        try { closeSidePanel && closeSidePanel(); } catch (e) {}
+      }
+      input.value = '';
+      applyRefugeSearchFilter();
+    };
+
+    const updateHighlight = () => {
+      const items = dropdown.querySelectorAll('.live-search-item');
+      items.forEach((item, idx) => {
+        if (idx === highlightedIndex) {
+          item.classList.add('highlighted');
+          item.scrollIntoView({ block: 'nearest' });
+        } else {
+          item.classList.remove('highlighted');
+        }
+      });
+    };
+
+    const renderDropdown = (refugeResults, locationResults, query, isLoading = false) => {
+      if (!dropdown) return;
+      
+      currentResults = [];
+      let html = '';
+      
+      // Check for coordinate input
+      const coords = parseLatLng(query);
+      if (coords) {
+        currentResults.push({ type: 'coords', lat: coords.lat, lng: coords.lng });
+        html += `
+          <div class="live-search-section">
+            <div class="live-search-section-header">
+              <i class="fas fa-crosshairs"></i>
+              Coordinates
+            </div>
+            <div class="live-search-item" data-index="0" tabindex="0">
+              <div class="live-search-item-icon location-icon">
+                <i class="fas fa-map-pin"></i>
+              </div>
+              <div class="live-search-item-content">
+                <div class="live-search-item-name">Go to ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}</div>
+                <div class="live-search-item-meta">Navigate to coordinates</div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      
+      // Refuge results
+      if (refugeResults.length > 0) {
+        const startIdx = currentResults.length;
+        html += `
+          <div class="live-search-section">
+            <div class="live-search-section-header">
+              <i class="fas fa-shield-halved"></i>
+              Refuges (${refugeResults.length})
+            </div>
+        `;
+        refugeResults.slice(0, 5).forEach((refuge, idx) => {
+          currentResults.push({ type: 'refuge', refuge });
+          html += `
+            <div class="live-search-item" data-index="${startIdx + idx}" tabindex="0">
+              <div class="live-search-item-icon refuge-icon">
+                <i class="fas fa-shield-halved"></i>
+              </div>
+              <div class="live-search-item-content">
+                <div class="live-search-item-name">${highlightMatch(refuge.name || 'Unnamed refuge', query)}</div>
+                <div class="live-search-item-meta">Refuge area</div>
+              </div>
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+      
+      // Location results
+      if (locationResults.length > 0) {
+        const startIdx = currentResults.length;
+        html += `
+          <div class="live-search-section">
+            <div class="live-search-section-header">
+              <i class="fas fa-map-location-dot"></i>
+              Map Locations (${locationResults.length})
+            </div>
+        `;
+        locationResults.slice(0, 5).forEach((loc, idx) => {
+          currentResults.push({ type: 'location', lat: loc.lat, lng: loc.lon, name: loc.display_name });
+          const shortName = loc.display_name.split(',')[0];
+          const meta = loc.display_name.split(',').slice(1, 3).join(',').trim() || loc.type || 'Location';
+          html += `
+            <div class="live-search-item" data-index="${startIdx + idx}" tabindex="0">
+              <div class="live-search-item-icon location-icon">
+                <i class="fas fa-location-dot"></i>
+              </div>
+              <div class="live-search-item-content">
+                <div class="live-search-item-name">${highlightMatch(shortName, query)}</div>
+                <div class="live-search-item-meta">${escapeHtml(meta)}</div>
+              </div>
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+      
+      // Loading state for locations
+      if (isLoading && !coords) {
+        html += `
+          <div class="live-search-loading">
+            <div class="spinner"></div>
+            <span>Searching map locations...</span>
+          </div>
+        `;
+      }
+      
+      // Empty state
+      if (!html && !isLoading) {
+        html = `
+          <div class="live-search-empty">
+            <i class="fas fa-search"></i>
+            No results found for "${escapeHtml(query)}"
+          </div>
+        `;
+      }
+      
+      dropdown.innerHTML = html;
+      showDropdown();
+      highlightedIndex = -1;
+      
+      // Attach click handlers
+      dropdown.querySelectorAll('.live-search-item').forEach((item) => {
+        item.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const idx = parseInt(item.dataset.index, 10);
+          if (currentResults[idx]) {
+            selectResult(currentResults[idx]);
+          }
+        });
+      });
+    };
+
+    const fetchNominatimResults = async (query) => {
+      if (nominatimCache[query]) {
+        return nominatimCache[query];
+      }
+      try {
+        const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=5&q='
+          + encodeURIComponent(query);
+        const res = await fetch(url, {
+          headers: { 'Accept': 'application/json' }
+        });
+        const results = await res.json().catch(() => []);
+        nominatimCache[query] = Array.isArray(results) ? results : [];
+        return nominatimCache[query];
+      } catch (err) {
+        console.warn('Nominatim search failed', err);
+        return [];
+      }
+    };
+
+    const doLiveSearch = async (query) => {
+      if (!query) {
+        hideDropdown();
+        return;
+      }
+
+      // Filter refuges locally (instant)
+      const refugeResults = refugesCache.filter((r) =>
+        normalizeRefugeName(r.name).includes(normalizeRefugeName(query))
+      );
+      
+      // Show refuges immediately, with loading indicator for locations
+      renderDropdown(refugeResults, [], query, true);
+      
+      // Debounced Nominatim search
+      if (nominatimDebounce) clearTimeout(nominatimDebounce);
+      nominatimDebounce = setTimeout(async () => {
+        const locationResults = await fetchNominatimResults(query);
+        // Re-filter refuges in case cache changed
+        const freshRefugeResults = refugesCache.filter((r) =>
+          normalizeRefugeName(r.name).includes(normalizeRefugeName(query))
+        );
+        renderDropdown(freshRefugeResults, locationResults, query, false);
+      }, 300);
+    };
+
     const performSearch = async () => {
       const query = (input.value || '').trim();
       if (!query) return;
+      hideDropdown();
       // Block while drawing or editing
       if (isPathConfigOpen()) return;
       if ((typeof drawing !== 'undefined' && drawing) || window.__editing) return;
@@ -3364,6 +3633,8 @@ window.addEventListener('DOMContentLoaded', function () {
       if (coords) {
         map.setView([coords.lat, coords.lng], Math.max(map.getZoom() || COUNTRY_ZOOM, 10));
         try { closeSidePanel && closeSidePanel(); } catch (e) {}
+        input.value = '';
+        applyRefugeSearchFilter();
         return;
       }
 
@@ -3371,6 +3642,8 @@ window.addEventListener('DOMContentLoaded', function () {
       const nameMatches = applyRefugeSearchFilter();
       if (Array.isArray(nameMatches) && nameMatches.length) {
         focusRefuge(nameMatches[0]);
+        input.value = '';
+        applyRefugeSearchFilter();
         return;
       }
 
@@ -3399,6 +3672,8 @@ window.addEventListener('DOMContentLoaded', function () {
         console.warn('Location search failed', err);
         alert('Search failed. Please try again.');
       }
+      input.value = '';
+      applyRefugeSearchFilter();
     };
 
     button.addEventListener('click', (e) => {
@@ -3410,13 +3685,47 @@ window.addEventListener('DOMContentLoaded', function () {
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        performSearch();
+        if (highlightedIndex >= 0 && currentResults[highlightedIndex]) {
+          selectResult(currentResults[highlightedIndex]);
+        } else {
+          performSearch();
+        }
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (currentResults.length > 0) {
+          highlightedIndex = Math.min(highlightedIndex + 1, currentResults.length - 1);
+          updateHighlight();
+        }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (currentResults.length > 0) {
+          highlightedIndex = Math.max(highlightedIndex - 1, 0);
+          updateHighlight();
+        }
+      } else if (e.key === 'Escape') {
+        hideDropdown();
       }
     });
 
-      input.addEventListener('input', () => {
-        applyRefugeSearchFilter();
-      });
+    input.addEventListener('input', () => {
+      const query = (input.value || '').trim();
+      applyRefugeSearchFilter();
+      doLiveSearch(query);
+    });
+
+    input.addEventListener('focus', () => {
+      const query = (input.value || '').trim();
+      if (query) {
+        doLiveSearch(query);
+      }
+    });
+
+    // Hide dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!input.contains(e.target) && !dropdown.contains(e.target) && !button.contains(e.target)) {
+        hideDropdown();
+      }
+    });
   })();
 
   // -----------------------------
