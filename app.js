@@ -51,6 +51,8 @@ window.addEventListener('DOMContentLoaded', function () {
   // Mark mobile UI across Telegram and regular browsers
   if (isMobile) {
     document.body.classList.add('mobile-ui');
+    // Add initial state class to show cursor before first zoom
+    document.body.classList.add('before-first-zoom');
   } else {
     document.body.classList.remove('mobile-ui');
   }
@@ -79,6 +81,8 @@ window.addEventListener('DOMContentLoaded', function () {
   const markFirstZoomComplete = () => {
     if (hasCompletedFirstZoom) return;
     hasCompletedFirstZoom = true;
+    // Remove the initial state class to hide cursor after first zoom
+    document.body.classList.remove('before-first-zoom');
     try { setRefugePolygonsInteractive(true); } catch (e) {}
   };
   // Guard: block all UI (except menu + map pan/zoom) until the first zoom-in tap.
@@ -113,6 +117,15 @@ window.addEventListener('DOMContentLoaded', function () {
       setTimeout(() => map.invalidateSize(), 0);
     } catch (e) {}
   });
+  // On mobile: if user manually zooms beyond COUNTRY_ZOOM (5), skip first tap zoom and hide cursor
+  if (isMobile) {
+    map.on('zoomend', () => {
+      if (!hasCompletedFirstZoom && map.getZoom() > COUNTRY_ZOOM) {
+        markFirstZoomComplete();
+      }
+    });
+  }
+
   map.once('click', (ev) => {
     const firstTapTarget = isMobile ? map.getCenter() : ev.latlng;
     try {
@@ -3348,6 +3361,10 @@ window.addEventListener('DOMContentLoaded', function () {
     } else {
       centerBtn.addEventListener('click', function (e) {
         e.stopPropagation();
+      // If center button is tapped before first zoom, disable first zoom tap and hide cursor
+      if (!hasCompletedFirstZoom) {
+        markFirstZoomComplete();
+      }
       // Do not interfere while drawing or editing
       if (isPathConfigOpen()) return;
       if ((typeof drawing !== 'undefined' && drawing) || window.__editing) return;
