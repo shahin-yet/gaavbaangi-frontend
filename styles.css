@@ -362,11 +362,11 @@ body.desktop-fullscreen-map {
   z-index: 1100;
 }
 
-/* Show center dot on any mobile UI (Telegram or browser) */
-.mobile-ui .map-center-dot { display: block; }
+/* Show center dot on any mobile UI (Telegram or browser) only while drawing */
+.mobile-ui.drawing-active .map-center-dot { display: block; }
 
 /* Highlight when center is near first vertex (Telegram drawing) */
-.mobile-ui .map-center-dot.near-first {
+.mobile-ui.drawing-active .map-center-dot.near-first {
   box-shadow: 0 0 0 12px rgba(30, 144, 255, 0.2);
   border-color: #1e90ff;
 }
@@ -517,6 +517,166 @@ body.desktop-fullscreen-map {
   color: var(--gray-600);
 }
 
+/* Live search dropdown */
+.live-search-dropdown {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--white);
+  border: 1px solid var(--gray-300);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+}
+
+.live-search-dropdown.active {
+  display: block;
+}
+
+.side-panel-search {
+  position: relative;
+}
+
+.live-search-section {
+  padding: 0;
+}
+
+.live-search-section-header {
+  padding: 8px 12px 6px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: var(--gray-50);
+  border-bottom: 1px solid var(--gray-200);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.live-search-section-header i {
+  font-size: 11px;
+  color: var(--gray-400);
+}
+
+.live-search-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.live-search-item:last-child {
+  border-bottom: none;
+}
+
+.live-search-item:hover,
+.live-search-item:focus {
+  background: var(--gray-50);
+  outline: none;
+}
+
+.live-search-item.highlighted {
+  background: var(--primary-bg);
+}
+
+.live-search-item-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.live-search-item-icon.refuge-icon {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+}
+
+.live-search-item-icon.location-icon {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+}
+
+.live-search-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.live-search-item-name {
+  font-size: var(--font-size-sm);
+  color: var(--gray-900);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.live-search-item-name .highlight {
+  background: #fef08a;
+  color: var(--gray-900);
+  font-weight: 600;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.live-search-item-meta {
+  font-size: var(--font-size-xs);
+  color: var(--gray-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.live-search-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  gap: 8px;
+  color: var(--gray-500);
+  font-size: var(--font-size-sm);
+}
+
+.live-search-loading .spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--gray-200);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.live-search-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--gray-500);
+  font-size: var(--font-size-sm);
+}
+
+.live-search-empty i {
+  display: block;
+  font-size: 24px;
+  margin-bottom: 8px;
+  color: var(--gray-300);
+}
+
 /* Refuge list below search */
 .refuge-list-wrapper {
   padding: 4px 12px 14px;
@@ -525,6 +685,8 @@ body.desktop-fullscreen-map {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1;
+  min-height: 0;
 }
 
 .refuge-list-header {
@@ -557,10 +719,10 @@ body.desktop-fullscreen-map {
 .refuge-scroll-indicator {
   display: none;
   color: var(--gray-500);
-  font-size: 12px;
+  font-size: 6px;
   line-height: 1;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .refuge-scroll-indicator i {
@@ -571,8 +733,8 @@ body.desktop-fullscreen-map {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 40vh;
-  min-height: 140px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -600,10 +762,6 @@ body.desktop-fullscreen-map {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 6px 6px;
-    border: 1px solid var(--gray-200);
-    border-radius: var(--radius-md);
-    background: var(--gray-50);
   }
 }
 
@@ -1322,3 +1480,69 @@ body.desktop-fullscreen-map {
 }
 
 /* drawing-active now only signals state; no visual or pointer blocking here */
+
+/* Landscape orientation on mobile: side-by-side layout for menu and search */
+@media (max-width: 768px) and (orientation: landscape) {
+  .side-panel {
+    width: min(90vw, 500px);
+  }
+  
+  .side-panel-header {
+    padding: 12px 16px;
+  }
+  
+  /* Create a horizontal layout container for menu and search */
+  .side-panel-content {
+    flex-direction: row;
+    padding: 8px 8px 8px 12px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  
+  /* Menu items take up width equivalent to "Administrative Map" text */
+  .menu-item {
+    width: auto;
+    flex: 0 0 auto;
+    padding: 8px 10px;
+    font-size: var(--font-size-sm);
+  }
+  
+  .menu-item i {
+    font-size: 14px;
+  }
+  
+  /* Search section moves to the side */
+  .side-panel-search {
+    order: -1; /* Move search to the left */
+    flex: 1;
+    min-width: 200px;
+    padding: 0;
+    background: transparent;
+    display: flex;
+    align-items: center;
+  }
+  
+  .side-panel-search-row {
+    width: 100%;
+  }
+  
+  .side-panel-search-row input {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  
+  .side-panel-search-row button {
+    width: 36px;
+    height: 32px;
+  }
+  
+  /* Live search dropdown in landscape */
+  .live-search-dropdown {
+    max-height: 200px;
+  }
+  
+  /* Adjust refuge list for landscape */
+  .refuge-list-wrapper {
+    padding: 8px 12px 12px;
+  }
+}
