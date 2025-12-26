@@ -422,28 +422,24 @@ window.addEventListener('DOMContentLoaded', function () {
           const wasChecked = isDefaultChecked; // Was this refuge already the default?
           
           if (wasChecked) {
-            // Already checked: toggle off - keep current map view in admin map
+            // Already checked: toggle off
             ev.preventDefault();
             defaultRefugeId = null;
-            if (isUserMapMode) {
-              setSelectedRefuge(null);
-              // Zoom back to country level (5x) while keeping menu open
-              try {
-                map.flyTo(map.getCenter(), COUNTRY_ZOOM, { duration: 0.5, easeLinearity: 0.4 });
-              } catch (err) {
-                map.setView(map.getCenter(), COUNTRY_ZOOM);
-              }
+            setSelectedRefuge(null);
+            // Zoom back to country level (5x) while keeping menu open
+            try {
+              map.flyTo(map.getCenter(), COUNTRY_ZOOM, { duration: 0.5, easeLinearity: 0.4 });
+            } catch (err) {
+              map.setView(map.getCenter(), COUNTRY_ZOOM);
             }
             // Re-render to update UI
             renderRefugeList(refuges, query);
           } else {
-            // Not checked: set as default; in admin map keep selection/view unchanged
+            // Not checked: set as default and select/focus (like user map behavior)
             if (refuge && refuge.id) {
               defaultRefugeId = refuge.id;
-              if (isUserMapMode) {
-                setSelectedRefuge(refuge);
-                focusRefuge(refuge);
-              }
+              setSelectedRefuge(refuge);
+              focusRefuge(refuge);
             }
             // Re-render to ensure default styling stays in sync
             renderRefugeList(refuges, query);
