@@ -926,25 +926,11 @@ body.desktop-fullscreen-map {
   box-shadow: 0 0 0 4px rgba(46, 125, 50, 0.16);
 }
 
-.refuge-list-item.is-default {
-  /* Keep default rows visually neutral in their unselected state */
+.refuge-list-item.is-default:not(.selected) {
+  /* Default rows: visually neutral unless the admin actively selects the row */
   box-shadow: none;
   border-color: var(--gray-200);
   background: var(--gray-50);
-}
-
-/* In admin map mode (NOT user-map-mode), show green styling for default refuges */
-body:not(.user-map-mode) .refuge-list-item.is-default {
-  border-color: var(--primary, #1b7f39);
-  background: #e6f4ea;
-  box-shadow: var(--shadow-sm);
-}
-
-/* Ensure default refuges selected in admin map also get green styling */
-body:not(.user-map-mode) .refuge-list-item.is-default.selected {
-  border-color: var(--primary, #1b7f39);
-  background: #e6f4ea;
-  box-shadow: var(--shadow-sm);
 }
 
 .sr-only {
