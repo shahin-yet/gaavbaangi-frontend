@@ -922,6 +922,13 @@ body.desktop-fullscreen-map {
   background: var(--gray-50);
 }
 
+/* In admin map mode (NOT user-map-mode), show green styling for default refuges */
+body:not(.user-map-mode) .refuge-list-item.is-default {
+  border-color: var(--primary, #1b7f39);
+  background: #e6f4ea;
+  box-shadow: var(--shadow-sm);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
