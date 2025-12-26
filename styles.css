@@ -1201,6 +1201,20 @@ body.desktop-fullscreen-map {
   margin: 0; /* remove side margins so content can be full width */
   padding: 8px 10px; /* keep inner padding instead */
 }
+
+/* Desktop hover-only refuge name popup (no edit controls) */
+.refuge-hover-popup .leaflet-popup-content-wrapper,
+.refuge-hover-popup .leaflet-popup-tip {
+  background: #0b2239;
+  color: #fff;
+}
+.refuge-hover-popup .leaflet-popup-content {
+  margin: 6px 8px;
+  font-weight: 600;
+}
+.refuge-hover-name {
+  white-space: nowrap;
+}
 .leaflet-popup-content-wrapper:has(.refuge-popup) {
   width: max-content; /* shrink to fit content */
   max-width: 90vw; /* safety on small screens */
