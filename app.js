@@ -353,8 +353,8 @@ window.addEventListener('DOMContentLoaded', function () {
       const safeName = escapeHtml(name);
       const nameHtml = safeRegex ? safeName.replace(safeRegex, '<span class="refuge-list-highlight">$1</span>') : safeName;
       const isDefaultChecked = defaultRefugeId && refuge && refuge.id && defaultRefugeId === refuge.id;
-      // Only show default styling when in admin map AND this refuge is selected there
-      const showDefaultHighlight = (!isUserMapMode) && selectedRefuge && selectedRefuge.id === refuge.id && isDefaultChecked;
+      // Keep default styling consistent regardless of which map is active
+      const showDefaultHighlight = !!isDefaultChecked;
       const defaultAttrs = [];
       if (isDefaultChecked) defaultAttrs.push('checked');
       if (showDefaultHighlight) {
@@ -422,25 +422,29 @@ window.addEventListener('DOMContentLoaded', function () {
           const wasChecked = isDefaultChecked; // Was this refuge already the default?
           
           if (wasChecked) {
-            // Already checked: toggle off - remove from selection and zoom back to 5x
+            // Already checked: toggle off - keep current map view in admin map
             ev.preventDefault();
             defaultRefugeId = null;
-            setSelectedRefuge(null);
-            // Zoom back to country level (5x) while keeping menu open
-            try {
-              map.flyTo(map.getCenter(), COUNTRY_ZOOM, { duration: 0.5, easeLinearity: 0.4 });
-            } catch (err) {
-              map.setView(map.getCenter(), COUNTRY_ZOOM);
+            if (isUserMapMode) {
+              setSelectedRefuge(null);
+              // Zoom back to country level (5x) while keeping menu open
+              try {
+                map.flyTo(map.getCenter(), COUNTRY_ZOOM, { duration: 0.5, easeLinearity: 0.4 });
+              } catch (err) {
+                map.setView(map.getCenter(), COUNTRY_ZOOM);
+              }
             }
             // Re-render to update UI
             renderRefugeList(refuges, query);
           } else {
-            // Not checked: set as default and focus
+            // Not checked: set as default; in admin map keep selection/view unchanged
             if (refuge && refuge.id) {
               defaultRefugeId = refuge.id;
-              setSelectedRefuge(refuge);
+              if (isUserMapMode) {
+                setSelectedRefuge(refuge);
+                focusRefuge(refuge);
+              }
             }
-            focusRefuge(refuge);
             // Re-render to ensure default styling stays in sync
             renderRefugeList(refuges, query);
           }
