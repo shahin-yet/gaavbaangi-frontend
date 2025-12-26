@@ -352,15 +352,12 @@ window.addEventListener('DOMContentLoaded', function () {
       const name = refuge && refuge.name ? refuge.name : 'Unnamed refuge';
       const safeName = escapeHtml(name);
       const nameHtml = safeRegex ? safeName.replace(safeRegex, '<span class="refuge-list-highlight">$1</span>') : safeName;
-      const allowDefaultSelection = isUserMapMode;
-      const isDefault = allowDefaultSelection && defaultRefugeId && refuge && refuge.id && defaultRefugeId === refuge.id;
+      const isDefaultChecked = defaultRefugeId && refuge && refuge.id && defaultRefugeId === refuge.id;
+      // Only show default styling when in admin map AND this refuge is selected there
+      const showDefaultHighlight = (!isUserMapMode) && selectedRefuge && selectedRefuge.id === refuge.id && isDefaultChecked;
       const defaultAttrs = [];
-      if (allowDefaultSelection) {
-        if (isDefault) defaultAttrs.push('checked');
-      } else {
-        defaultAttrs.push('disabled');
-      }
-      if (isDefault) {
+      if (isDefaultChecked) defaultAttrs.push('checked');
+      if (showDefaultHighlight) {
         item.classList.add('is-default');
       }
 
@@ -422,12 +419,7 @@ window.addEventListener('DOMContentLoaded', function () {
         // Handle click/keydown to toggle default refuge off when already checked
         const handleRadioActivation = (ev) => {
           ev.stopPropagation();
-          // Default selection is only available in user map mode
-          if (!isUserMapMode) {
-            ev.preventDefault();
-            return;
-          }
-          const wasChecked = isDefault; // Was this refuge already the default?
+          const wasChecked = isDefaultChecked; // Was this refuge already the default?
           
           if (wasChecked) {
             // Already checked: toggle off - remove from selection and zoom back to 5x
@@ -3376,13 +3368,6 @@ window.addEventListener('DOMContentLoaded', function () {
     'admin-map': () => {
       isUserMapMode = false;
       stopUserPopupWatch();
-      // Clear map selection in admin mode so user-map-only default selection is not shown
-      setSelectedRefuge(null);
-      // Disable and clear default ticks visually without re-rendering
-      document.querySelectorAll('input[name="refuge-default"]').forEach(input => {
-        input.disabled = true;
-        input.checked = false;
-      });
       document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
       const item = document.querySelector('.menu-item[data-action="admin-map"]');
       if (item) item.classList.add('active');
@@ -3393,19 +3378,6 @@ window.addEventListener('DOMContentLoaded', function () {
     'user-map': () => {
       isUserMapMode = true;
       seenUserPopups = new Set();
-      // Restore default ticks and selection tied to the default refuge only
-      document.querySelectorAll('input[name="refuge-default"]').forEach(input => {
-        input.disabled = false;
-        const rid = input.closest('.refuge-list-item')?.getAttribute('data-refuge-id');
-        input.checked = rid && defaultRefugeId && String(defaultRefugeId) === String(rid);
-      });
-      if (defaultRefugeId && Array.isArray(refugesCache)) {
-        const def = refugesCache.find(r => r && r.id === defaultRefugeId);
-        if (def) setSelectedRefuge(def);
-        else setSelectedRefuge(null);
-      } else {
-        setSelectedRefuge(null);
-      }
       document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
       const item = document.querySelector('.menu-item[data-action="user-map"]');
       if (item) item.classList.add('active');
