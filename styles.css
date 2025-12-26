@@ -622,11 +622,24 @@ body.desktop-fullscreen-map {
   text-align: left;
 }
 
-.refuge-list-item:hover {
-  background: #e6f4ea;
-  border-color: var(--primary-light);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
+/* Hover styles should only apply on devices that actually support hover.
+   On touch devices, :hover can "stick" after tap and look like a selection. */
+@media (hover: hover) and (pointer: fine) {
+  .refuge-list-item:hover {
+    background: #e6f4ea;
+    border-color: var(--primary-light);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
+}
+
+/* Touch feedback (transient) */
+@media (hover: none) and (pointer: coarse) {
+  .refuge-list-item:active {
+    background: #e6f4ea;
+    border-color: var(--primary-light);
+    box-shadow: var(--shadow-sm);
+  }
 }
 .refuge-list-item.selected {
   border-color: var(--primary, #1b7f39);
@@ -671,10 +684,12 @@ body.desktop-fullscreen-map {
   transition: background var(--transition-normal), border-color var(--transition-normal), color var(--transition-normal);
 }
 
-.refuge-membership-btn:hover {
-  background: var(--gray-100);
-  border-color: var(--primary-light);
-  color: var(--primary-dark);
+@media (hover: hover) and (pointer: fine) {
+  .refuge-membership-btn:hover {
+    background: var(--gray-100);
+    border-color: var(--primary-light);
+    color: var(--primary-dark);
+  }
 }
 
 .refuge-default {
