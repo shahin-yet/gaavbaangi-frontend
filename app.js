@@ -483,7 +483,7 @@ window.addEventListener('DOMContentLoaded', function () {
           </span>
           <span class="sr-only">Default refuge</span>
         `
-            : ''
+            : '<span class="refuge-default-placeholder" aria-hidden="true"></span>'
         );
 
       item.innerHTML = `
