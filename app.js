@@ -1974,15 +1974,22 @@ window.addEventListener('DOMContentLoaded', function () {
                   const clickLatLng = e && e.latlng ? e.latlng : undefined;
                   const alreadySelected = selectedRefuge && selectedRefuge.id === polygon._refuge.id;
 
+                  // Phone-specific behavior: double-tap to select like list, single tap for popup
                   if (isMobile) {
+                    // Double-tap detected: select/deselect refuge exactly like list interaction
                     if (sinceLast < REFUGE_DOUBLE_CLICK_MS) {
-                      // Double tap selects/deselects exactly like list interaction
                       selectRefugeLikeList(polygon._refuge);
                       closeMobileRefugeNamePopup();
                       try { map.closePopup(); } catch (err) {}
+                      // Prevent any further event handling
+                      if (e && e.originalEvent) {
+                        try { e.originalEvent.preventDefault(); } catch (err) {}
+                        try { e.originalEvent.stopPropagation(); } catch (err) {}
+                      }
                       return;
                     }
 
+                    // Single tap: show popup after delay (to allow double-tap detection)
                     refugeClickTimer = setTimeout(() => {
                       refugeClickTimer = null;
                       if (!hasCompletedFirstZoom) return;
