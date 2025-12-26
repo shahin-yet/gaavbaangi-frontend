@@ -129,29 +129,8 @@ window.addEventListener('DOMContentLoaded', function () {
 
   // Map click handler for deselecting refuge when clicking outside any refuge
   map.on('click', (ev) => {
-    // Default background tap behavior applies only to user map mode
-    if (!isUserMapMode) return;
-    // Wait for first zoom to complete before enabling deselect behavior
-    if (!hasCompletedFirstZoom) return;
-    // Skip if a refuge was just clicked (flag set by polygon click handler)
-    if (refugeClickedFlag) {
-      refugeClickedFlag = false;
-      return;
-    }
-    // Skip during drawing, editing, or path config modes
-    if ((typeof drawing !== 'undefined' && drawing) || window.__editing || isPathConfigOpen()) return;
-    // Always clear any transient name popups on background taps
-    closeMobileRefugeNamePopup();
-    // Check if there's a selected refuge to clear
-    if (selectedRefuge) {
-      setSelectedRefuge(null);
-      // Zoom back to country level (5x)
-      try {
-        map.flyTo(map.getCenter(), COUNTRY_ZOOM, { duration: 0.5, easeLinearity: 0.4 });
-      } catch (err) {
-        map.setView(map.getCenter(), COUNTRY_ZOOM);
-      }
-    }
+    // Background clicks should no longer clear selection in user map mode
+    return;
   });
 
   // Load saved paths initially
@@ -304,6 +283,8 @@ window.addEventListener('DOMContentLoaded', function () {
 
   // Shared selection logic so map taps mirror list-row selection on mobile
   function selectRefugeLikeList(refuge) {
+    // In user map mode, list rows should not trigger selection; only the default tick controls selection
+    if (isUserMapMode) return;
     if (!refuge || refuge.id == null) return;
     const isAlreadySelected = selectedRefuge && selectedRefuge.id != null && selectedRefuge.id === refuge.id;
     if (isAlreadySelected) {
@@ -335,7 +316,13 @@ window.addEventListener('DOMContentLoaded', function () {
       ? new RegExp(`(${searchTerm.replace(/[-/\\^$*+?.()|[\\]{}]/g, '\\$&')})`, 'ig')
       : null;
 
-    const sorted = [...refuges].sort((a, b) => normalizeRefugeName(a.name).localeCompare(normalizeRefugeName(b.name)));
+    const sorted = [...refuges].sort((a, b) => {
+      const aDefault = defaultRefugeId && a && a.id && defaultRefugeId === a.id;
+      const bDefault = defaultRefugeId && b && b.id && defaultRefugeId === b.id;
+      if (aDefault && !bDefault) return -1;
+      if (bDefault && !aDefault) return 1;
+      return normalizeRefugeName(a.name).localeCompare(normalizeRefugeName(b.name));
+    });
     sorted.forEach((refuge) => {
       const item = document.createElement('div');
       item.className = 'refuge-list-item';
@@ -344,7 +331,14 @@ window.addEventListener('DOMContentLoaded', function () {
       const name = refuge && refuge.name ? refuge.name : 'Unnamed refuge';
       const safeName = escapeHtml(name);
       const nameHtml = safeRegex ? safeName.replace(safeRegex, '<span class="refuge-list-highlight">$1</span>') : safeName;
-      const isDefault = defaultRefugeId && refuge && refuge.id && defaultRefugeId === refuge.id;
+      const allowDefaultSelection = isUserMapMode;
+      const isDefault = allowDefaultSelection && defaultRefugeId && refuge && refuge.id && defaultRefugeId === refuge.id;
+      const defaultAttrs = [];
+      if (allowDefaultSelection) {
+        if (isDefault) defaultAttrs.push('checked');
+      } else {
+        defaultAttrs.push('disabled');
+      }
       if (isDefault) {
         item.classList.add('is-default');
       }
@@ -354,7 +348,7 @@ window.addEventListener('DOMContentLoaded', function () {
         <div class="refuge-list-meta">
           <button type="button" class="refuge-membership-btn">membership</button>
           <label class="refuge-default">
-            <input type="radio" name="refuge-default" ${isDefault ? 'checked' : ''} aria-label="Set as default refuge" />
+            <input type="radio" name="refuge-default" ${defaultAttrs.join(' ')} aria-label="Set as default refuge" />
             <span class="refuge-default-indicator" aria-hidden="true"></span>
             <span class="sr-only">Set as default refuge</span>
           </label>
@@ -407,6 +401,11 @@ window.addEventListener('DOMContentLoaded', function () {
         // Handle click/keydown to toggle default refuge off when already checked
         const handleRadioActivation = (ev) => {
           ev.stopPropagation();
+          // Default selection is only available in user map mode
+          if (!isUserMapMode) {
+            ev.preventDefault();
+            return;
+          }
           const wasChecked = isDefault; // Was this refuge already the default?
           
           if (wasChecked) {
@@ -461,15 +460,26 @@ window.addEventListener('DOMContentLoaded', function () {
   }
 
   function setSelectedRefuge(refuge) {
+    const prevDefaultId = defaultRefugeId;
     if (refuge && typeof refuge === 'object' && refuge.id != null) {
       selectedRefuge = refuge;
+      // In user map mode, any selection should also set the default tick
+      if (isUserMapMode) {
+        defaultRefugeId = refuge.id;
+      }
     } else {
       selectedRefuge = null;
     }
     if (isMobile) {
       closeMobileRefugeNamePopup();
     }
-    syncSelectedRefugeUi();
+    const defaultChanged = defaultRefugeId !== prevDefaultId;
+    if (isUserMapMode && defaultChanged) {
+      // Re-render to ensure radio state matches map selection
+      applyRefugeSearchFilter();
+    } else {
+      syncSelectedRefugeUi();
+    }
     updateMobileRefugeVisibility();
     updateMapZoomLimits();
   }
@@ -481,6 +491,7 @@ window.addEventListener('DOMContentLoaded', function () {
       // Reset to no minimum zoom if not in user map mode
       try {
         map.setMinZoom(0);
+        map.setMaxBounds(null);
       } catch (e) {}
       return;
     }
@@ -494,6 +505,8 @@ window.addEventListener('DOMContentLoaded', function () {
           const boundsFitZoom = map.getBoundsZoom(bounds, false, [24, 24]);
           // Set this as the minimum zoom - users can't zoom out further than this
           map.setMinZoom(boundsFitZoom);
+          // Restrict panning/zooming outside the selected refuge envelope (slight pad for UX)
+          map.setMaxBounds(bounds.pad(0.05));
         } catch (e) {
           console.error('Error setting map zoom limits:', e);
         }
@@ -502,6 +515,7 @@ window.addEventListener('DOMContentLoaded', function () {
       // No refuge selected - reset to no minimum zoom
       try {
         map.setMinZoom(0);
+        map.setMaxBounds(null);
       } catch (e) {}
     }
   }
@@ -2011,13 +2025,11 @@ window.addEventListener('DOMContentLoaded', function () {
 
                   // Phone-specific behavior: double-tap to select like list, single tap for popup
                   if (isMobile) {
-                    // Double-tap detected: select/deselect refuge exactly like list interaction
+                    // Double-tap detected: treat as selection on map (also sets default in user map)
                     if (sinceLast > 0 && sinceLast < REFUGE_DOUBLE_CLICK_MS) {
                       console.log('Mobile double-tap detected on refuge:', polygon._refuge.name, 'sinceLast:', sinceLast);
                       refugeLastClickAt = 0; // Reset to prevent triple-tap issues
-                      if (!isUserMapMode) {
-                        selectRefugeLikeList(polygon._refuge);
-                      }
+                      focusRefuge(polygon._refuge);
                       closeMobileRefugeNamePopup();
                       try { map.closePopup(); } catch (err) {}
                       // Prevent any further event handling
@@ -2046,9 +2058,11 @@ window.addEventListener('DOMContentLoaded', function () {
                       }
 
                       if (selectedRefuge && selectedRefuge.id === polygon._refuge.id) {
-                        // Selected refuge: open full popup (with edit) on single tap
-                        closeMobileRefugeNamePopup();
-                        try { polygon.openPopup(clickLatLng); } catch (err) {}
+                        // Selected refuge: open full popup (with edit) on single tap (admin map only)
+                        if (!isUserMapMode) {
+                          closeMobileRefugeNamePopup();
+                          try { polygon.openPopup(clickLatLng); } catch (err) {}
+                        }
                         return;
                       }
 
@@ -2084,7 +2098,9 @@ window.addEventListener('DOMContentLoaded', function () {
                       }
                     }
 
-                    try { polygon.openPopup(clickLatLng); } catch (err) {}
+                    if (!isUserMapMode) {
+                      try { polygon.openPopup(clickLatLng); } catch (err) {}
+                    }
                   }, REFUGE_DOUBLE_CLICK_MS + 20);
                 };
 
@@ -2162,6 +2178,16 @@ window.addEventListener('DOMContentLoaded', function () {
                   }
                   // Close popup immediately if path config, editing mode, or drawing mode is active
                   if (isPathConfigOpen() || window.__editing || drawing) {
+                    polygon.closePopup();
+                    return;
+                  }
+                  // Hide edit popup entirely in user map mode
+                  if (isUserMapMode) {
+                    polygon.closePopup();
+                    return;
+                  }
+                  // Hide edit popup entirely in user map mode
+                  if (isUserMapMode) {
                     polygon.closePopup();
                     return;
                   }
@@ -3334,6 +3360,7 @@ window.addEventListener('DOMContentLoaded', function () {
       const item = document.querySelector('.menu-item[data-action="admin-map"]');
       if (item) item.classList.add('active');
       renderSavedPaths(savedPaths);
+      applyRefugeSearchFilter();
       updateMapZoomLimits();
       closeSidePanel();
     },
@@ -3345,6 +3372,7 @@ window.addEventListener('DOMContentLoaded', function () {
       if (item) item.classList.add('active');
       renderSavedPaths(savedPaths);
       startUserPopupWatch();
+      applyRefugeSearchFilter();
       updateMapZoomLimits();
       closeSidePanel();
     }
