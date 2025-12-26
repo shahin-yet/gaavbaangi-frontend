@@ -365,6 +365,9 @@ body.desktop-fullscreen-map {
 /* Show center dot on any mobile UI (Telegram or browser) only while drawing */
 .mobile-ui.drawing-active .map-center-dot { display: block; }
 
+/* Show center dot on mobile before first zoom is completed */
+.mobile-ui.before-first-zoom .map-center-dot { display: block; }
+
 /* Highlight when center is near first vertex (Telegram drawing) */
 .mobile-ui.drawing-active .map-center-dot.near-first {
   box-shadow: 0 0 0 12px rgba(30, 144, 255, 0.2);
@@ -840,6 +843,8 @@ body.desktop-fullscreen-map {
   text-transform: capitalize;
   cursor: pointer;
   transition: background var(--transition-normal), border-color var(--transition-normal), color var(--transition-normal);
+  display: inline-block !important;
+  visibility: visible !important;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -911,17 +916,10 @@ body.desktop-fullscreen-map {
 }
 
 .refuge-list-item.is-default {
-  /* Keep default rows visually neutral; selection color only from explicit selection */
+  /* Keep default rows visually neutral in their unselected state */
   box-shadow: none;
   border-color: var(--gray-200);
   background: var(--gray-50);
-}
-
-.refuge-list-item.is-default.selected {
-  /* Default set via tick should not get green selection border */
-  border-color: var(--gray-200);
-  background: var(--gray-50);
-  box-shadow: none;
 }
 
 .sr-only {
@@ -1593,24 +1591,25 @@ body.user-map-mode .menu-item[data-action="admin-map"].active i {
 /* Disable hover and touch reactions on refuge list items in user map mode */
 @media (hover: hover) and (pointer: fine) {
   body.user-map-mode .refuge-list-item:hover {
-    background: var(--gray-50);
-    border-color: var(--gray-200);
-    transform: none;
-    box-shadow: none;
+    background: var(--gray-50) !important;
+    border-color: var(--gray-200) !important;
+    transform: none !important;
+    box-shadow: none !important;
   }
 }
 
 @media (hover: none) and (pointer: coarse) {
   body.user-map-mode .refuge-list-item:active {
-    background: var(--gray-50);
-    border-color: var(--gray-200);
-    box-shadow: none;
+    background: var(--gray-50) !important;
+    border-color: var(--gray-200) !important;
+    box-shadow: none !important;
   }
 }
 
 /* In user map mode, don't show green selection styling for refuge items */
-body.user-map-mode .refuge-list-item.selected {
-  border-color: var(--gray-200);
-  background: var(--gray-50);
-  box-shadow: none;
+body.user-map-mode .refuge-list-item.selected,
+body.user-map-mode .refuge-list-item.is-default.selected {
+  border-color: var(--gray-200) !important;
+  background: var(--gray-50) !important;
+  box-shadow: none !important;
 }
