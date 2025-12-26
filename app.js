@@ -154,6 +154,17 @@ window.addEventListener('DOMContentLoaded', function () {
     }
   });
 
+  // Save map view state (center and zoom) when user moves or zooms the map
+  map.on('moveend', () => {
+    try {
+      const currentState = isUserMapMode ? userMapState : adminMapState;
+      currentState.mapCenter = map.getCenter();
+      currentState.mapZoom = map.getZoom();
+    } catch (e) {
+      // Ignore errors
+    }
+  });
+
   // Load saved paths initially
   loadSavedPaths();
   if (isMobile) {
@@ -179,6 +190,20 @@ window.addEventListener('DOMContentLoaded', function () {
   let mobileRefugeNamePopup = null;
   // Track temporarily hidden refuge polygons on mobile when a single refuge is selected
   let mobileHiddenRefugeLayers = [];
+  
+  // Map state preservation for each map mode
+  let adminMapState = {
+    selectedRefugeId: null,
+    searchQuery: '',
+    mapCenter: null,
+    mapZoom: null
+  };
+  let userMapState = {
+    selectedRefugeId: null,
+    searchQuery: '',
+    mapCenter: null,
+    mapZoom: null
+  };
 
   function closeMobileRefugeNamePopup() {
     if (mobileRefugeNamePopup) {
@@ -500,15 +525,19 @@ window.addEventListener('DOMContentLoaded', function () {
       if (isUserMapMode) {
         defaultRefugeId = refuge.id;
         userSelectedRefugeId = refuge.id;
+        userMapState.selectedRefugeId = refuge.id;
       } else {
         adminSelectedRefugeId = refuge.id;
+        adminMapState.selectedRefugeId = refuge.id;
       }
     } else {
       selectedRefuge = null;
       if (isUserMapMode) {
         userSelectedRefugeId = null;
+        userMapState.selectedRefugeId = null;
       } else {
         adminSelectedRefugeId = null;
+        adminMapState.selectedRefugeId = null;
       }
     }
     if (isMobile) {
@@ -524,15 +553,61 @@ window.addEventListener('DOMContentLoaded', function () {
     updateMapZoomLimits();
   }
 
-  // Restore the selection that belongs to the current map mode (admin/user)
-  function restoreSelectionForCurrentMode() {
-    const targetId = isUserMapMode ? userSelectedRefugeId : adminSelectedRefugeId;
-    if (!targetId) {
-      setSelectedRefuge(null);
-      return;
+  // Save current map state before switching modes
+  function saveCurrentMapState() {
+    const currentState = isUserMapMode ? userMapState : adminMapState;
+    
+    // Save selected refuge
+    if (selectedRefuge && selectedRefuge.id != null) {
+      currentState.selectedRefugeId = selectedRefuge.id;
+    } else {
+      currentState.selectedRefugeId = null;
     }
-    const refuge = refugesCache.find((r) => r && r.id === targetId);
-    setSelectedRefuge(refuge || null);
+    
+    // Save search query
+    if (refugeSearchInput && refugeSearchInput.value) {
+      currentState.searchQuery = refugeSearchInput.value.trim();
+    } else {
+      currentState.searchQuery = '';
+    }
+    
+    // Save map view (center and zoom)
+    try {
+      currentState.mapCenter = map.getCenter();
+      currentState.mapZoom = map.getZoom();
+    } catch (e) {
+      // Ignore errors
+    }
+  }
+  
+  // Restore the selection and state that belongs to the current map mode (admin/user)
+  function restoreSelectionForCurrentMode() {
+    const currentState = isUserMapMode ? userMapState : adminMapState;
+    
+    // Restore selected refuge
+    const targetId = currentState.selectedRefugeId;
+    if (targetId) {
+      const refuge = refugesCache.find((r) => r && r.id === targetId);
+      setSelectedRefuge(refuge || null);
+    } else {
+      setSelectedRefuge(null);
+    }
+    
+    // Restore search query
+    if (refugeSearchInput) {
+      refugeSearchInput.value = currentState.searchQuery || '';
+    }
+    
+    // Restore map view (with a slight delay to ensure rendering is complete)
+    if (currentState.mapCenter && currentState.mapZoom != null) {
+      setTimeout(() => {
+        try {
+          map.setView(currentState.mapCenter, currentState.mapZoom, { animate: false });
+        } catch (e) {
+          // Ignore errors
+        }
+      }, 100);
+    }
   }
 
   // Set minimum zoom limit based on selected refuge bounds in user map mode
@@ -3405,38 +3480,44 @@ window.addEventListener('DOMContentLoaded', function () {
       // Keep menu open when switching views
     },
     'admin-map': () => {
-      // Preserve any active user-map selection before switching away
-      if (isUserMapMode && selectedRefuge && selectedRefuge.id != null) {
-        userSelectedRefugeId = selectedRefuge.id;
-      }
+      // Save current map state before switching
+      saveCurrentMapState();
+      
+      // Switch to admin map mode
       isUserMapMode = false;
       stopUserPopupWatch();
       document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
       const item = document.querySelector('.menu-item[data-action="admin-map"]');
       if (item) item.classList.add('active');
-      renderSavedPaths(savedPaths);
-      applyRefugeSearchFilter(); // Re-render list with admin static default tick
+      
+      // Restore admin map state
       restoreSelectionForCurrentMode();
+      applyRefugeSearchFilter(); // Re-render list with admin static default tick
+      renderSavedPaths(savedPaths);
       updateMapZoomLimits();
+      
       // Remove user-map-mode class from body
       document.body.classList.remove('user-map-mode');
       // Keep menu open when switching views
     },
     'user-map': () => {
-      // Preserve any active admin-map selection before switching away
-      if (!isUserMapMode && selectedRefuge && selectedRefuge.id != null) {
-        adminSelectedRefugeId = selectedRefuge.id;
-      }
+      // Save current map state before switching
+      saveCurrentMapState();
+      
+      // Switch to user map mode
       isUserMapMode = true;
       seenUserPopups = new Set();
       document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
       const item = document.querySelector('.menu-item[data-action="user-map"]');
       if (item) item.classList.add('active');
+      
+      // Restore user map state
+      restoreSelectionForCurrentMode();
+      applyRefugeSearchFilter(); // Re-render list with user-map radio controls
       renderSavedPaths(savedPaths);
       startUserPopupWatch();
-      applyRefugeSearchFilter(); // Re-render list with user-map radio controls
-      restoreSelectionForCurrentMode();
       updateMapZoomLimits();
+      
       // Add user-map-mode class to body for CSS targeting
       document.body.classList.add('user-map-mode');
       // Keep menu open when switching views
@@ -3802,6 +3883,12 @@ window.addEventListener('DOMContentLoaded', function () {
 
     input.addEventListener('input', () => {
       const query = (input.value || '').trim();
+      // Save search query to current map state
+      if (isUserMapMode) {
+        userMapState.searchQuery = query;
+      } else {
+        adminMapState.searchQuery = query;
+      }
       applyRefugeSearchFilter();
       doLiveSearch(query);
     });
