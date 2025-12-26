@@ -78,12 +78,26 @@ window.addEventListener('DOMContentLoaded', function () {
     zoomDelta: 0.5
   });
   let hasCompletedFirstZoom = false;
+  let firstTapZoomDisabled = false;
+  let firstTapZoomHandler = null;
+  const detachFirstTapZoom = () => {
+    if (firstTapZoomHandler) {
+      try { map.off('click', firstTapZoomHandler); } catch (e) {}
+      firstTapZoomHandler = null;
+    }
+  };
   const markFirstZoomComplete = () => {
     if (hasCompletedFirstZoom) return;
     hasCompletedFirstZoom = true;
+    detachFirstTapZoom();
     // Remove the initial state class to hide cursor after first zoom
     document.body.classList.remove('before-first-zoom');
     try { setRefugePolygonsInteractive(true); } catch (e) {}
+  };
+  const disableFirstTapZoom = () => {
+    if (firstTapZoomDisabled) return;
+    firstTapZoomDisabled = true;
+    markFirstZoomComplete();
   };
   // Guard: block all UI (except menu + map pan/zoom) until the first zoom-in tap.
   const shouldBlockInitialUi = () => !hasCompletedFirstZoom;
@@ -97,6 +111,8 @@ window.addEventListener('DOMContentLoaded', function () {
     if (target.closest('#side-panel')) return true;
     if (target.closest('#side-close')) return true;
     if (target.closest('#menu-overlay')) return true;
+    // Allow center button so users can skip first-tap zoom via recentering
+    if (target.closest('#btn-center')) return true;
     return false;
   };
   const initialGuardInterceptor = (ev) => {
@@ -121,29 +137,33 @@ window.addEventListener('DOMContentLoaded', function () {
   if (isMobile) {
     map.on('zoomend', () => {
       if (!hasCompletedFirstZoom && map.getZoom() > COUNTRY_ZOOM) {
+        firstTapZoomDisabled = true;
         markFirstZoomComplete();
       }
     });
   }
 
-  // Disabled first tap zoom function
-  // map.once('click', (ev) => {
-  //   // If user has already zoomed beyond COUNTRY_ZOOM via drag/pinch, skip the first zoom animation
-  //   if (hasCompletedFirstZoom) {
-  //     return;
-  //   }
-  //   const firstTapTarget = isMobile ? map.getCenter() : ev.latlng;
-  //   try {
-  //     map.flyTo(firstTapTarget, COUNTRY_ZOOM, { duration: 0.7, easeLinearity: 0.4 });
-  //   } catch (err) {
-  //     map.setView(firstTapTarget, COUNTRY_ZOOM);
-  //   }
-  //   // Release initial interaction guard after the first zoom attempt
-  //   markFirstZoomComplete();
-  // });
-  
-  // Mark first zoom as complete immediately since we disabled the first tap zoom
-  markFirstZoomComplete();
+  // First tap zoom-in: zoom to country level, then release the initial guard
+  firstTapZoomHandler = (ev) => {
+    if (hasCompletedFirstZoom) {
+      detachFirstTapZoom();
+      return;
+    }
+    if (isMobile && firstTapZoomDisabled) {
+      detachFirstTapZoom();
+      return;
+    }
+    const firstTapTarget = isMobile ? map.getCenter() : ev.latlng;
+    try {
+      map.flyTo(firstTapTarget, COUNTRY_ZOOM, { duration: 0.7, easeLinearity: 0.4 });
+    } catch (err) {
+      map.setView(firstTapTarget, COUNTRY_ZOOM);
+    }
+    // Release initial interaction guard after the first zoom attempt
+    markFirstZoomComplete();
+    detachFirstTapZoom();
+  };
+  map.on('click', firstTapZoomHandler);
 
   // Track if a refuge polygon was clicked to distinguish from map background clicks
   let refugeClickedFlag = false;
@@ -3400,37 +3420,40 @@ window.addEventListener('DOMContentLoaded', function () {
     } else {
       centerBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-      // Center button is now always available (no longer blocked before first zoom)
-      // Do not interfere while drawing or editing
-      if (isPathConfigOpen()) return;
-      if ((typeof drawing !== 'undefined' && drawing) || window.__editing) return;
-      if (!navigator.geolocation) {
-        console.warn('Geolocation not available');
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          try {
-            if (!pos || !pos.coords) return;
-            const lat = typeof pos.coords.latitude === 'number' ? pos.coords.latitude : null;
-            const lng = typeof pos.coords.longitude === 'number' ? pos.coords.longitude : null;
-            if (lat == null || lng == null) return;
-            const target = L.latLng(lat, lng);
-            // For phone versions, just move the map under the center cursor — no style changes
-            map.setView(target, map.getZoom() || COUNTRY_ZOOM);
-          } catch (err) {
-            console.warn('Failed to center on GPS position', err);
-          }
-        },
-        (err) => {
-          console.warn('Geolocation error', err);
-        },
-        {
-          enableHighAccuracy: true,
-          maximumAge: 30000,
-          timeout: 10000
+        if (!hasCompletedFirstZoom) {
+          disableFirstTapZoom();
         }
-      );
+        // Center button is now always available (no longer blocked before first zoom)
+        // Do not interfere while drawing or editing
+        if (isPathConfigOpen()) return;
+        if ((typeof drawing !== 'undefined' && drawing) || window.__editing) return;
+        if (!navigator.geolocation) {
+          console.warn('Geolocation not available');
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            try {
+              if (!pos || !pos.coords) return;
+              const lat = typeof pos.coords.latitude === 'number' ? pos.coords.latitude : null;
+              const lng = typeof pos.coords.longitude === 'number' ? pos.coords.longitude : null;
+              if (lat == null || lng == null) return;
+              const target = L.latLng(lat, lng);
+              // For phone versions, just move the map under the center cursor — no style changes
+              map.setView(target, map.getZoom() || COUNTRY_ZOOM);
+            } catch (err) {
+              console.warn('Failed to center on GPS position', err);
+            }
+          },
+          (err) => {
+            console.warn('Geolocation error', err);
+          },
+          {
+            enableHighAccuracy: true,
+            maximumAge: 30000,
+            timeout: 10000
+          }
+        );
       });
     }
   }
