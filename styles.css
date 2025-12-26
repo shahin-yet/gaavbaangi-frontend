@@ -831,6 +831,7 @@ body.desktop-fullscreen-map {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .refuge-membership-btn {
@@ -861,6 +862,8 @@ body.desktop-fullscreen-map {
   justify-content: center;
   cursor: pointer;
   position: relative;
+  width: 24px;
+  flex-shrink: 0;
 }
 
 .refuge-default input {
@@ -884,6 +887,14 @@ body.desktop-fullscreen-map {
 .refuge-default-static {
   cursor: default;
   pointer-events: none;
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.refuge-default-placeholder {
+  display: inline-block;
+  width: 24px;
+  flex-shrink: 0;
 }
 
 .refuge-default-indicator.static-yes {
@@ -924,6 +935,13 @@ body.desktop-fullscreen-map {
 
 /* In admin map mode (NOT user-map-mode), show green styling for default refuges */
 body:not(.user-map-mode) .refuge-list-item.is-default {
+  border-color: var(--primary, #1b7f39);
+  background: #e6f4ea;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Ensure default refuges selected in admin map also get green styling */
+body:not(.user-map-mode) .refuge-list-item.is-default.selected {
   border-color: var(--primary, #1b7f39);
   background: #e6f4ea;
   box-shadow: var(--shadow-sm);
