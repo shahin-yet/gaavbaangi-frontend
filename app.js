@@ -123,6 +123,33 @@ window.addEventListener('DOMContentLoaded', function () {
     // Release initial interaction guard after the first zoom attempt
     markFirstZoomComplete();
   });
+
+  // Track if a refuge polygon was clicked to distinguish from map background clicks
+  let refugeClickedFlag = false;
+
+  // Map click handler for deselecting refuge when clicking outside any refuge
+  map.on('click', (ev) => {
+    // Wait for first zoom to complete before enabling deselect behavior
+    if (!hasCompletedFirstZoom) return;
+    // Skip if a refuge was just clicked (flag set by polygon click handler)
+    if (refugeClickedFlag) {
+      refugeClickedFlag = false;
+      return;
+    }
+    // Skip during drawing, editing, or path config modes
+    if ((typeof drawing !== 'undefined' && drawing) || window.__editing || isPathConfigOpen()) return;
+    // Check if there's a selected refuge to clear
+    if (selectedRefuge) {
+      setSelectedRefuge(null);
+      // Zoom back to country level (5x)
+      try {
+        map.flyTo(map.getCenter(), COUNTRY_ZOOM, { duration: 0.5, easeLinearity: 0.4 });
+      } catch (err) {
+        map.setView(map.getCenter(), COUNTRY_ZOOM);
+      }
+    }
+  });
+
   // Load saved paths initially
   loadSavedPaths();
   if (isMobile) {
@@ -1776,6 +1803,9 @@ window.addEventListener('DOMContentLoaded', function () {
                     return;
                   }
 
+                  // Mark that a refuge was clicked to prevent map click from clearing selection
+                  refugeClickedFlag = true;
+
                   // Block popups from opening while in edit mode or drawing mode
                   if (isPathConfigOpen() || window.__editing || drawing) {
                     try { polygon.closePopup(); } catch (err) {}
@@ -1788,8 +1818,6 @@ window.addEventListener('DOMContentLoaded', function () {
                     // In drawing mode, let the click propagate to the map for vertex addition
                     return;
                   }
-
-                  if (isDesktop) closeHoverNamePopup();
 
                   const now = Date.now();
                   const sinceLast = now - refugeLastClickAt;
@@ -1831,13 +1859,6 @@ window.addEventListener('DOMContentLoaded', function () {
                 // Replace Leaflet's default click-to-open handler so we can apply timing
                 polygon.off('click');
                 polygon.on('click', handleRefugeClick);
-
-                if (isDesktop) {
-                  polygon.on('mouseover', openHoverNamePopup);
-                  polygon.on('mouseout', closeHoverNamePopup);
-                  polygon.on('popupopen', closeHoverNamePopup);
-                  polygon.on('remove', closeHoverNamePopup);
-                }
 
                 polygon.on('popupopen', () => {
                   // Block refuge popups until the initial zoom completes
