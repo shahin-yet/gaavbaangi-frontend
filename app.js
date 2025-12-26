@@ -19,6 +19,7 @@ window.addEventListener('DOMContentLoaded', function () {
   const isTouchCapable = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
   const isMobileUA = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent || '');
   const isMobile = isTelegramMobile || isCoarsePointer || isTouchCapable || isMobileUA;
+  const isDesktop = !isMobile;
   
   // Dynamic app height to avoid 100vh issues on mobile browsers
   function updateAppHeight() {
@@ -1714,6 +1715,33 @@ window.addEventListener('DOMContentLoaded', function () {
               const drawPolygon = (polyCoords) => {
                 const latlngs = (polyCoords || []).map(ring => ring.map(([lng, lat]) => [lat, lng]));
                 if (!latlngs.length) return;
+                const hoverAnchorLatLng = (latlngs && latlngs[0] && latlngs[0][0]) ? L.latLng(latlngs[0][0]) : null;
+                let hoverNamePopup = null;
+                const closeHoverNamePopup = () => {
+                  if (hoverNamePopup) {
+                    try { map.removeLayer(hoverNamePopup); } catch (err) {}
+                    hoverNamePopup = null;
+                  }
+                };
+                const openHoverNamePopup = () => {
+                  if (!isDesktop) return;
+                  if (!hoverAnchorLatLng) return;
+                  if (!hasCompletedFirstZoom) return;
+                  if (isPathConfigOpen() || window.__editing || drawing) return;
+                  closeHoverNamePopup();
+                  try {
+                    hoverNamePopup = L.popup({
+                      closeButton: false,
+                      autoPan: false,
+                      closeOnClick: false,
+                      className: 'refuge-hover-popup',
+                      offset: [0, -6]
+                    })
+                      .setLatLng(hoverAnchorLatLng)
+                      .setContent(`<div class="refuge-hover-name">${escapeHtml(r.name || 'Refuge')}</div>`);
+                    map.addLayer(hoverNamePopup);
+                  } catch (err) {}
+                };
                 const polygon = L.polygon(latlngs, {
                   color: '#1e90ff',
                   weight: 2,
@@ -1761,10 +1789,13 @@ window.addEventListener('DOMContentLoaded', function () {
                     return;
                   }
 
+                  if (isDesktop) closeHoverNamePopup();
+
                   const now = Date.now();
                   const sinceLast = now - refugeLastClickAt;
                   refugeLastClickAt = now;
 
+                  const wasAlreadySelected = selectedRefuge && selectedRefuge.id === polygon._refuge.id;
                   setSelectedRefuge(polygon._refuge);
 
                   if (refugeClickTimer) {
@@ -1778,17 +1809,35 @@ window.addEventListener('DOMContentLoaded', function () {
                     return;
                   }
 
+                  const clickLatLng = e && e.latlng ? e.latlng : undefined;
                   refugeClickTimer = setTimeout(() => {
                     refugeClickTimer = null;
                     if (!hasCompletedFirstZoom) return;
                     if (isPathConfigOpen() || window.__editing || drawing) return;
-                    try { polygon.openPopup(e.latlng); } catch (err) {}
+
+                    if (isDesktop) {
+                      // Mirror list selection (zoom/focus) on desktop clicks
+                      focusRefuge(polygon._refuge);
+                      // First click only selects/focuses; second click opens full popup
+                      if (!wasAlreadySelected) {
+                        return;
+                      }
+                    }
+
+                    try { polygon.openPopup(clickLatLng); } catch (err) {}
                   }, REFUGE_DOUBLE_CLICK_MS + 20);
                 };
 
                 // Replace Leaflet's default click-to-open handler so we can apply timing
                 polygon.off('click');
                 polygon.on('click', handleRefugeClick);
+
+                if (isDesktop) {
+                  polygon.on('mouseover', openHoverNamePopup);
+                  polygon.on('mouseout', closeHoverNamePopup);
+                  polygon.on('popupopen', closeHoverNamePopup);
+                  polygon.on('remove', closeHoverNamePopup);
+                }
 
                 polygon.on('popupopen', () => {
                   // Block refuge popups until the initial zoom completes
